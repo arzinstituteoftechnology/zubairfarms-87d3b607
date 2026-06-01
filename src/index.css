@@ -90,3 +90,13 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* Print styles for invoices */
+@media print {
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { position: absolute; left: 0; top: 0; width: 100%; }
+  .no-print { display: none !important; }
+  @page { margin: 12mm; }
+}
+.thermal-print { width: 80mm; font-family: 'Courier New', monospace; font-size: 12px; }
