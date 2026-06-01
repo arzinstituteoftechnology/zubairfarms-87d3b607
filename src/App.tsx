@@ -15,6 +15,13 @@ import Supplies from "./pages/Supplies";
 import Inventory from "./pages/Inventory";
 import Wastage from "./pages/Wastage";
 import Settings from "./pages/Settings";
+import Customers from "./pages/Customers";
+import Suppliers from "./pages/Suppliers";
+import Expenses from "./pages/Expenses";
+import Trucks from "./pages/Trucks";
+import Deliveries from "./pages/Deliveries";
+import POS from "./pages/POS";
+import Invoice from "./pages/Invoice";
 
 const queryClient = new QueryClient();
 
@@ -29,14 +36,21 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route element={<AppLayout />}>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/pos" element={<POS />} />
               <Route path="/farms" element={<Farms />} />
               <Route path="/shops" element={<Shops />} />
+              <Route path="/customers" element={<Customers />} />
+              <Route path="/suppliers" element={<Suppliers />} />
               <Route path="/purchases" element={<Purchases />} />
               <Route path="/supplies" element={<Supplies />} />
+              <Route path="/expenses" element={<Expenses />} />
+              <Route path="/trucks" element={<Trucks />} />
+              <Route path="/deliveries" element={<Deliveries />} />
               <Route path="/inventory" element={<Inventory />} />
               <Route path="/wastage" element={<Wastage />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
+            <Route path="/invoice/:id" element={<Invoice />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
