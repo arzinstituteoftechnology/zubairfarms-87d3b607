@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import {
   LayoutDashboard, Beef, Tractor, Store, ShoppingCart, Truck,
   Boxes, AlertTriangle, Settings as SettingsIcon, LogOut, Menu,
+  Users, Wallet, Receipt, TruckIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -11,10 +12,16 @@ import { cn } from "@/lib/utils";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/pos", label: "POS", icon: Receipt },
   { to: "/farms", label: "Farms", icon: Tractor },
   { to: "/shops", label: "Shops", icon: Store },
+  { to: "/customers", label: "Customers", icon: Users },
+  { to: "/suppliers", label: "Suppliers Ledger", icon: Wallet },
   { to: "/purchases", label: "Purchases", icon: ShoppingCart },
   { to: "/supplies", label: "Supplies", icon: Truck },
+  { to: "/expenses", label: "Expenses", icon: Wallet },
+  { to: "/trucks", label: "Trucks", icon: TruckIcon },
+  { to: "/deliveries", label: "Deliveries", icon: Truck },
   { to: "/inventory", label: "Inventory", icon: Boxes },
   { to: "/wastage", label: "Wastage", icon: AlertTriangle },
   { to: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
