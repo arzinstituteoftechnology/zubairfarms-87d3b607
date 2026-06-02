@@ -17,11 +17,12 @@ import { format } from "date-fns";
 type Row = {
   id: string; farm_id: string; meat_type: string; weight_kg: number; rate_per_kg: number;
   total_amount: number; purchase_date: string; notes: string | null;
+  paid_amount: number; payment_method: string;
   farms?: { name: string } | null;
 };
 
 const today = () => format(new Date(), "yyyy-MM-dd");
-const emptyForm = () => ({ farm_id: "", meat_type: "Beef", weight_kg: "", rate_per_kg: "", purchase_date: today(), notes: "" });
+const emptyForm = () => ({ farm_id: "", meat_type: "Beef", weight_kg: "", rate_per_kg: "", purchase_date: today(), notes: "", paid_amount: "", payment_method: "credit" });
 
 const Purchases = () => {
   const { role, user } = useAuth();
@@ -47,10 +48,13 @@ const Purchases = () => {
 
   const save = async () => {
     if (!form.farm_id || !form.weight_kg || !form.rate_per_kg) return toast.error("Farm, weight and rate are required");
+    const total = (Number(form.weight_kg) || 0) * (Number(form.rate_per_kg) || 0);
+    const paid = form.payment_method === "credit" ? 0 : (Number(form.paid_amount) || (form.payment_method === "cash" || form.payment_method === "bank" ? total : 0));
     const payload = {
       farm_id: form.farm_id, meat_type: form.meat_type,
       weight_kg: Number(form.weight_kg), rate_per_kg: Number(form.rate_per_kg),
       purchase_date: form.purchase_date, notes: form.notes || null,
+      paid_amount: paid, payment_method: form.payment_method,
     };
     const op = editing
       ? supabase.from("purchases").update(payload).eq("id", editing.id)
@@ -84,9 +88,15 @@ const Purchases = () => {
           { key: "weight", label: "Weight", className: "text-right", render: (r) => fmtKg(r.weight_kg) },
           { key: "rate", label: "Rate/kg", className: "text-right", render: (r) => fmtMoney(r.rate_per_kg) },
           { key: "total", label: "Total", className: "text-right font-medium", render: (r) => fmtMoney(r.total_amount) },
+          { key: "paid", label: "Paid", className: "text-right", render: (r) => <span className="text-success">{fmtMoney(r.paid_amount)}</span> },
+          { key: "bal", label: "Balance", className: "text-right", render: (r) => {
+            const bal = Number(r.total_amount) - Number(r.paid_amount);
+            return <span className={bal > 0 ? "text-destructive font-semibold" : "text-success"}>{fmtMoney(bal)}</span>;
+          }},
+          { key: "method", label: "Method", render: (r) => <span className="text-xs uppercase">{r.payment_method}</span> },
           { key: "actions", label: "", className: "text-right w-24", render: (r) => (
             <div className="flex justify-end gap-1">
-              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ ...r, purchase_date: r.purchase_date, weight_kg: String(r.weight_kg), rate_per_kg: String(r.rate_per_kg) }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
+              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ ...r, purchase_date: r.purchase_date, weight_kg: String(r.weight_kg), rate_per_kg: String(r.rate_per_kg), paid_amount: String(r.paid_amount ?? 0), payment_method: r.payment_method ?? "credit" }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => setDelTarget(r)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
             </div>
           )},
@@ -116,6 +126,35 @@ const Purchases = () => {
               <div><Label>Rate/kg *</Label><Input type="number" step="0.01" min="0" value={form.rate_per_kg} onChange={(e) => setForm({ ...form, rate_per_kg: e.target.value })} /></div>
             </div>
             <div className="text-sm text-muted-foreground">Total: <span className="font-semibold text-foreground">{fmtMoney((Number(form.weight_kg) || 0) * (Number(form.rate_per_kg) || 0))}</span></div>
+            <div className="grid grid-cols-2 gap-3 border-t pt-3">
+              <div><Label>Payment method</Label>
+                <Select value={form.payment_method} onValueChange={(v) => {
+                  const total = (Number(form.weight_kg) || 0) * (Number(form.rate_per_kg) || 0);
+                  setForm({ ...form, payment_method: v, paid_amount: v === "credit" ? "0" : v === "partial" ? form.paid_amount : String(total.toFixed(2)) });
+                }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="credit">Udhaar (Credit)</SelectItem>
+                    <SelectItem value="cash">Naqd (Cash)</SelectItem>
+                    <SelectItem value="bank">Bank</SelectItem>
+                    <SelectItem value="partial">Partial</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div><Label>Paid now</Label>
+                <Input type="number" step="0.01" min="0" value={form.paid_amount}
+                  disabled={form.payment_method === "credit"}
+                  onChange={(e) => setForm({ ...form, paid_amount: e.target.value })} />
+              </div>
+            </div>
+            {(() => {
+              const total = (Number(form.weight_kg) || 0) * (Number(form.rate_per_kg) || 0);
+              const paid = form.payment_method === "credit" ? 0 : Number(form.paid_amount) || 0;
+              const bal = total - paid;
+              return <div className="text-sm flex justify-between bg-muted/40 rounded-md px-3 py-2">
+                <span>Balance (udhaar): <b className={bal > 0 ? "text-destructive" : "text-success"}>{fmtMoney(bal)}</b></span>
+              </div>;
+            })()}
             <div><Label>Notes</Label><Textarea value={form.notes ?? ""} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save}>Save</Button></DialogFooter>

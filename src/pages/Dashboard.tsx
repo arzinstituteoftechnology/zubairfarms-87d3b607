@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtKg, fmtMoney } from "@/lib/constants";
-import { ShoppingCart, Truck, Boxes, AlertTriangle, TrendingUp, Beef } from "lucide-react";
+import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users } from "lucide-react";
 import { format, subDays } from "date-fns";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
@@ -11,8 +11,8 @@ interface KPI {
   purchaseKg: number; purchaseAmt: number;
   supplyKg: number; supplyAmt: number;
   stockKg: number;
-  wastageKg: number; wastageCost: number; wastagePct: number;
   profit: number;
+  payableToFarms: number; receivableFromCustomers: number;
 }
 
 const KpiCard = ({ icon: Icon, label, value, sub, tone = "default" }: any) => (
@@ -33,9 +33,8 @@ const KpiCard = ({ icon: Icon, label, value, sub, tone = "default" }: any) => (
 );
 
 const Dashboard = () => {
-  const [kpi, setKpi] = useState<KPI>({ purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, wastageKg: 0, wastageCost: 0, wastagePct: 0, profit: 0 });
+  const [kpi, setKpi] = useState<KPI>({ purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0 });
   const [chart, setChart] = useState<any[]>([]);
-  const [meatBreakdown, setMeatBreakdown] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -53,8 +52,12 @@ const Dashboard = () => {
         supabase.from("supplies").select("weight_kg, total_amount, cost_per_kg, supply_date").eq("supply_date", today),
       ]);
       const [{ data: pSum }, { data: sSum }] = await Promise.all([
-        supabase.from("purchases").select("weight_kg, rate_per_kg, meat_type"),
+        supabase.from("purchases").select("weight_kg, rate_per_kg, meat_type, total_amount, paid_amount"),
         supabase.from("supplies").select("weight_kg, cost_per_kg, total_amount, meat_type"),
+      ]);
+      const [{ data: fpAll }, { data: posAll }] = await Promise.all([
+        supabase.from("farm_payments").select("amount"),
+        supabase.from("pos_sales").select("due"),
       ]);
 
       const sum = (arr: any[] | null, k: string) => (arr ?? []).reduce((a, x) => a + Number(x[k] ?? 0), 0);
@@ -64,19 +67,21 @@ const Dashboard = () => {
       const supplyAmt = sum(sAll, "total_amount");
       const stockKg = sum(pSum, "weight_kg") - sum(sSum, "weight_kg");
       const totalPurchasedAll = sum(pSum, "weight_kg");
-      const totalSuppliedAll = sum(sSum, "weight_kg");
-      const wastageKg = totalPurchasedAll - totalSuppliedAll;
       // avg cost per kg from all purchases
       const purchaseValue = (pSum ?? []).reduce((a, x: any) => a + Number(x.weight_kg) * Number(x.rate_per_kg), 0);
-      const avgCost = totalPurchasedAll > 0 ? purchaseValue / totalPurchasedAll : 0;
-      const wastageCost = wastageKg * avgCost;
-      const wastagePct = totalPurchasedAll > 0 ? (wastageKg / totalPurchasedAll) * 100 : 0;
-      // profit = supplies revenue - cost of supplied - wastage cost
+      // profit = supplies revenue - cost of supplied
       const supplyRevenue = (sSum ?? []).reduce((a, x: any) => a + Number(x.total_amount ?? 0), 0);
       const supplyCost = (sSum ?? []).reduce((a, x: any) => a + Number(x.weight_kg) * Number(x.cost_per_kg ?? 0), 0);
-      const profit = supplyRevenue - supplyCost - wastageCost;
+      const profit = supplyRevenue - supplyCost;
 
-      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, wastageKg, wastageCost, wastagePct, profit });
+      // Payable to farms = total purchases - (paid_amount on purchases + farm_payments)
+      const totalPurchaseAmt = (pSum ?? []).reduce((a, x: any) => a + Number(x.total_amount ?? 0), 0);
+      const paidOnPurchases = (pSum ?? []).reduce((a, x: any) => a + Number(x.paid_amount ?? 0), 0);
+      const extraFarmPaid = (fpAll ?? []).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
+      const payableToFarms = Math.max(0, totalPurchaseAmt - paidOnPurchases - extraFarmPaid);
+      const receivableFromCustomers = (posAll ?? []).reduce((a, x: any) => a + Number(x.due ?? 0), 0);
+
+      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, payableToFarms, receivableFromCustomers });
 
       // 7-day chart
       const days: any[] = [];
@@ -87,12 +92,6 @@ const Dashboard = () => {
         days.push({ day: format(subDays(new Date(), i), "EEE"), Purchased: purchased, Supplied: supplied });
       }
       setChart(days);
-
-      // Wastage by meat type
-      const meatMap = new Map<string, { purchased: number; supplied: number }>();
-      (pSum ?? []).forEach((x: any) => { const c = meatMap.get(x.meat_type) ?? { purchased: 0, supplied: 0 }; c.purchased += Number(x.weight_kg); meatMap.set(x.meat_type, c); });
-      (sSum ?? []).forEach((x: any) => { const c = meatMap.get(x.meat_type) ?? { purchased: 0, supplied: 0 }; c.supplied += Number(x.weight_kg); meatMap.set(x.meat_type, c); });
-      setMeatBreakdown([...meatMap.entries()].map(([meat, v]) => ({ meat, Wastage: Math.max(0, v.purchased - v.supplied) })));
 
       setLoading(false);
     })();
@@ -109,14 +108,14 @@ const Dashboard = () => {
         <KpiCard icon={ShoppingCart} label="Today's purchase" value={fmtKg(kpi.purchaseKg)} sub={`Amt ${fmtMoney(kpi.purchaseAmt)}`} />
         <KpiCard icon={Truck} label="Today's supply" value={fmtKg(kpi.supplyKg)} sub={`Amt ${fmtMoney(kpi.supplyAmt)}`} />
         <KpiCard icon={Boxes} label="Current stock" value={fmtKg(kpi.stockKg)} tone={kpi.stockKg < 0 ? "danger" : "default"} />
-        <KpiCard icon={TrendingUp} label="Today's profit" value={fmtMoney(kpi.profit)} tone={kpi.profit >= 0 ? "success" : "danger"} sub="Revenue − Cost − Wastage" />
-        <KpiCard icon={AlertTriangle} label="Total wastage" value={fmtKg(kpi.wastageKg)} sub={`${kpi.wastagePct.toFixed(2)}%`} tone="danger" />
-        <KpiCard icon={AlertTriangle} label="Wastage cost" value={fmtMoney(kpi.wastageCost)} tone="danger" />
+        <KpiCard icon={TrendingUp} label="Today's profit" value={fmtMoney(kpi.profit)} tone={kpi.profit >= 0 ? "success" : "danger"} sub="Revenue − Cost" />
+        <KpiCard icon={Wallet} label="Payable to farms" value={fmtMoney(kpi.payableToFarms)} sub="Total udhaar" tone="danger" />
+        <KpiCard icon={Users} label="Receivable" value={fmtMoney(kpi.receivableFromCustomers)} sub="Customer dues" tone="danger" />
         <KpiCard icon={Beef} label="Total purchase value" value={fmtMoney(kpi.purchaseAmt)} sub="Today" />
         <KpiCard icon={Truck} label="Total supply value" value={fmtMoney(kpi.supplyAmt)} sub="Today" />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4">
         <Card>
           <CardHeader><CardTitle className="text-base">Last 7 days · Purchase vs Supply (kg)</CardTitle></CardHeader>
           <CardContent>
@@ -129,20 +128,6 @@ const Dashboard = () => {
                 <Legend />
                 <Bar dataKey="Purchased" fill="var(--color-Purchased)" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="Supplied" fill="var(--color-Supplied)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle className="text-base">Wastage by meat type (kg)</CardTitle></CardHeader>
-          <CardContent>
-            <ChartContainer config={{ Wastage: { label: "Wastage", color: "hsl(var(--destructive))" } }} className="h-[260px] w-full">
-              <BarChart data={meatBreakdown}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="meat" />
-                <YAxis />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="Wastage" fill="var(--color-Wastage)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ChartContainer>
           </CardContent>

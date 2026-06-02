@@ -46,7 +46,7 @@ const Inventory = () => {
               <TableHead>Meat type</TableHead>
               <TableHead className="text-right">Total purchased</TableHead>
               <TableHead className="text-right">Total supplied</TableHead>
-              <TableHead className="text-right">Balance (incl. wastage)</TableHead>
+              <TableHead className="text-right">Balance</TableHead>
             </TableRow></TableHeader>
             <TableBody>
               {loading ? <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>

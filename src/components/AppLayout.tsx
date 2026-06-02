@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
 import {
   LayoutDashboard, Beef, Tractor, Store, ShoppingCart, Truck,
-  Boxes, AlertTriangle, Settings as SettingsIcon, LogOut, Menu,
+  Boxes, Settings as SettingsIcon, LogOut, Menu,
   Users, Wallet, Receipt, TruckIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,6 @@ const nav = [
   { to: "/trucks", label: "Trucks", icon: TruckIcon },
   { to: "/deliveries", label: "Deliveries", icon: Truck },
   { to: "/inventory", label: "Inventory", icon: Boxes },
-  { to: "/wastage", label: "Wastage", icon: AlertTriangle },
   { to: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
 
