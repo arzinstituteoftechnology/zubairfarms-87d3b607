@@ -416,6 +416,8 @@ export type Database = {
           id: string
           meat_type: string
           notes: string | null
+          paid_amount: number
+          payment_method: string
           purchase_date: string
           rate_per_kg: number
           total_amount: number | null
@@ -429,6 +431,8 @@ export type Database = {
           id?: string
           meat_type: string
           notes?: string | null
+          paid_amount?: number
+          payment_method?: string
           purchase_date?: string
           rate_per_kg: number
           total_amount?: number | null
@@ -442,6 +446,8 @@ export type Database = {
           id?: string
           meat_type?: string
           notes?: string | null
+          paid_amount?: number
+          payment_method?: string
           purchase_date?: string
           rate_per_kg?: number
           total_amount?: number | null
