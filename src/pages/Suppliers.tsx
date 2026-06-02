@@ -12,16 +12,17 @@ import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
 
 type Row = { id: string; name: string; phone: string | null; purchased: number; paid: number; balance: number };
-type Pay = { id: string; payment_date: string; amount: number; method: string };
-type Pur = { id: string; purchase_date: string; total_amount: number; meat_type: string };
+type LedgerEntry = {
+  id: string; date: string; kind: "purchase" | "payment";
+  debit: number; credit: number; meta: string;
+};
 
 const Suppliers = () => {
   const { user } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [ledger, setLedger] = useState<Row | null>(null);
-  const [pays, setPays] = useState<Pay[]>([]);
-  const [purs, setPurs] = useState<Pur[]>([]);
+  const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [payAmt, setPayAmt] = useState(""); const [payDate, setPayDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [payMethod, setPayMethod] = useState("cash");
 
@@ -29,11 +30,14 @@ const Suppliers = () => {
     setLoading(true);
     const [{ data: farms }, { data: pu }, { data: pa }] = await Promise.all([
       supabase.from("farms").select("id, name, phone").order("name"),
-      supabase.from("purchases").select("farm_id, total_amount"),
+      supabase.from("purchases").select("farm_id, total_amount, paid_amount"),
       supabase.from("farm_payments").select("farm_id, amount"),
     ]);
     const purMap: Record<string, number> = {}, payMap: Record<string, number> = {};
-    (pu ?? []).forEach((x: any) => purMap[x.farm_id] = (purMap[x.farm_id] ?? 0) + Number(x.total_amount));
+    (pu ?? []).forEach((x: any) => {
+      purMap[x.farm_id] = (purMap[x.farm_id] ?? 0) + Number(x.total_amount);
+      payMap[x.farm_id] = (payMap[x.farm_id] ?? 0) + Number(x.paid_amount ?? 0);
+    });
     (pa ?? []).forEach((x: any) => payMap[x.farm_id] = (payMap[x.farm_id] ?? 0) + Number(x.amount));
     setRows((farms ?? []).map((f: any) => ({ ...f, purchased: purMap[f.id] ?? 0, paid: payMap[f.id] ?? 0, balance: (purMap[f.id] ?? 0) - (payMap[f.id] ?? 0) })));
     setLoading(false);
@@ -44,9 +48,17 @@ const Suppliers = () => {
     setLedger(r);
     const [{ data: p }, { data: pr }] = await Promise.all([
       supabase.from("farm_payments").select("id, payment_date, amount, method").eq("farm_id", r.id).order("payment_date", { ascending: false }),
-      supabase.from("purchases").select("id, purchase_date, total_amount, meat_type").eq("farm_id", r.id).order("purchase_date", { ascending: false }),
+      supabase.from("purchases").select("id, purchase_date, total_amount, paid_amount, payment_method, meat_type, weight_kg, rate_per_kg").eq("farm_id", r.id).order("purchase_date", { ascending: false }),
     ]);
-    setPays((p as any) ?? []); setPurs((pr as any) ?? []);
+    const list: LedgerEntry[] = [];
+    (pr ?? []).forEach((x: any) => {
+      list.push({ id: `pu-${x.id}`, date: x.purchase_date, kind: "purchase", debit: Number(x.total_amount), credit: Number(x.paid_amount ?? 0), meta: `${x.meat_type} · ${Number(x.weight_kg).toFixed(2)}kg @ ${Number(x.rate_per_kg).toFixed(2)} · ${x.payment_method}` });
+    });
+    (p ?? []).forEach((x: any) => {
+      list.push({ id: `pa-${x.id}`, date: x.payment_date, kind: "payment", debit: 0, credit: Number(x.amount), meta: `Payment · ${x.method}` });
+    });
+    list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    setEntries(list);
   };
   const addPayment = async () => {
     if (!ledger || !payAmt) return;
@@ -87,13 +99,25 @@ const Suppliers = () => {
                 </select>
                 <Button onClick={addPayment}>Record</Button>
               </div>
-              <div className="grid md:grid-cols-2 gap-3 text-sm">
-                <div><div className="font-semibold mb-2">Purchases</div><div className="max-h-64 overflow-auto border rounded-md divide-y">
-                  {purs.length === 0 ? <div className="p-3 text-muted-foreground">None</div> : purs.map((p) => <div key={p.id} className="p-2 flex justify-between"><span>{p.purchase_date} · {p.meat_type}</span><span>{fmtMoney(p.total_amount)}</span></div>)}
-                </div></div>
-                <div><div className="font-semibold mb-2">Payments</div><div className="max-h-64 overflow-auto border rounded-md divide-y">
-                  {pays.length === 0 ? <div className="p-3 text-muted-foreground">None</div> : pays.map((p) => <div key={p.id} className="p-2 flex justify-between"><span>{p.payment_date} ({p.method})</span><span className="text-success">{fmtMoney(p.amount)}</span></div>)}
-                </div></div>
+              <div>
+                <div className="font-semibold mb-2 text-sm">Daily ledger (newest first)</div>
+                <div className="max-h-80 overflow-auto border rounded-md">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 text-xs uppercase sticky top-0">
+                      <tr><th className="text-left p-2">Date</th><th className="text-left p-2">Detail</th><th className="text-right p-2">Maal (Debit)</th><th className="text-right p-2">Paid (Credit)</th></tr>
+                    </thead>
+                    <tbody>
+                      {entries.length === 0 ? <tr><td colSpan={4} className="p-3 text-center text-muted-foreground">No entries</td></tr> : entries.map((e) => (
+                        <tr key={e.id} className="border-t">
+                          <td className="p-2">{e.date}</td>
+                          <td className="p-2">{e.meta}</td>
+                          <td className="p-2 text-right">{e.debit > 0 ? fmtMoney(e.debit) : "—"}</td>
+                          <td className="p-2 text-right text-success">{e.credit > 0 ? fmtMoney(e.credit) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
