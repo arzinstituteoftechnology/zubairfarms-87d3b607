@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "react-i18next";
 import { CrudPage } from "@/components/CrudPage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,7 @@ const empty = { name: "", phone: "", address: "", credit_limit: "0", notes: "" }
 
 const Customers = () => {
   const { role, user } = useAuth();
+  const { t } = useTranslation();
   const [rows, setRows] = useState<C[]>([]);
   const [balances, setBalances] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -50,17 +52,17 @@ const Customers = () => {
   useEffect(() => { load(); }, []);
 
   const save = async () => {
-    if (!form.name?.trim()) return toast.error("Name required");
+    if (!form.name?.trim()) return toast.error(t("customers.name_required"));
     const payload = { name: form.name, phone: form.phone || null, address: form.address || null, credit_limit: Number(form.credit_limit) || 0, notes: form.notes || null };
     const op = editing ? supabase.from("customers").update(payload).eq("id", editing.id) : supabase.from("customers").insert({ ...payload, created_by: user?.id });
     const { error } = await op;
     if (error) return toast.error(error.message);
-    toast.success("Saved"); setOpen(false); load();
+    toast.success(t("common.saved")); setOpen(false); load();
   };
   const doDelete = async () => {
     if (!delTarget) return;
     const { error } = await supabase.from("customers").delete().eq("id", delTarget.id);
-    if (error) toast.error(error.message); else { toast.success("Deleted"); load(); }
+    if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(); }
     setDelTarget(null);
   };
   const openLedger = async (c: C) => {
@@ -75,23 +77,23 @@ const Customers = () => {
     if (!ledger || !payAmt) return;
     const { error } = await supabase.from("customer_payments").insert({ customer_id: ledger.id, amount: Number(payAmt), payment_date: payDate, method: payMethod, created_by: user?.id });
     if (error) return toast.error(error.message);
-    toast.success("Payment recorded"); setPayAmt(""); openLedger(ledger); load();
+    toast.success(t("customers.payment_recorded")); setPayAmt(""); openLedger(ledger); load();
   };
 
   return (
     <>
       <CrudPage<C>
-        title="Customers" subtitle="Customer profiles, credit & ledger"
+        title={t("customers.title")} subtitle={t("customers.subtitle")}
         rows={rows} loading={loading} searchKeys={["name", "phone"]}
-        onAdd={() => { setEditing(null); setForm(empty); setOpen(true); }} addLabel="Add customer"
+        onAdd={() => { setEditing(null); setForm(empty); setOpen(true); }} addLabel={t("customers.add")}
         columns={[
-          { key: "name", label: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
-          { key: "phone", label: "Phone", render: (r) => r.phone || "—" },
-          { key: "credit", label: "Credit limit", className: "text-right", render: (r) => fmtMoney(r.credit_limit) },
-          { key: "bal", label: "Balance due", className: "text-right", render: (r) => <span className={(balances[r.id] ?? 0) > 0 ? "text-destructive font-semibold" : ""}>{fmtMoney(balances[r.id] ?? 0)}</span> },
+          { key: "name", label: t("common.name"), render: (r) => <span className="font-medium">{r.name}</span> },
+          { key: "phone", label: t("common.phone"), render: (r) => r.phone || "—" },
+          { key: "credit", label: t("customers.credit_limit"), className: "text-end", render: (r) => fmtMoney(r.credit_limit) },
+          { key: "bal", label: t("customers.balance_due"), className: "text-end", render: (r) => <span className={(balances[r.id] ?? 0) > 0 ? "text-destructive font-semibold" : ""}>{fmtMoney(balances[r.id] ?? 0)}</span> },
           { key: "actions", label: "", className: "text-right w-32", render: (r) => (
             <div className="flex justify-end gap-1">
-              <Button size="icon" variant="ghost" onClick={() => openLedger(r)} title="Ledger"><Wallet className="h-4 w-4" /></Button>
+              <Button size="icon" variant="ghost" onClick={() => openLedger(r)} title={t("customers.ledger")}><Wallet className="h-4 w-4" /></Button>
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ ...r, credit_limit: String(r.credit_limit) }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => setDelTarget(r)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
             </div>
@@ -100,46 +102,46 @@ const Customers = () => {
       />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{editing ? "Edit customer" : "Add customer"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? t("customers.edit") : t("customers.add")}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div><Label>Name *</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+            <div><Label>{t("farms.name")}</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Phone</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-              <div><Label>Credit limit</Label><Input type="number" value={form.credit_limit} onChange={(e) => setForm({ ...form, credit_limit: e.target.value })} /></div>
+              <div><Label>{t("common.phone")}</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+              <div><Label>{t("customers.credit_limit")}</Label><Input type="number" value={form.credit_limit} onChange={(e) => setForm({ ...form, credit_limit: e.target.value })} /></div>
             </div>
-            <div><Label>Address</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
-            <div><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+            <div><Label>{t("common.address")}</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
+            <div><Label>{t("common.notes")}</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save}>Save</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button><Button onClick={save}>{t("common.save")}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={!!ledger} onOpenChange={(o) => !o && setLedger(null)}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Ledger — {ledger?.name}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("customers.ledger_for", { name: ledger?.name ?? "" })}</DialogTitle></DialogHeader>
           {ledger && (
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-3 text-sm">
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Total billed</div><div className="font-semibold">{fmtMoney(sales.reduce((s, x) => s + Number(x.total), 0))}</div></div>
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Paid</div><div className="font-semibold">{fmtMoney(sales.reduce((s, x) => s + Number(x.paid), 0) + pays.reduce((s, x) => s + Number(x.amount), 0))}</div></div>
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Balance due</div><div className="font-semibold text-destructive">{fmtMoney(balances[ledger.id] ?? 0)}</div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">{t("customers.total_billed")}</div><div className="font-semibold">{fmtMoney(sales.reduce((s, x) => s + Number(x.total), 0))}</div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">{t("customers.paid")}</div><div className="font-semibold">{fmtMoney(sales.reduce((s, x) => s + Number(x.paid), 0) + pays.reduce((s, x) => s + Number(x.amount), 0))}</div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">{t("customers.balance_due")}</div><div className="font-semibold text-destructive">{fmtMoney(balances[ledger.id] ?? 0)}</div></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto] gap-2 items-end">
-                <div><Label>Add payment</Label><Input type="number" placeholder="Amount" value={payAmt} onChange={(e) => setPayAmt(e.target.value)} /></div>
+                <div><Label>{t("customers.add_payment")}</Label><Input type="number" placeholder={t("common.amount")} value={payAmt} onChange={(e) => setPayAmt(e.target.value)} /></div>
                 <Input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
                 <select className="border rounded-md h-10 px-2" value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
-                  <option value="cash">Cash</option><option value="bank">Bank</option><option value="card">Card</option>
+                  <option value="cash">{t("pos.cash")}</option><option value="bank">{t("pos.bank")}</option><option value="card">{t("pos.card")}</option>
                 </select>
-                <Button onClick={addPayment}>Record</Button>
+                <Button onClick={addPayment}>{t("customers.record")}</Button>
               </div>
               <div className="grid md:grid-cols-2 gap-3 text-sm">
-                <div><div className="font-semibold mb-2">Sales</div><div className="max-h-64 overflow-auto border rounded-md divide-y">
-                  {sales.length === 0 ? <div className="p-3 text-muted-foreground">No sales</div> : sales.map((s) => (
-                    <div key={s.id} className="p-2 flex justify-between"><span>{s.sale_date}</span><span>{fmtMoney(s.total)} <span className="text-destructive">(due {fmtMoney(s.due)})</span></span></div>
+                <div><div className="font-semibold mb-2">{t("customers.sales")}</div><div className="max-h-64 overflow-auto border rounded-md divide-y">
+                  {sales.length === 0 ? <div className="p-3 text-muted-foreground">{t("customers.no_sales")}</div> : sales.map((s) => (
+                    <div key={s.id} className="p-2 flex justify-between"><span className="force-ltr">{s.sale_date}</span><span className="force-ltr">{fmtMoney(s.total)} <span className="text-destructive">({t("common.due")} {fmtMoney(s.due)})</span></span></div>
                   ))}
                 </div></div>
-                <div><div className="font-semibold mb-2">Payments</div><div className="max-h-64 overflow-auto border rounded-md divide-y">
-                  {pays.length === 0 ? <div className="p-3 text-muted-foreground">No payments</div> : pays.map((p) => (
-                    <div key={p.id} className="p-2 flex justify-between"><span>{p.payment_date} <span className="text-muted-foreground">({p.method})</span></span><span className="text-success font-medium">{fmtMoney(p.amount)}</span></div>
+                <div><div className="font-semibold mb-2">{t("customers.payments")}</div><div className="max-h-64 overflow-auto border rounded-md divide-y">
+                  {pays.length === 0 ? <div className="p-3 text-muted-foreground">{t("customers.no_payments")}</div> : pays.map((p) => (
+                    <div key={p.id} className="p-2 flex justify-between"><span className="force-ltr">{p.payment_date} <span className="text-muted-foreground">({p.method})</span></span><span className="text-success font-medium force-ltr">{fmtMoney(p.amount)}</span></div>
                   ))}
                 </div></div>
               </div>
@@ -149,8 +151,8 @@ const Customers = () => {
       </Dialog>
       <AlertDialog open={!!delTarget} onOpenChange={(o) => !o && setDelTarget(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Delete customer?</AlertDialogTitle></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={doDelete}>Delete</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogHeader><AlertDialogTitle>{t("customers.delete_q")}</AlertDialogTitle></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel><AlertDialogAction onClick={doDelete}>{t("common.delete")}</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>

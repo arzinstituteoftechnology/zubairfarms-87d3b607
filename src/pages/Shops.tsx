@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "react-i18next";
 import { CrudPage } from "@/components/CrudPage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ const empty: Partial<Shop> = { name: "", contact_person: "", phone: "", address:
 
 const Shops = () => {
   const { role, user } = useAuth();
+  const { t } = useTranslation();
   const [rows, setRows] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -32,38 +34,38 @@ const Shops = () => {
   useEffect(() => { load(); }, []);
 
   const save = async () => {
-    if (!form.name?.trim()) return toast.error("Name is required");
+    if (!form.name?.trim()) return toast.error(t("farms.name_required"));
     const payload: any = { name: form.name, contact_person: form.contact_person, phone: form.phone, address: form.address, notes: form.notes };
     const op = editing
       ? supabase.from("shops").update(payload).eq("id", editing.id)
       : supabase.from("shops").insert({ ...payload, created_by: user?.id });
     const { error } = await op;
     if (error) return toast.error(error.message);
-    toast.success(editing ? "Shop updated" : "Shop added");
+    toast.success(editing ? t("shops.updated") : t("shops.added"));
     setOpen(false); load();
   };
 
   const doDelete = async () => {
     if (!delTarget) return;
     const { error } = await supabase.from("shops").delete().eq("id", delTarget.id);
-    if (error) toast.error(error.message); else { toast.success("Deleted"); load(); }
+    if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(); }
     setDelTarget(null);
   };
 
   return (
     <>
       <CrudPage<Shop>
-        title="Shops"
-        subtitle="Retail shops you supply meat to"
+        title={t("shops.title")}
+        subtitle={t("shops.subtitle")}
         rows={rows} loading={loading}
         searchKeys={["name", "contact_person", "phone"]}
         onAdd={() => { setEditing(null); setForm(empty); setOpen(true); }}
-        addLabel="Add shop"
+        addLabel={t("shops.add")}
         columns={[
-          { key: "name", label: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
-          { key: "contact", label: "Contact", render: (r) => r.contact_person || "—" },
-          { key: "phone", label: "Phone", render: (r) => r.phone || "—" },
-          { key: "address", label: "Address", render: (r) => <span className="text-muted-foreground">{r.address || "—"}</span> },
+          { key: "name", label: t("common.name"), render: (r) => <span className="font-medium">{r.name}</span> },
+          { key: "contact", label: t("farms.contact"), render: (r) => r.contact_person || "—" },
+          { key: "phone", label: t("common.phone"), render: (r) => r.phone || "—" },
+          { key: "address", label: t("common.address"), render: (r) => <span className="text-muted-foreground">{r.address || "—"}</span> },
           { key: "actions", label: "", className: "text-right w-24", render: (r) => (
             <div className="flex justify-end gap-1">
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm(r); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
@@ -74,23 +76,23 @@ const Shops = () => {
       />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{editing ? "Edit shop" : "Add shop"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? t("shops.edit") : t("shops.add")}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div><Label>Name *</Label><Input value={form.name ?? ""} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+            <div><Label>{t("farms.name")}</Label><Input value={form.name ?? ""} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Contact person</Label><Input value={form.contact_person ?? ""} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} /></div>
-              <div><Label>Phone</Label><Input value={form.phone ?? ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+              <div><Label>{t("farms.contact_person")}</Label><Input value={form.contact_person ?? ""} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} /></div>
+              <div><Label>{t("common.phone")}</Label><Input value={form.phone ?? ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
             </div>
-            <div><Label>Address</Label><Input value={form.address ?? ""} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
-            <div><Label>Notes</Label><Textarea value={form.notes ?? ""} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+            <div><Label>{t("common.address")}</Label><Input value={form.address ?? ""} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
+            <div><Label>{t("common.notes")}</Label><Textarea value={form.notes ?? ""} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save}>Save</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button><Button onClick={save}>{t("common.save")}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
       <AlertDialog open={!!delTarget} onOpenChange={(o) => !o && setDelTarget(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Delete shop?</AlertDialogTitle><AlertDialogDescription>This will fail if supplies exist for this shop.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={doDelete}>Delete</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogHeader><AlertDialogTitle>{t("shops.delete_q")}</AlertDialogTitle><AlertDialogDescription>{t("shops.delete_warn")}</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel><AlertDialogAction onClick={doDelete}>{t("common.delete")}</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>

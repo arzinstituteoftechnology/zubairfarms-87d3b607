@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtKg, fmtMoney } from "@/lib/constants";
 import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users } from "lucide-react";
@@ -33,6 +34,7 @@ const KpiCard = ({ icon: Icon, label, value, sub, tone = "default" }: any) => (
 );
 
 const Dashboard = () => {
+  const { t } = useTranslation();
   const [kpi, setKpi] = useState<KPI>({ purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0 });
   const [chart, setChart] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +91,7 @@ const Dashboard = () => {
         const d = format(subDays(new Date(), i), "yyyy-MM-dd");
         const purchased = (p ?? []).filter((x: any) => x.purchase_date === d).reduce((a, x: any) => a + Number(x.weight_kg), 0);
         const supplied = (s ?? []).filter((x: any) => x.supply_date === d).reduce((a, x: any) => a + Number(x.weight_kg), 0);
-        days.push({ day: format(subDays(new Date(), i), "EEE"), Purchased: purchased, Supplied: supplied });
+        days.push({ day: format(subDays(new Date(), i), "EEE"), purchased, supplied });
       }
       setChart(days);
 
@@ -100,34 +102,34 @@ const Dashboard = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">{loading ? "Loading…" : "Today's performance & overall stock"}</p>
+        <h1 className="text-2xl font-bold tracking-tight">{t("dashboard.title")}</h1>
+        <p className="text-sm text-muted-foreground">{loading ? t("common.loading") : t("dashboard.subtitle")}</p>
       </div>
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <KpiCard icon={ShoppingCart} label="Today's purchase" value={fmtKg(kpi.purchaseKg)} sub={`Amt ${fmtMoney(kpi.purchaseAmt)}`} />
-        <KpiCard icon={Truck} label="Today's supply" value={fmtKg(kpi.supplyKg)} sub={`Amt ${fmtMoney(kpi.supplyAmt)}`} />
-        <KpiCard icon={Boxes} label="Current stock" value={fmtKg(kpi.stockKg)} tone={kpi.stockKg < 0 ? "danger" : "default"} />
-        <KpiCard icon={TrendingUp} label="Today's profit" value={fmtMoney(kpi.profit)} tone={kpi.profit >= 0 ? "success" : "danger"} sub="Revenue − Cost" />
-        <KpiCard icon={Wallet} label="Payable to farms" value={fmtMoney(kpi.payableToFarms)} sub="Total udhaar" tone="danger" />
-        <KpiCard icon={Users} label="Receivable" value={fmtMoney(kpi.receivableFromCustomers)} sub="Customer dues" tone="danger" />
-        <KpiCard icon={Beef} label="Total purchase value" value={fmtMoney(kpi.purchaseAmt)} sub="Today" />
-        <KpiCard icon={Truck} label="Total supply value" value={fmtMoney(kpi.supplyAmt)} sub="Today" />
+        <KpiCard icon={ShoppingCart} label={t("dashboard.todays_purchase")} value={fmtKg(kpi.purchaseKg)} sub={t("dashboard.amt", { value: fmtMoney(kpi.purchaseAmt) })} />
+        <KpiCard icon={Truck} label={t("dashboard.todays_supply")} value={fmtKg(kpi.supplyKg)} sub={t("dashboard.amt", { value: fmtMoney(kpi.supplyAmt) })} />
+        <KpiCard icon={Boxes} label={t("dashboard.current_stock")} value={fmtKg(kpi.stockKg)} tone={kpi.stockKg < 0 ? "danger" : "default"} />
+        <KpiCard icon={TrendingUp} label={t("dashboard.todays_profit")} value={fmtMoney(kpi.profit)} tone={kpi.profit >= 0 ? "success" : "danger"} sub={t("dashboard.revenue_minus_cost")} />
+        <KpiCard icon={Wallet} label={t("dashboard.payable_to_farms")} value={fmtMoney(kpi.payableToFarms)} sub={t("dashboard.total_udhaar")} tone="danger" />
+        <KpiCard icon={Users} label={t("dashboard.receivable")} value={fmtMoney(kpi.receivableFromCustomers)} sub={t("dashboard.customer_dues")} tone="danger" />
+        <KpiCard icon={Beef} label={t("dashboard.total_purchase_value")} value={fmtMoney(kpi.purchaseAmt)} sub={t("dashboard.today")} />
+        <KpiCard icon={Truck} label={t("dashboard.total_supply_value")} value={fmtMoney(kpi.supplyAmt)} sub={t("dashboard.today")} />
       </div>
 
       <div className="grid gap-4">
         <Card>
-          <CardHeader><CardTitle className="text-base">Last 7 days · Purchase vs Supply (kg)</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">{t("dashboard.chart_title")}</CardTitle></CardHeader>
           <CardContent>
-            <ChartContainer config={{ Purchased: { label: "Purchased", color: "hsl(var(--primary))" }, Supplied: { label: "Supplied", color: "hsl(var(--accent))" } }} className="h-[260px] w-full">
+            <ChartContainer config={{ purchased: { label: t("dashboard.purchased"), color: "hsl(var(--primary))" }, supplied: { label: t("dashboard.supplied"), color: "hsl(var(--accent))" } }} className="h-[260px] w-full force-ltr">
               <BarChart data={chart}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="day" />
                 <YAxis />
                 <ChartTooltip content={<ChartTooltipContent />} />
                 <Legend />
-                <Bar dataKey="Purchased" fill="var(--color-Purchased)" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Supplied" fill="var(--color-Supplied)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="purchased" fill="var(--color-purchased)" name={t("dashboard.purchased")} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="supplied" fill="var(--color-supplied)" name={t("dashboard.supplied")} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ChartContainer>
           </CardContent>
