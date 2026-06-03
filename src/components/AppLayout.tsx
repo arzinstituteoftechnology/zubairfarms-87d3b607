@@ -1,6 +1,8 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import {
   LayoutDashboard, Beef, Tractor, Store, ShoppingCart, Truck,
   Boxes, Settings as SettingsIcon, LogOut, Menu,
@@ -10,35 +12,41 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
-const nav = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/pos", label: "POS", icon: Receipt },
-  { to: "/farms", label: "Farms", icon: Tractor },
-  { to: "/shops", label: "Shops", icon: Store },
-  { to: "/customers", label: "Customers", icon: Users },
-  { to: "/suppliers", label: "Suppliers Ledger", icon: Wallet },
-  { to: "/purchases", label: "Purchases", icon: ShoppingCart },
-  { to: "/supplies", label: "Supplies", icon: Truck },
-  { to: "/expenses", label: "Expenses", icon: Wallet },
-  { to: "/trucks", label: "Trucks", icon: TruckIcon },
-  { to: "/deliveries", label: "Deliveries", icon: Truck },
-  { to: "/inventory", label: "Inventory", icon: Boxes },
-  { to: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
+const navItems = [
+  { to: "/", key: "dashboard", icon: LayoutDashboard, end: true },
+  { to: "/pos", key: "pos", icon: Receipt },
+  { to: "/farms", key: "farms", icon: Tractor },
+  { to: "/shops", key: "shops", icon: Store },
+  { to: "/customers", key: "customers", icon: Users },
+  { to: "/suppliers", key: "suppliers", icon: Wallet },
+  { to: "/purchases", key: "purchases", icon: ShoppingCart },
+  { to: "/supplies", key: "supplies", icon: Truck },
+  { to: "/expenses", key: "expenses", icon: Wallet },
+  { to: "/trucks", key: "trucks", icon: TruckIcon },
+  { to: "/deliveries", key: "deliveries", icon: Truck },
+  { to: "/inventory", key: "inventory", icon: Boxes },
+  { to: "/settings", key: "settings", icon: SettingsIcon, adminOnly: true },
 ];
 
-const SidebarContent = ({ role, onSignOut }: { role: string | null; onSignOut: () => void }) => (
+const SidebarContent = ({ role, onSignOut }: { role: string | null; onSignOut: () => void }) => {
+  const { t } = useTranslation();
+  return (
   <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
     <div className="flex h-16 items-center gap-2 px-5 border-b border-sidebar-border">
       <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center">
         <Beef className="h-5 w-5 text-primary-foreground" />
       </div>
-      <div>
-        <div className="font-semibold leading-tight">MeatFlow</div>
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold leading-tight">{t("app.name")}</div>
         <div className="text-[10px] uppercase tracking-wider opacity-60">{role ?? "—"}</div>
       </div>
     </div>
+    <div className="px-3 py-2 border-b border-sidebar-border flex items-center justify-between">
+      <span className="text-[10px] uppercase tracking-wider opacity-60">{t("lang.switch")}</span>
+      <LanguageSwitcher />
+    </div>
     <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-      {nav.filter((n) => !n.adminOnly || role === "admin").map((n) => (
+      {navItems.filter((n) => !n.adminOnly || role === "admin").map((n) => (
         <NavLink
           key={n.to}
           to={n.to}
@@ -53,28 +61,30 @@ const SidebarContent = ({ role, onSignOut }: { role: string | null; onSignOut: (
           }
         >
           <n.icon className="h-4 w-4" />
-          {n.label}
+          {t(`nav.${n.key}`)}
         </NavLink>
       ))}
     </nav>
     <div className="p-3 border-t border-sidebar-border">
       <Button variant="ghost" className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" onClick={onSignOut}>
-        <LogOut className="h-4 w-4" /> Sign out
+        <LogOut className="h-4 w-4" /> {t("nav.sign_out")}
       </Button>
     </div>
   </div>
-);
+  );
+};
 
 const AppLayout = () => {
   const { session, loading, role, signOut } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!loading && !session) navigate("/auth", { replace: true });
   }, [loading, session, navigate]);
 
   if (loading || !session) {
-    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading…</div>;
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">{t("common.loading")}</div>;
   }
 
   const handleSignOut = async () => {
@@ -99,8 +109,9 @@ const AppLayout = () => {
           </Sheet>
           <div className="flex items-center gap-2">
             <Beef className="h-5 w-5 text-primary" />
-            <span className="font-semibold">MeatFlow</span>
+            <span className="font-semibold">{t("app.name")}</span>
           </div>
+          <div className="ml-auto"><LanguageSwitcher /></div>
         </header>
         <main className="flex-1 overflow-auto">
           <div className="p-4 md:p-6 max-w-7xl mx-auto w-full">

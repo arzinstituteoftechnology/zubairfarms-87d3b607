@@ -1,4 +1,5 @@
 import { useState, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -19,8 +20,9 @@ interface Props<T> {
 }
 
 export function CrudPage<T extends Record<string, any>>({
-  title, subtitle, rows, columns, onAdd, addLabel = "Add new", searchKeys, loading, pageSize = 10, emptyHint,
+  title, subtitle, rows, columns, onAdd, addLabel, searchKeys, loading, pageSize = 10, emptyHint,
 }: Props<T>) {
+  const { t } = useTranslation();
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
 
@@ -40,13 +42,13 @@ export function CrudPage<T extends Record<string, any>>({
           {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
         </div>
         {onAdd && (
-          <Button onClick={onAdd}><Plus className="h-4 w-4" /> {addLabel}</Button>
+          <Button onClick={onAdd}><Plus className="h-4 w-4" /> {addLabel ?? t("common.add")}</Button>
         )}
       </div>
       <Card className="p-4">
         <div className="relative mb-3 max-w-sm">
-          <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
-          <Input className="pl-9" placeholder="Search…" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
+          <Search className="h-4 w-4 absolute start-3 top-3 text-muted-foreground" />
+          <Input className="ps-9" placeholder={t("common.search")} value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
         </div>
         <div className="rounded-md border overflow-x-auto">
           <Table>
@@ -57,9 +59,9 @@ export function CrudPage<T extends Record<string, any>>({
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={columns.length} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={columns.length} className="text-center py-10 text-muted-foreground">{t("common.loading")}</TableCell></TableRow>
               ) : pageRows.length === 0 ? (
-                <TableRow><TableCell colSpan={columns.length} className="text-center py-10 text-muted-foreground">{emptyHint ?? "No records yet."}</TableCell></TableRow>
+                <TableRow><TableCell colSpan={columns.length} className="text-center py-10 text-muted-foreground">{emptyHint ?? t("common.no_records")}</TableCell></TableRow>
               ) : pageRows.map((r, i) => (
                 <TableRow key={(r as any).id ?? i}>
                   {columns.map((c) => <TableCell key={c.key} className={c.className}>{c.render(r)}</TableCell>)}
@@ -70,10 +72,10 @@ export function CrudPage<T extends Record<string, any>>({
         </div>
         {filtered.length > pageSize && (
           <div className="flex items-center justify-between mt-3 text-sm">
-            <div className="text-muted-foreground">Page {page} of {totalPages} · {filtered.length} records</div>
+            <div className="text-muted-foreground">{t("common.page_of", { page, total: totalPages, count: filtered.length })}</div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Prev</Button>
-              <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
+              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>{t("common.prev")}</Button>
+              <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>{t("common.next")}</Button>
             </div>
           </div>
         )}
