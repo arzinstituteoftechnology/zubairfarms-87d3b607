@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "react-i18next";
+import { setLang, type Lang } from "@/i18n";
 import { CrudPage } from "@/components/CrudPage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +26,7 @@ const empty = () => ({ truck_id: "", farm_id: "", destination: "", loading_date:
 
 const Deliveries = () => {
   const { role, user } = useAuth();
+  const { t, i18n } = useTranslation();
   const [rows, setRows] = useState<D[]>([]);
   const [trucks, setTrucks] = useState<any[]>([]); const [farms, setFarms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,24 +56,27 @@ const Deliveries = () => {
     };
     const op = editing ? supabase.from("deliveries").update(payload).eq("id", editing.id) : supabase.from("deliveries").insert({ ...payload, created_by: user?.id });
     const { error } = await op; if (error) return toast.error(error.message);
-    toast.success("Saved"); setOpen(false); load();
+    toast.success(t("common.saved")); setOpen(false); load();
   };
-  const doDelete = async () => { if (!del) return; const { error } = await supabase.from("deliveries").delete().eq("id", del.id); if (error) toast.error(error.message); else { toast.success("Deleted"); load(); } setDel(null); };
+  const doDelete = async () => { if (!del) return; const { error } = await supabase.from("deliveries").delete().eq("id", del.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(); } setDel(null); };
+
+  const cur = (i18n.language as Lang) || "en";
+  const togglePrintLang = () => setLang(cur === "ur" ? "en" : "ur");
 
   return (
     <>
       <CrudPage<D>
-        title="Truck Deliveries" subtitle="Loading & delivery tracking"
+        title={t("deliveries.title")} subtitle={t("deliveries.subtitle")}
         rows={rows} loading={loading} searchKeys={["destination"]}
-        onAdd={() => { setEditing(null); setForm(empty()); setOpen(true); }} addLabel="New delivery"
+        onAdd={() => { setEditing(null); setForm(empty()); setOpen(true); }} addLabel={t("deliveries.add")}
         columns={[
-          { key: "d", label: "Date", render: (r) => `${r.loading_date}${r.loading_time ? ` ${r.loading_time}` : ""}` },
-          { key: "t", label: "Truck", render: (r) => r.trucks?.number ? <span className="font-medium">{r.trucks.number}{r.trucks.driver_name ? ` · ${r.trucks.driver_name}` : ""}</span> : "—" },
-          { key: "f", label: "Farm", render: (r) => r.farms?.name || "—" },
-          { key: "dest", label: "Destination", render: (r) => r.destination || "—" },
-          { key: "c", label: "Chickens", className: "text-right", render: (r) => r.chickens_count },
-          { key: "w", label: "Weight", className: "text-right", render: (r) => fmtKg(r.total_weight_kg) },
-          { key: "exp", label: "Expenses", className: "text-right", render: (r) => fmtMoney(Number(r.fuel_expense) + Number(r.labour_expense) + Number(r.other_expense)) },
+          { key: "d", label: t("deliveries.date"), render: (r) => `${r.loading_date}${r.loading_time ? ` ${r.loading_time}` : ""}` },
+          { key: "t", label: t("deliveries.truck"), render: (r) => r.trucks?.number ? <span className="font-medium">{r.trucks.number}{r.trucks.driver_name ? ` · ${r.trucks.driver_name}` : ""}</span> : "—" },
+          { key: "f", label: t("deliveries.farm"), render: (r) => r.farms?.name || "—" },
+          { key: "dest", label: t("deliveries.destination"), render: (r) => r.destination || "—" },
+          { key: "c", label: t("deliveries.chickens"), className: "text-end", render: (r) => r.chickens_count },
+          { key: "w", label: t("deliveries.weight"), className: "text-end", render: (r) => fmtKg(r.total_weight_kg) },
+          { key: "exp", label: t("deliveries.expenses"), className: "text-end", render: (r) => fmtMoney(Number(r.fuel_expense) + Number(r.labour_expense) + Number(r.other_expense)) },
           { key: "actions", label: "", className: "text-right w-32", render: (r) => (
             <div className="flex justify-end gap-1">
               <Button size="icon" variant="ghost" onClick={() => setPrintRow(r)}><Printer className="h-4 w-4" /></Button>
@@ -82,81 +88,84 @@ const Deliveries = () => {
       />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>{editing ? "Edit delivery" : "New delivery"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? t("deliveries.edit") : t("deliveries.add")}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Truck</Label>
+              <div><Label>{t("deliveries.truck")}</Label>
                 <Select value={form.truck_id || "__none"} onValueChange={(v) => setForm({ ...form, truck_id: v === "__none" ? "" : v })}>
-                  <SelectTrigger><SelectValue placeholder="Select truck" /></SelectTrigger>
-                  <SelectContent><SelectItem value="__none">None</SelectItem>{trucks.map((t) => <SelectItem key={t.id} value={t.id}>{t.number}{t.driver_name ? ` · ${t.driver_name}` : ""}</SelectItem>)}</SelectContent>
+                  <SelectTrigger><SelectValue placeholder={t("deliveries.select_truck")} /></SelectTrigger>
+                  <SelectContent><SelectItem value="__none">{t("common.none")}</SelectItem>{trucks.map((tk) => <SelectItem key={tk.id} value={tk.id}>{tk.number}{tk.driver_name ? ` · ${tk.driver_name}` : ""}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div><Label>Farm</Label>
+              <div><Label>{t("deliveries.farm")}</Label>
                 <Select value={form.farm_id || "__none"} onValueChange={(v) => setForm({ ...form, farm_id: v === "__none" ? "" : v })}>
-                  <SelectTrigger><SelectValue placeholder="Select farm" /></SelectTrigger>
-                  <SelectContent><SelectItem value="__none">None</SelectItem>{farms.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
+                  <SelectTrigger><SelectValue placeholder={t("deliveries.select_farm")} /></SelectTrigger>
+                  <SelectContent><SelectItem value="__none">{t("common.none")}</SelectItem>{farms.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              <div><Label>Loading date</Label><Input type="date" value={form.loading_date} onChange={(e) => setForm({ ...form, loading_date: e.target.value })} /></div>
-              <div><Label>Loading time</Label><Input type="time" value={form.loading_time} onChange={(e) => setForm({ ...form, loading_time: e.target.value })} /></div>
-              <div><Label>Destination</Label><Input value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} /></div>
+              <div><Label>{t("deliveries.loading_date")}</Label><Input type="date" value={form.loading_date} onChange={(e) => setForm({ ...form, loading_date: e.target.value })} /></div>
+              <div><Label>{t("deliveries.loading_time")}</Label><Input type="time" value={form.loading_time} onChange={(e) => setForm({ ...form, loading_time: e.target.value })} /></div>
+              <div><Label>{t("deliveries.destination")}</Label><Input value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Chickens loaded</Label><Input type="number" value={form.chickens_count} onChange={(e) => setForm({ ...form, chickens_count: e.target.value })} /></div>
-              <div><Label>Total weight (kg)</Label><Input type="number" step="0.01" value={form.total_weight_kg} onChange={(e) => setForm({ ...form, total_weight_kg: e.target.value })} /></div>
+              <div><Label>{t("deliveries.chickens_loaded")}</Label><Input type="number" value={form.chickens_count} onChange={(e) => setForm({ ...form, chickens_count: e.target.value })} /></div>
+              <div><Label>{t("deliveries.total_weight_kg")}</Label><Input type="number" step="0.01" value={form.total_weight_kg} onChange={(e) => setForm({ ...form, total_weight_kg: e.target.value })} /></div>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              <div><Label>Fuel</Label><Input type="number" step="0.01" value={form.fuel_expense} onChange={(e) => setForm({ ...form, fuel_expense: e.target.value })} /></div>
-              <div><Label>Labour</Label><Input type="number" step="0.01" value={form.labour_expense} onChange={(e) => setForm({ ...form, labour_expense: e.target.value })} /></div>
-              <div><Label>Other</Label><Input type="number" step="0.01" value={form.other_expense} onChange={(e) => setForm({ ...form, other_expense: e.target.value })} /></div>
+              <div><Label>{t("deliveries.fuel")}</Label><Input type="number" step="0.01" value={form.fuel_expense} onChange={(e) => setForm({ ...form, fuel_expense: e.target.value })} /></div>
+              <div><Label>{t("deliveries.labour")}</Label><Input type="number" step="0.01" value={form.labour_expense} onChange={(e) => setForm({ ...form, labour_expense: e.target.value })} /></div>
+              <div><Label>{t("deliveries.other")}</Label><Input type="number" step="0.01" value={form.other_expense} onChange={(e) => setForm({ ...form, other_expense: e.target.value })} /></div>
             </div>
-            <div><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+            <div><Label>{t("common.notes")}</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save}>Save</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button><Button onClick={save}>{t("common.save")}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog open={!!printRow} onOpenChange={(o) => !o && setPrintRow(null)}>
         <DialogContent className="max-w-xl">
-          <DialogHeader><DialogTitle className="no-print">Loading Slip</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="no-print flex items-center justify-between gap-2">
+            <span>{t("deliveries.slip_heading")}</span>
+            <Button variant="outline" size="sm" onClick={togglePrintLang}>{t("invoice.print_in")}: {cur === "ur" ? "EN" : "اردو"}</Button>
+          </DialogTitle></DialogHeader>
           {printRow && (
             <>
               <div className="print-area p-6 border rounded-md">
                 <div className="text-center border-b pb-3 mb-3">
-                  <div className="text-xl font-bold">TRUCK LOADING SLIP</div>
-                  <div className="text-xs text-muted-foreground">MeatFlow</div>
+                  <div className="text-xl font-bold">{t("deliveries.slip_title")}</div>
+                  <div className="text-xs text-muted-foreground">{t("app.name")}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div><b>Date:</b> {printRow.loading_date}</div>
-                  <div><b>Time:</b> {printRow.loading_time || "—"}</div>
-                  <div><b>Truck:</b> {printRow.trucks?.number || "—"}</div>
-                  <div><b>Driver:</b> {printRow.trucks?.driver_name || "—"}</div>
-                  <div><b>Farm:</b> {printRow.farms?.name || "—"}</div>
-                  <div><b>Destination:</b> {printRow.destination || "—"}</div>
-                  <div><b>Chickens:</b> {printRow.chickens_count}</div>
-                  <div><b>Total weight:</b> {fmtKg(printRow.total_weight_kg)}</div>
+                  <div><b>{t("deliveries.date")}:</b> <span className="force-ltr">{printRow.loading_date}</span></div>
+                  <div><b>{t("deliveries.time")}:</b> <span className="force-ltr">{printRow.loading_time || "—"}</span></div>
+                  <div><b>{t("deliveries.truck")}:</b> {printRow.trucks?.number || "—"}</div>
+                  <div><b>{t("trucks.driver")}:</b> {printRow.trucks?.driver_name || "—"}</div>
+                  <div><b>{t("deliveries.farm")}:</b> {printRow.farms?.name || "—"}</div>
+                  <div><b>{t("deliveries.destination")}:</b> {printRow.destination || "—"}</div>
+                  <div><b>{t("deliveries.chickens")}:</b> <span className="force-ltr">{printRow.chickens_count}</span></div>
+                  <div><b>{t("deliveries.total_weight_kg")}:</b> <span className="force-ltr">{fmtKg(printRow.total_weight_kg)}</span></div>
                 </div>
                 <div className="mt-4 border-t pt-2 text-sm">
-                  <div className="flex justify-between"><span>Fuel</span><span>{fmtMoney(printRow.fuel_expense)}</span></div>
-                  <div className="flex justify-between"><span>Labour</span><span>{fmtMoney(printRow.labour_expense)}</span></div>
-                  <div className="flex justify-between"><span>Other</span><span>{fmtMoney(printRow.other_expense)}</span></div>
-                  <div className="flex justify-between font-bold border-t mt-1 pt-1"><span>Total expenses</span><span>{fmtMoney(Number(printRow.fuel_expense) + Number(printRow.labour_expense) + Number(printRow.other_expense))}</span></div>
+                  <div className="flex justify-between"><span>{t("deliveries.fuel")}</span><span className="force-ltr">{fmtMoney(printRow.fuel_expense)}</span></div>
+                  <div className="flex justify-between"><span>{t("deliveries.labour")}</span><span className="force-ltr">{fmtMoney(printRow.labour_expense)}</span></div>
+                  <div className="flex justify-between"><span>{t("deliveries.other")}</span><span className="force-ltr">{fmtMoney(printRow.other_expense)}</span></div>
+                  <div className="flex justify-between font-bold border-t mt-1 pt-1"><span>{t("deliveries.total_expenses")}</span><span className="force-ltr">{fmtMoney(Number(printRow.fuel_expense) + Number(printRow.labour_expense) + Number(printRow.other_expense))}</span></div>
                 </div>
                 <div className="mt-8 grid grid-cols-2 gap-8 text-sm">
-                  <div>Driver signature: ____________________</div>
-                  <div>Receiver signature: ____________________</div>
+                  <div>{t("deliveries.driver_sig")}</div>
+                  <div>{t("deliveries.receiver_sig")}</div>
                 </div>
               </div>
-              <DialogFooter className="no-print"><Button onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button></DialogFooter>
+              <DialogFooter className="no-print"><Button onClick={() => window.print()}><Printer className="h-4 w-4" /> {t("common.print")}</Button></DialogFooter>
             </>
           )}
         </DialogContent>
       </Dialog>
       <AlertDialog open={!!del} onOpenChange={(o) => !o && setDel(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Delete delivery?</AlertDialogTitle></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={doDelete}>Delete</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogHeader><AlertDialogTitle>{t("deliveries.delete_q")}</AlertDialogTitle></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel><AlertDialogAction onClick={doDelete}>{t("common.delete")}</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>
