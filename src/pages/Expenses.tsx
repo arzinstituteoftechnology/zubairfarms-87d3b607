@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "react-i18next";
 import { CrudPage } from "@/components/CrudPage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,7 @@ const empty = () => ({ category: "Feed", amount: "", expense_date: format(new Da
 
 const Expenses = () => {
   const { role, user } = useAuth();
+  const { t } = useTranslation();
   const [rows, setRows] = useState<E[]>([]);
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,28 +42,28 @@ const Expenses = () => {
   useEffect(() => { load(); }, []);
 
   const save = async () => {
-    if (!form.amount) return toast.error("Amount required");
+    if (!form.amount) return toast.error(t("expenses.amount_required"));
     const payload = { category: form.category, amount: Number(form.amount), expense_date: form.expense_date, farm_id: form.farm_id || null, notes: form.notes || null };
     const op = editing ? supabase.from("expenses").update(payload).eq("id", editing.id) : supabase.from("expenses").insert({ ...payload, created_by: user?.id });
     const { error } = await op; if (error) return toast.error(error.message);
-    toast.success("Saved"); setOpen(false); load();
+    toast.success(t("common.saved")); setOpen(false); load();
   };
-  const doDelete = async () => { if (!delTarget) return; const { error } = await supabase.from("expenses").delete().eq("id", delTarget.id); if (error) toast.error(error.message); else { toast.success("Deleted"); load(); } setDelTarget(null); };
+  const doDelete = async () => { if (!delTarget) return; const { error } = await supabase.from("expenses").delete().eq("id", delTarget.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(); } setDelTarget(null); };
 
   const total = rows.reduce((s, r) => s + Number(r.amount), 0);
 
   return (
     <>
       <CrudPage<E>
-        title="Expenses" subtitle={`Total: ${fmtMoney(total)}`}
+        title={t("expenses.title")} subtitle={t("expenses.subtitle_total", { value: fmtMoney(total) })}
         rows={rows} loading={loading} searchKeys={["category", "notes"]}
-        onAdd={() => { setEditing(null); setForm(empty()); setOpen(true); }} addLabel="Add expense"
+        onAdd={() => { setEditing(null); setForm(empty()); setOpen(true); }} addLabel={t("expenses.add")}
         columns={[
-          { key: "date", label: "Date", render: (r) => r.expense_date },
-          { key: "cat", label: "Category", render: (r) => <span className="font-medium">{r.category}</span> },
-          { key: "farm", label: "Farm", render: (r) => r.farms?.name || "—" },
-          { key: "notes", label: "Notes", render: (r) => <span className="text-muted-foreground">{r.notes || "—"}</span> },
-          { key: "amt", label: "Amount", className: "text-right font-semibold", render: (r) => fmtMoney(r.amount) },
+          { key: "date", label: t("common.date"), render: (r) => <span className="force-ltr">{r.expense_date}</span> },
+          { key: "cat", label: t("expenses.category"), render: (r) => <span className="font-medium">{r.category}</span> },
+          { key: "farm", label: t("suppliers.farm"), render: (r) => r.farms?.name || "—" },
+          { key: "notes", label: t("common.notes"), render: (r) => <span className="text-muted-foreground">{r.notes || "—"}</span> },
+          { key: "amt", label: t("common.amount"), className: "text-end font-semibold", render: (r) => fmtMoney(r.amount) },
           { key: "actions", label: "", className: "text-right w-24", render: (r) => (
             <div className="flex justify-end gap-1">
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ ...r, amount: String(r.amount), farm_id: r.farm_id ?? "" }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
@@ -72,35 +74,35 @@ const Expenses = () => {
       />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{editing ? "Edit expense" : "Add expense"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? t("expenses.edit") : t("expenses.add")}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Date</Label><Input type="date" value={form.expense_date} onChange={(e) => setForm({ ...form, expense_date: e.target.value })} /></div>
-              <div><Label>Amount *</Label><Input type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></div>
+              <div><Label>{t("common.date")}</Label><Input type="date" value={form.expense_date} onChange={(e) => setForm({ ...form, expense_date: e.target.value })} /></div>
+              <div><Label>{t("common.amount")} *</Label><Input type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Category</Label>
+              <div><Label>{t("expenses.category")}</Label>
                 <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div><Label>Farm (optional)</Label>
+              <div><Label>{t("expenses.farm_optional")}</Label>
                 <Select value={form.farm_id || "__none"} onValueChange={(v) => setForm({ ...form, farm_id: v === "__none" ? "" : v })}>
-                  <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
-                  <SelectContent><SelectItem value="__none">None</SelectItem>{farms.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
+                  <SelectTrigger><SelectValue placeholder={t("common.none")} /></SelectTrigger>
+                  <SelectContent><SelectItem value="__none">{t("common.none")}</SelectItem>{farms.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>
-            <div><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+            <div><Label>{t("common.notes")}</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save}>Save</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button><Button onClick={save}>{t("common.save")}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
       <AlertDialog open={!!delTarget} onOpenChange={(o) => !o && setDelTarget(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Delete expense?</AlertDialogTitle></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={doDelete}>Delete</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogHeader><AlertDialogTitle>{t("expenses.delete_q")}</AlertDialogTitle></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel><AlertDialogAction onClick={doDelete}>{t("common.delete")}</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>

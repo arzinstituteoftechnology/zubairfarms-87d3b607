@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useTranslation } from "react-i18next";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { fmtKg } from "@/lib/constants";
@@ -8,6 +9,7 @@ import { Boxes } from "lucide-react";
 type Stock = { meat_type: string; purchased: number; supplied: number; balance: number };
 
 const Inventory = () => {
+  const { t } = useTranslation();
   const [rows, setRows] = useState<Stock[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -36,27 +38,27 @@ const Inventory = () => {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Inventory</h1>
-        <p className="text-sm text-muted-foreground">Current stock balance per meat type (purchased − supplied)</p>
+        <h1 className="text-2xl font-bold tracking-tight">{t("inventory.title")}</h1>
+        <p className="text-sm text-muted-foreground">{t("inventory.subtitle")}</p>
       </div>
       <Card className="p-4">
         <div className="rounded-md border overflow-x-auto">
           <Table>
             <TableHeader><TableRow>
-              <TableHead>Meat type</TableHead>
-              <TableHead className="text-right">Total purchased</TableHead>
-              <TableHead className="text-right">Total supplied</TableHead>
-              <TableHead className="text-right">Balance</TableHead>
+              <TableHead>{t("inventory.meat_type")}</TableHead>
+              <TableHead className="text-end">{t("inventory.total_purchased")}</TableHead>
+              <TableHead className="text-end">{t("inventory.total_supplied")}</TableHead>
+              <TableHead className="text-end">{t("inventory.balance")}</TableHead>
             </TableRow></TableHeader>
             <TableBody>
-              {loading ? <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
-                : rows.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground"><Boxes className="h-8 w-8 mx-auto mb-2 opacity-40" />No stock yet.</TableCell></TableRow>
+              {loading ? <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground">{t("common.loading")}</TableCell></TableRow>
+                : rows.length === 0 ? <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground"><Boxes className="h-8 w-8 mx-auto mb-2 opacity-40" />{t("inventory.no_stock")}</TableCell></TableRow>
                 : rows.map((r) => (
                   <TableRow key={r.meat_type}>
                     <TableCell className="font-medium">{r.meat_type}</TableCell>
-                    <TableCell className="text-right">{fmtKg(r.purchased)}</TableCell>
-                    <TableCell className="text-right">{fmtKg(r.supplied)}</TableCell>
-                    <TableCell className={`text-right font-semibold ${r.balance < 0 ? "text-destructive" : ""}`}>{fmtKg(r.balance)}</TableCell>
+                    <TableCell className="text-end">{fmtKg(r.purchased)}</TableCell>
+                    <TableCell className="text-end">{fmtKg(r.supplied)}</TableCell>
+                    <TableCell className={`text-end font-semibold ${r.balance < 0 ? "text-destructive" : ""}`}>{fmtKg(r.balance)}</TableCell>
                   </TableRow>
                 ))}
             </TableBody>

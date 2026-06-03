@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useTranslation } from "react-i18next";
 import { CrudPage } from "@/components/CrudPage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,7 @@ const emptyForm = () => ({ farm_id: "", meat_type: "Beef", weight_kg: "", rate_p
 
 const Purchases = () => {
   const { role, user } = useAuth();
+  const { t } = useTranslation();
   const [rows, setRows] = useState<Row[]>([]);
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +49,7 @@ const Purchases = () => {
   useEffect(() => { load(); }, []);
 
   const save = async () => {
-    if (!form.farm_id || !form.weight_kg || !form.rate_per_kg) return toast.error("Farm, weight and rate are required");
+    if (!form.farm_id || !form.weight_kg || !form.rate_per_kg) return toast.error(t("purchases.required"));
     const total = (Number(form.weight_kg) || 0) * (Number(form.rate_per_kg) || 0);
     const paid = form.payment_method === "credit" ? 0 : (Number(form.paid_amount) || (form.payment_method === "cash" || form.payment_method === "bank" ? total : 0));
     const payload = {
@@ -61,39 +63,39 @@ const Purchases = () => {
       : supabase.from("purchases").insert({ ...payload, created_by: user?.id });
     const { error } = await op;
     if (error) return toast.error(error.message);
-    toast.success(editing ? "Purchase updated" : "Purchase recorded");
+    toast.success(editing ? t("purchases.updated") : t("purchases.recorded"));
     setOpen(false); load();
   };
 
   const doDelete = async () => {
     if (!delTarget) return;
     const { error } = await supabase.from("purchases").delete().eq("id", delTarget.id);
-    if (error) toast.error(error.message); else { toast.success("Deleted"); load(); }
+    if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(); }
     setDelTarget(null);
   };
 
   return (
     <>
       <CrudPage<Row>
-        title="Purchases"
-        subtitle="Daily meat/livestock purchases from farms"
+        title={t("purchases.title")}
+        subtitle={t("purchases.subtitle")}
         rows={rows} loading={loading}
         searchKeys={["meat_type"]}
         onAdd={() => { setEditing(null); setForm(emptyForm()); setOpen(true); }}
-        addLabel="Record purchase"
+        addLabel={t("purchases.add")}
         columns={[
-          { key: "date", label: "Date", render: (r) => r.purchase_date },
-          { key: "farm", label: "Farm", render: (r) => <span className="font-medium">{r.farms?.name ?? "—"}</span> },
-          { key: "meat", label: "Meat", render: (r) => r.meat_type },
-          { key: "weight", label: "Weight", className: "text-right", render: (r) => fmtKg(r.weight_kg) },
-          { key: "rate", label: "Rate/kg", className: "text-right", render: (r) => fmtMoney(r.rate_per_kg) },
-          { key: "total", label: "Total", className: "text-right font-medium", render: (r) => fmtMoney(r.total_amount) },
-          { key: "paid", label: "Paid", className: "text-right", render: (r) => <span className="text-success">{fmtMoney(r.paid_amount)}</span> },
-          { key: "bal", label: "Balance", className: "text-right", render: (r) => {
+          { key: "date", label: t("common.date"), render: (r) => <span className="force-ltr">{r.purchase_date}</span> },
+          { key: "farm", label: t("suppliers.farm"), render: (r) => <span className="font-medium">{r.farms?.name ?? "—"}</span> },
+          { key: "meat", label: t("purchases.meat_col"), render: (r) => r.meat_type },
+          { key: "weight", label: t("purchases.weight_col"), className: "text-end", render: (r) => fmtKg(r.weight_kg) },
+          { key: "rate", label: t("purchases.rate_col"), className: "text-end", render: (r) => fmtMoney(r.rate_per_kg) },
+          { key: "total", label: t("common.total"), className: "text-end font-medium", render: (r) => fmtMoney(r.total_amount) },
+          { key: "paid", label: t("common.paid"), className: "text-end", render: (r) => <span className="text-success">{fmtMoney(r.paid_amount)}</span> },
+          { key: "bal", label: t("purchases.balance"), className: "text-end", render: (r) => {
             const bal = Number(r.total_amount) - Number(r.paid_amount);
             return <span className={bal > 0 ? "text-destructive font-semibold" : "text-success"}>{fmtMoney(bal)}</span>;
           }},
-          { key: "method", label: "Method", render: (r) => <span className="text-xs uppercase">{r.payment_method}</span> },
+          { key: "method", label: t("purchases.method"), render: (r) => <span className="text-xs uppercase">{r.payment_method}</span> },
           { key: "actions", label: "", className: "text-right w-24", render: (r) => (
             <div className="flex justify-end gap-1">
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ ...r, purchase_date: r.purchase_date, weight_kg: String(r.weight_kg), rate_per_kg: String(r.rate_per_kg), paid_amount: String(r.paid_amount ?? 0), payment_method: r.payment_method ?? "credit" }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
@@ -104,44 +106,44 @@ const Purchases = () => {
       />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{editing ? "Edit purchase" : "Record purchase"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? t("purchases.edit") : t("purchases.add")}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Date</Label><Input type="date" value={form.purchase_date} onChange={(e) => setForm({ ...form, purchase_date: e.target.value })} /></div>
-              <div><Label>Farm *</Label>
+              <div><Label>{t("common.date")}</Label><Input type="date" value={form.purchase_date} onChange={(e) => setForm({ ...form, purchase_date: e.target.value })} /></div>
+              <div><Label>{t("purchases.farm")}</Label>
                 <Select value={form.farm_id} onValueChange={(v) => setForm({ ...form, farm_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select farm" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t("purchases.select_farm")} /></SelectTrigger>
                   <SelectContent>{farms.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              <div><Label>Meat type</Label>
+              <div><Label>{t("purchases.meat_type")}</Label>
                 <Select value={form.meat_type} onValueChange={(v) => setForm({ ...form, meat_type: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>{MEAT_TYPES.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div><Label>Weight (kg) *</Label><Input type="number" step="0.001" min="0" value={form.weight_kg} onChange={(e) => setForm({ ...form, weight_kg: e.target.value })} /></div>
-              <div><Label>Rate/kg *</Label><Input type="number" step="0.01" min="0" value={form.rate_per_kg} onChange={(e) => setForm({ ...form, rate_per_kg: e.target.value })} /></div>
+              <div><Label>{t("purchases.weight")}</Label><Input type="number" step="0.001" min="0" value={form.weight_kg} onChange={(e) => setForm({ ...form, weight_kg: e.target.value })} /></div>
+              <div><Label>{t("purchases.rate")}</Label><Input type="number" step="0.01" min="0" value={form.rate_per_kg} onChange={(e) => setForm({ ...form, rate_per_kg: e.target.value })} /></div>
             </div>
-            <div className="text-sm text-muted-foreground">Total: <span className="font-semibold text-foreground">{fmtMoney((Number(form.weight_kg) || 0) * (Number(form.rate_per_kg) || 0))}</span></div>
+            <div className="text-sm text-muted-foreground">{t("purchases.total")}: <span className="font-semibold text-foreground force-ltr">{fmtMoney((Number(form.weight_kg) || 0) * (Number(form.rate_per_kg) || 0))}</span></div>
             <div className="grid grid-cols-2 gap-3 border-t pt-3">
-              <div><Label>Payment method</Label>
+              <div><Label>{t("purchases.payment_method")}</Label>
                 <Select value={form.payment_method} onValueChange={(v) => {
                   const total = (Number(form.weight_kg) || 0) * (Number(form.rate_per_kg) || 0);
                   setForm({ ...form, payment_method: v, paid_amount: v === "credit" ? "0" : v === "partial" ? form.paid_amount : String(total.toFixed(2)) });
                 }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="credit">Udhaar (Credit)</SelectItem>
-                    <SelectItem value="cash">Naqd (Cash)</SelectItem>
-                    <SelectItem value="bank">Bank</SelectItem>
-                    <SelectItem value="partial">Partial</SelectItem>
+                    <SelectItem value="credit">{t("purchases.udhaar")}</SelectItem>
+                    <SelectItem value="cash">{t("purchases.naqd")}</SelectItem>
+                    <SelectItem value="bank">{t("purchases.bank")}</SelectItem>
+                    <SelectItem value="partial">{t("purchases.partial")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div><Label>Paid now</Label>
+              <div><Label>{t("purchases.paid_now")}</Label>
                 <Input type="number" step="0.01" min="0" value={form.paid_amount}
                   disabled={form.payment_method === "credit"}
                   onChange={(e) => setForm({ ...form, paid_amount: e.target.value })} />
@@ -152,18 +154,18 @@ const Purchases = () => {
               const paid = form.payment_method === "credit" ? 0 : Number(form.paid_amount) || 0;
               const bal = total - paid;
               return <div className="text-sm flex justify-between bg-muted/40 rounded-md px-3 py-2">
-                <span>Balance (udhaar): <b className={bal > 0 ? "text-destructive" : "text-success"}>{fmtMoney(bal)}</b></span>
+                <span>{t("purchases.balance_udhaar")}: <b className={bal > 0 ? "text-destructive" : "text-success"}>{fmtMoney(bal)}</b></span>
               </div>;
             })()}
-            <div><Label>Notes</Label><Textarea value={form.notes ?? ""} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+            <div><Label>{t("common.notes")}</Label><Textarea value={form.notes ?? ""} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save}>Save</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button><Button onClick={save}>{t("common.save")}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
       <AlertDialog open={!!delTarget} onOpenChange={(o) => !o && setDelTarget(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Delete purchase?</AlertDialogTitle></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={doDelete}>Delete</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogHeader><AlertDialogTitle>{t("purchases.delete_q")}</AlertDialogTitle></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel><AlertDialogAction onClick={doDelete}>{t("common.delete")}</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>
