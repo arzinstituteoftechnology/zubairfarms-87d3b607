@@ -100,3 +100,37 @@ All colors MUST be HSL.
   @page { margin: 12mm; }
 }
 .thermal-print { width: 80mm; font-family: 'Courier New', monospace; font-size: 12px; }
+
+/* Urdu (RTL) — applied when <html lang="ur"> */
+html.lang-ur,
+html.lang-ur body {
+  font-family: "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", system-ui, sans-serif;
+  line-height: 2;
+}
+html.lang-ur input,
+html.lang-ur textarea,
+html.lang-ur select,
+html.lang-ur button,
+html.lang-ur table {
+  font-family: inherit;
+}
+/* Keep monospace for numeric inputs so digits stay readable */
+html.lang-ur input[type="number"],
+html.lang-ur input[type="date"],
+html.lang-ur input[type="time"],
+html.lang-ur .tabular-nums {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  line-height: 1.4;
+}
+html.lang-ur .print-area {
+  font-family: "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", serif;
+  line-height: 2.1;
+  font-size: 15px;
+}
+html.lang-ur .thermal-print {
+  font-family: "Noto Nastaliq Urdu", serif;
+  font-size: 13px;
+  line-height: 1.9;
+}
+/* Force-LTR helper for things like dates/numbers tables when needed */
+.force-ltr { direction: ltr; unicode-bidi: isolate; }
