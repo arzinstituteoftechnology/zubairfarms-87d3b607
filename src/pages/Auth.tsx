@@ -14,6 +14,7 @@ import { Beef } from "lucide-react";
 const Auth = () => {
   const navigate = useNavigate();
   const { session, loading } = useAuth();
+  const [mode, setMode] = useState<"auth" | "forgot">("auth");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -53,6 +54,21 @@ const Auth = () => {
     if (res.error) toast.error("Google sign-in failed");
   };
 
+  const onForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return toast.error("Enter your email first");
+    setBusy(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setBusy(false);
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Password reset email sent — check your inbox.");
+      setMode("auth");
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
       <Card className="w-full max-w-md">
@@ -64,6 +80,19 @@ const Auth = () => {
           <CardDescription>Meat distribution business manager</CardDescription>
         </CardHeader>
         <CardContent>
+          {mode === "forgot" ? (
+            <form onSubmit={onForgot} className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>Email</Label>
+                <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              </div>
+              <Button type="submit" className="w-full" disabled={busy}>Send reset link</Button>
+              <Button type="button" variant="ghost" className="w-full" onClick={() => setMode("auth")}>
+                Back to sign in
+              </Button>
+            </form>
+          ) : (
+          <>
           <Tabs defaultValue="login">
             <TabsList className="grid grid-cols-2 w-full">
               <TabsTrigger value="login">Sign in</TabsTrigger>
@@ -80,6 +109,9 @@ const Auth = () => {
                   <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
                 </div>
                 <Button type="submit" className="w-full" disabled={busy}>Sign in</Button>
+                <button type="button" className="text-xs text-muted-foreground hover:text-foreground w-full text-center" onClick={() => setMode("forgot")}>
+                  Forgot password?
+                </button>
               </form>
             </TabsContent>
             <TabsContent value="signup">
@@ -106,6 +138,8 @@ const Auth = () => {
             <div className="relative flex justify-center text-xs"><span className="bg-card px-2 text-muted-foreground">OR</span></div>
           </div>
           <Button variant="outline" className="w-full" onClick={onGoogle}>Continue with Google</Button>
+          </>
+          )}
         </CardContent>
       </Card>
     </div>
