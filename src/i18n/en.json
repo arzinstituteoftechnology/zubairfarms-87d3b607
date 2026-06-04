@@ -97,7 +97,13 @@
     "amt": "Amt {{value}}",
     "chart_title": "Last 7 days · Purchase vs Supply (kg)",
     "purchased": "Purchased",
-    "supplied": "Supplied"
+    "supplied": "Supplied",
+    "select_date": "Select date",
+    "today_btn": "Today",
+    "purchase_on": "Purchase on date",
+    "supply_on": "Supply on date",
+    "profit_on": "Profit on date",
+    "stock_on": "Stock on date"
   },
   "pos": {
     "title": "POS — New Sale",
