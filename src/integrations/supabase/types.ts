@@ -412,6 +412,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
+          faraq: number
           farm_id: string
           id: string
           meat_type: string
@@ -427,6 +428,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by?: string | null
+          faraq?: number
           farm_id: string
           id?: string
           meat_type: string
@@ -442,6 +444,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string | null
+          faraq?: number
           farm_id?: string
           id?: string
           meat_type?: string
