@@ -95,9 +95,28 @@ All colors MUST be HSL.
 @media print {
   body * { visibility: hidden; }
   .print-area, .print-area * { visibility: visible; }
-  .print-area { position: absolute; left: 0; top: 0; width: 100%; }
+  .print-area {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: white !important;
+    transform: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    background: white !important;
+  }
   .no-print { display: none !important; }
-  @page { margin: 12mm; }
+  @page { margin: 10mm; size: auto; }
 }
 .thermal-print { width: 80mm; font-family: 'Courier New', monospace; font-size: 12px; }
 
