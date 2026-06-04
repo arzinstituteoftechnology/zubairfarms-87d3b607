@@ -7,6 +7,8 @@ import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users } from "luc
 import { format, subDays } from "date-fns";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 interface KPI {
   purchaseKg: number; purchaseAmt: number;
@@ -38,24 +40,32 @@ const Dashboard = () => {
   const [kpi, setKpi] = useState<KPI>({ purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0 });
   const [chart, setChart] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
 
   useEffect(() => {
+    setLoading(true);
     (async () => {
-      const today = format(new Date(), "yyyy-MM-dd");
-      const last7 = format(subDays(new Date(), 6), "yyyy-MM-dd");
+      const today = selectedDate;
+      const last7 = format(subDays(new Date(selectedDate), 6), "yyyy-MM-dd");
 
       const [{ data: p }, { data: s }] = await Promise.all([
-        supabase.from("purchases").select("purchase_date, meat_type, weight_kg, rate_per_kg, total_amount").gte("purchase_date", last7),
-        supabase.from("supplies").select("supply_date, meat_type, weight_kg, rate_per_kg, cost_per_kg, total_amount").gte("supply_date", last7),
+        supabase.from("purchases").select("purchase_date, meat_type, weight_kg, rate_per_kg, total_amount").gte("purchase_date", last7).lte("purchase_date", today),
+        supabase.from("supplies").select("supply_date, meat_type, weight_kg, rate_per_kg, cost_per_kg, total_amount").gte("supply_date", last7).lte("supply_date", today),
       ]);
-      // Also pull all-time for stock
+      // Pull the selected-date slice
       const [{ data: pAll }, { data: sAll }] = await Promise.all([
         supabase.from("purchases").select("weight_kg, total_amount, meat_type, rate_per_kg, purchase_date").eq("purchase_date", today),
         supabase.from("supplies").select("weight_kg, total_amount, cost_per_kg, supply_date").eq("supply_date", today),
       ]);
+      // Cumulative up to and including the selected date for stock balance
+      const [{ data: pCum }, { data: sCum }] = await Promise.all([
+        supabase.from("purchases").select("weight_kg").lte("purchase_date", today),
+        supabase.from("supplies").select("weight_kg").lte("supply_date", today),
+      ]);
+      // All-time for outstanding payable/receivable
       const [{ data: pSum }, { data: sSum }] = await Promise.all([
-        supabase.from("purchases").select("weight_kg, rate_per_kg, meat_type, total_amount, paid_amount"),
-        supabase.from("supplies").select("weight_kg, cost_per_kg, total_amount, meat_type"),
+        supabase.from("purchases").select("total_amount, paid_amount"),
+        supabase.from("supplies").select("weight_kg, cost_per_kg, total_amount"),
       ]);
       const [{ data: fpAll }, { data: posAll }] = await Promise.all([
         supabase.from("farm_payments").select("amount"),
@@ -67,14 +77,11 @@ const Dashboard = () => {
       const purchaseAmt = sum(pAll, "total_amount");
       const supplyKg = sum(sAll, "weight_kg");
       const supplyAmt = sum(sAll, "total_amount");
-      const stockKg = sum(pSum, "weight_kg") - sum(sSum, "weight_kg");
-      const totalPurchasedAll = sum(pSum, "weight_kg");
-      // avg cost per kg from all purchases
-      const purchaseValue = (pSum ?? []).reduce((a, x: any) => a + Number(x.weight_kg) * Number(x.rate_per_kg), 0);
-      // profit = supplies revenue - cost of supplied
-      const supplyRevenue = (sSum ?? []).reduce((a, x: any) => a + Number(x.total_amount ?? 0), 0);
-      const supplyCost = (sSum ?? []).reduce((a, x: any) => a + Number(x.weight_kg) * Number(x.cost_per_kg ?? 0), 0);
-      const profit = supplyRevenue - supplyCost;
+      const stockKg = sum(pCum, "weight_kg") - sum(sCum, "weight_kg");
+      // profit on the selected date = supplies revenue - cost of supplied that day
+      const dayRevenue = (sAll ?? []).reduce((a, x: any) => a + Number(x.total_amount ?? 0), 0);
+      const dayCost = (sAll ?? []).reduce((a, x: any) => a + Number(x.weight_kg) * Number(x.cost_per_kg ?? 0), 0);
+      const profit = dayRevenue - dayCost;
 
       // Payable to farms = total purchases - (paid_amount on purchases + farm_payments)
       const totalPurchaseAmt = (pSum ?? []).reduce((a, x: any) => a + Number(x.total_amount ?? 0), 0);
@@ -85,36 +92,48 @@ const Dashboard = () => {
 
       setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, payableToFarms, receivableFromCustomers });
 
-      // 7-day chart
+      // 7-day chart ending at selected date
       const days: any[] = [];
       for (let i = 6; i >= 0; i--) {
-        const d = format(subDays(new Date(), i), "yyyy-MM-dd");
+        const dayDate = subDays(new Date(selectedDate), i);
+        const d = format(dayDate, "yyyy-MM-dd");
         const purchased = (p ?? []).filter((x: any) => x.purchase_date === d).reduce((a, x: any) => a + Number(x.weight_kg), 0);
         const supplied = (s ?? []).filter((x: any) => x.supply_date === d).reduce((a, x: any) => a + Number(x.weight_kg), 0);
-        days.push({ day: format(subDays(new Date(), i), "EEE"), purchased, supplied });
+        days.push({ day: format(dayDate, "EEE"), purchased, supplied });
       }
       setChart(days);
 
       setLoading(false);
     })();
-  }, []);
+  }, [selectedDate]);
+
+  const isToday = selectedDate === format(new Date(), "yyyy-MM-dd");
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{t("dashboard.title")}</h1>
-        <p className="text-sm text-muted-foreground">{loading ? t("common.loading") : t("dashboard.subtitle")}</p>
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{t("dashboard.title")}</h1>
+          <p className="text-sm text-muted-foreground">{loading ? t("common.loading") : t("dashboard.subtitle")}</p>
+        </div>
+        <div className="flex items-end gap-2">
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground block mb-1">{t("dashboard.select_date")}</label>
+            <Input type="date" value={selectedDate} max={format(new Date(), "yyyy-MM-dd")} onChange={(e) => setSelectedDate(e.target.value || format(new Date(), "yyyy-MM-dd"))} className="force-ltr w-[180px]" />
+          </div>
+          <Button variant="outline" disabled={isToday} onClick={() => setSelectedDate(format(new Date(), "yyyy-MM-dd"))}>{t("dashboard.today_btn")}</Button>
+        </div>
       </div>
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <KpiCard icon={ShoppingCart} label={t("dashboard.todays_purchase")} value={fmtKg(kpi.purchaseKg)} sub={t("dashboard.amt", { value: fmtMoney(kpi.purchaseAmt) })} />
-        <KpiCard icon={Truck} label={t("dashboard.todays_supply")} value={fmtKg(kpi.supplyKg)} sub={t("dashboard.amt", { value: fmtMoney(kpi.supplyAmt) })} />
-        <KpiCard icon={Boxes} label={t("dashboard.current_stock")} value={fmtKg(kpi.stockKg)} tone={kpi.stockKg < 0 ? "danger" : "default"} />
-        <KpiCard icon={TrendingUp} label={t("dashboard.todays_profit")} value={fmtMoney(kpi.profit)} tone={kpi.profit >= 0 ? "success" : "danger"} sub={t("dashboard.revenue_minus_cost")} />
+        <KpiCard icon={ShoppingCart} label={isToday ? t("dashboard.todays_purchase") : t("dashboard.purchase_on")} value={fmtKg(kpi.purchaseKg)} sub={t("dashboard.amt", { value: fmtMoney(kpi.purchaseAmt) })} />
+        <KpiCard icon={Truck} label={isToday ? t("dashboard.todays_supply") : t("dashboard.supply_on")} value={fmtKg(kpi.supplyKg)} sub={t("dashboard.amt", { value: fmtMoney(kpi.supplyAmt) })} />
+        <KpiCard icon={Boxes} label={isToday ? t("dashboard.current_stock") : t("dashboard.stock_on")} value={fmtKg(kpi.stockKg)} tone={kpi.stockKg < 0 ? "danger" : "default"} sub={selectedDate} />
+        <KpiCard icon={TrendingUp} label={isToday ? t("dashboard.todays_profit") : t("dashboard.profit_on")} value={fmtMoney(kpi.profit)} tone={kpi.profit >= 0 ? "success" : "danger"} sub={t("dashboard.revenue_minus_cost")} />
         <KpiCard icon={Wallet} label={t("dashboard.payable_to_farms")} value={fmtMoney(kpi.payableToFarms)} sub={t("dashboard.total_udhaar")} tone="danger" />
         <KpiCard icon={Users} label={t("dashboard.receivable")} value={fmtMoney(kpi.receivableFromCustomers)} sub={t("dashboard.customer_dues")} tone="danger" />
-        <KpiCard icon={Beef} label={t("dashboard.total_purchase_value")} value={fmtMoney(kpi.purchaseAmt)} sub={t("dashboard.today")} />
-        <KpiCard icon={Truck} label={t("dashboard.total_supply_value")} value={fmtMoney(kpi.supplyAmt)} sub={t("dashboard.today")} />
+        <KpiCard icon={Beef} label={t("dashboard.total_purchase_value")} value={fmtMoney(kpi.purchaseAmt)} sub={selectedDate} />
+        <KpiCard icon={Truck} label={t("dashboard.total_supply_value")} value={fmtMoney(kpi.supplyAmt)} sub={selectedDate} />
       </div>
 
       <div className="grid gap-4">
