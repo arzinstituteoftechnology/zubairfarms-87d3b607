@@ -1,0 +1,1 @@
+ALTER TABLE public.purchases ADD COLUMN IF NOT EXISTS faraq numeric NOT NULL DEFAULT 0;

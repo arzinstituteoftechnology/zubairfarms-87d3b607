@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Wallet } from "lucide-react";
+import { Wallet, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
@@ -85,15 +85,27 @@ const Suppliers = () => {
       />
       <Dialog open={!!ledger} onOpenChange={(o) => !o && setLedger(null)}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>{t("suppliers.ledger_for", { name: ledger?.name ?? "" })}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between gap-3">
+              <span>{t("suppliers.ledger_for", { name: ledger?.name ?? "" })}</span>
+              <Button size="sm" variant="outline" onClick={() => window.print()} className="no-print">
+                <Printer className="h-4 w-4" /> {t("common.print") || "Print"}
+              </Button>
+            </DialogTitle>
+          </DialogHeader>
           {ledger && (
-            <div className="space-y-4">
+            <div className="space-y-4 print-area">
+              <div className="hidden print:block mb-2">
+                <div className="text-xl font-bold">{ledger.name}</div>
+                <div className="text-xs text-muted-foreground">{ledger.phone || ""}</div>
+                <div className="text-xs">{new Date().toLocaleString()}</div>
+              </div>
               <div className="grid grid-cols-3 gap-3 text-sm">
                 <div className="rounded-md border p-3"><div className="text-muted-foreground">{t("suppliers.purchased")}</div><div className="font-semibold">{fmtMoney(ledger.purchased)}</div></div>
                 <div className="rounded-md border p-3"><div className="text-muted-foreground">{t("suppliers.paid")}</div><div className="font-semibold">{fmtMoney(ledger.paid)}</div></div>
                 <div className="rounded-md border p-3"><div className="text-muted-foreground">{t("suppliers.owed")}</div><div className="font-semibold text-destructive">{fmtMoney(ledger.balance)}</div></div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto] gap-2 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto] gap-2 items-end no-print">
                 <div><Label>{t("suppliers.pay_farm")}</Label><Input type="number" placeholder={t("common.amount")} value={payAmt} onChange={(e) => setPayAmt(e.target.value)} /></div>
                 <Input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
                 <select className="border rounded-md h-10 px-2" value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
@@ -103,7 +115,7 @@ const Suppliers = () => {
               </div>
               <div>
                 <div className="font-semibold mb-2 text-sm">{t("suppliers.daily_ledger")}</div>
-                <div className="max-h-80 overflow-auto border rounded-md">
+                <div className="max-h-80 overflow-auto border rounded-md print:max-h-none print:overflow-visible">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50 text-xs uppercase sticky top-0">
                       <tr><th className="text-start p-2">{t("common.date")}</th><th className="text-start p-2">{t("suppliers.detail")}</th><th className="text-end p-2">{t("suppliers.debit")}</th><th className="text-end p-2">{t("suppliers.credit")}</th></tr>
