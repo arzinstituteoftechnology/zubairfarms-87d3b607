@@ -17,13 +17,18 @@ import { format } from "date-fns";
 
 type Row = {
   id: string; farm_id: string; meat_type: string; weight_kg: number; rate_per_kg: number;
-  total_amount: number; purchase_date: string; notes: string | null;
+  total_amount: number; purchase_date: string; notes: string | null; faraq: number;
   paid_amount: number; payment_method: string;
   farms?: { name: string } | null;
 };
 
 const today = () => format(new Date(), "yyyy-MM-dd");
-const emptyForm = () => ({ farm_id: "", meat_type: "Beef", weight_kg: "", rate_per_kg: "", purchase_date: today(), notes: "", paid_amount: "", payment_method: "credit" });
+const emptyForm = () => ({ farm_id: "", meat_type: "Beef", weight_kg: "", rate_per_kg: "", faraq: "0", purchase_date: today(), notes: "", paid_amount: "", payment_method: "credit" });
+const calcTotal = (f: any) => {
+  const w = Number(f.weight_kg) || 0, r = Number(f.rate_per_kg) || 0, fa = Number(f.faraq) || 0;
+  const finalRate = Math.max(0, r - fa);
+  return { finalRate, total: finalRate * w };
+};
 
 const Purchases = () => {
   const { role, user } = useAuth();
@@ -50,11 +55,12 @@ const Purchases = () => {
 
   const save = async () => {
     if (!form.farm_id || !form.weight_kg || !form.rate_per_kg) return toast.error(t("purchases.required"));
-    const total = (Number(form.weight_kg) || 0) * (Number(form.rate_per_kg) || 0);
+    const { total } = calcTotal(form);
     const paid = form.payment_method === "credit" ? 0 : (Number(form.paid_amount) || (form.payment_method === "cash" || form.payment_method === "bank" ? total : 0));
     const payload = {
       farm_id: form.farm_id, meat_type: form.meat_type,
       weight_kg: Number(form.weight_kg), rate_per_kg: Number(form.rate_per_kg),
+      faraq: Number(form.faraq) || 0,
       purchase_date: form.purchase_date, notes: form.notes || null,
       paid_amount: paid, payment_method: form.payment_method,
     };
@@ -98,7 +104,7 @@ const Purchases = () => {
           { key: "method", label: t("purchases.method"), render: (r) => <span className="text-xs uppercase">{r.payment_method}</span> },
           { key: "actions", label: "", className: "text-right w-24", render: (r) => (
             <div className="flex justify-end gap-1">
-              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ ...r, purchase_date: r.purchase_date, weight_kg: String(r.weight_kg), rate_per_kg: String(r.rate_per_kg), paid_amount: String(r.paid_amount ?? 0), payment_method: r.payment_method ?? "credit" }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
+              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ ...r, purchase_date: r.purchase_date, weight_kg: String(r.weight_kg), rate_per_kg: String(r.rate_per_kg), faraq: String(r.faraq ?? 0), paid_amount: String(r.paid_amount ?? 0), payment_method: r.payment_method ?? "credit" }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => setDelTarget(r)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
             </div>
           )},
@@ -117,7 +123,7 @@ const Purchases = () => {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div><Label>{t("purchases.meat_type")}</Label>
                 <Select value={form.meat_type} onValueChange={(v) => setForm({ ...form, meat_type: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -125,13 +131,17 @@ const Purchases = () => {
                 </Select>
               </div>
               <div><Label>{t("purchases.weight")}</Label><Input type="number" step="0.001" min="0" value={form.weight_kg} onChange={(e) => setForm({ ...form, weight_kg: e.target.value })} /></div>
-              <div><Label>{t("purchases.rate")}</Label><Input type="number" step="0.01" min="0" value={form.rate_per_kg} onChange={(e) => setForm({ ...form, rate_per_kg: e.target.value })} /></div>
             </div>
-            <div className="text-sm text-muted-foreground">{t("purchases.total")}: <span className="font-semibold text-foreground force-ltr">{fmtMoney((Number(form.weight_kg) || 0) * (Number(form.rate_per_kg) || 0))}</span></div>
+            <div className="grid grid-cols-3 gap-3">
+              <div><Label>{t("purchases.rate")}</Label><Input type="number" step="0.01" min="0" value={form.rate_per_kg} onChange={(e) => setForm({ ...form, rate_per_kg: e.target.value })} /></div>
+              <div><Label>{t("pos.faraq")}</Label><Input type="number" step="0.01" min="0" value={form.faraq} onChange={(e) => setForm({ ...form, faraq: e.target.value })} /></div>
+              <div><Label>{t("pos.final_rate")}</Label><Input readOnly value={calcTotal(form).finalRate.toFixed(2)} className="force-ltr bg-muted/40" /></div>
+            </div>
+            <div className="text-sm text-muted-foreground">{t("purchases.total")}: <span className="font-semibold text-foreground force-ltr">{fmtMoney(calcTotal(form).total)}</span></div>
             <div className="grid grid-cols-2 gap-3 border-t pt-3">
               <div><Label>{t("purchases.payment_method")}</Label>
                 <Select value={form.payment_method} onValueChange={(v) => {
-                  const total = (Number(form.weight_kg) || 0) * (Number(form.rate_per_kg) || 0);
+                  const { total } = calcTotal(form);
                   setForm({ ...form, payment_method: v, paid_amount: v === "credit" ? "0" : v === "partial" ? form.paid_amount : String(total.toFixed(2)) });
                 }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -150,7 +160,7 @@ const Purchases = () => {
               </div>
             </div>
             {(() => {
-              const total = (Number(form.weight_kg) || 0) * (Number(form.rate_per_kg) || 0);
+              const { total } = calcTotal(form);
               const paid = form.payment_method === "credit" ? 0 : Number(form.paid_amount) || 0;
               const bal = total - paid;
               return <div className="text-sm flex justify-between bg-muted/40 rounded-md px-3 py-2">
