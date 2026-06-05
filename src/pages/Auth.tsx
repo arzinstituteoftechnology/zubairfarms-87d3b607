@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
@@ -9,9 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Beef } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -20,7 +18,6 @@ const Auth = () => {
   const [mode, setMode] = useState<"auth" | "forgot">("auth");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -34,27 +31,6 @@ const Auth = () => {
     setBusy(false);
     if (error) toast.error(error.message);
     else navigate("/", { replace: true });
-  };
-
-  const onSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/`,
-        data: { full_name: fullName },
-      },
-    });
-    setBusy(false);
-    if (error) toast.error(error.message);
-    else toast.success(t("auth.account_created"));
-  };
-
-  const onGoogle = async () => {
-    const res = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
-    if (res.error) toast.error(t("auth.google_failed"));
   };
 
   const onForgot = async (e: React.FormEvent) => {
@@ -73,15 +49,15 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted to-background p-4">
+      <Card className="w-full max-w-md shadow-xl border-border/60">
         <div className="flex justify-end px-4 pt-3"><LanguageSwitcher /></div>
         <CardHeader className="text-center space-y-2">
-          <div className="mx-auto h-12 w-12 rounded-xl bg-primary flex items-center justify-center">
-            <Beef className="h-6 w-6 text-primary-foreground" />
+          <div className="mx-auto h-14 w-14 rounded-2xl bg-primary flex items-center justify-center shadow-md">
+            <ShieldCheck className="h-7 w-7 text-primary-foreground" />
           </div>
-          <CardTitle className="text-2xl">{t("app.name")}</CardTitle>
-          <CardDescription>{t("app.tagline")}</CardDescription>
+          <CardTitle className="text-2xl">{t("app.name")} — Admin</CardTitle>
+          <CardDescription>Authorized admin access only</CardDescription>
         </CardHeader>
         <CardContent>
           {mode === "forgot" ? (
@@ -96,53 +72,23 @@ const Auth = () => {
               </Button>
             </form>
           ) : (
-          <>
-          <Tabs defaultValue="login">
-            <TabsList className="grid grid-cols-2 w-full">
-              <TabsTrigger value="login">{t("auth.sign_in")}</TabsTrigger>
-              <TabsTrigger value="signup">{t("auth.sign_up")}</TabsTrigger>
-            </TabsList>
-            <TabsContent value="login">
-              <form onSubmit={onLogin} className="space-y-3 mt-4">
-                <div className="space-y-1.5">
-                  <Label>{t("auth.email")}</Label>
-                  <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{t("auth.password")}</Label>
-                  <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-                </div>
-                <Button type="submit" className="w-full" disabled={busy}>{t("auth.sign_in")}</Button>
-                <button type="button" className="text-xs text-muted-foreground hover:text-foreground w-full text-center" onClick={() => setMode("forgot")}>
-                  {t("auth.forgot_password")}
-                </button>
-              </form>
-            </TabsContent>
-            <TabsContent value="signup">
-              <form onSubmit={onSignup} className="space-y-3 mt-4">
-                <div className="space-y-1.5">
-                  <Label>{t("auth.full_name")}</Label>
-                  <Input required value={fullName} onChange={(e) => setFullName(e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{t("auth.email")}</Label>
-                  <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>{t("auth.password")}</Label>
-                  <Input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
-                </div>
-                <Button type="submit" className="w-full" disabled={busy}>{t("auth.create_account")}</Button>
-                <p className="text-xs text-muted-foreground text-center">{t("auth.first_user_admin")}</p>
-              </form>
-            </TabsContent>
-          </Tabs>
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
-            <div className="relative flex justify-center text-xs"><span className="bg-card px-2 text-muted-foreground">{t("auth.or")}</span></div>
-          </div>
-          <Button variant="outline" className="w-full" onClick={onGoogle}>{t("auth.continue_with_google")}</Button>
-          </>
+          <form onSubmit={onLogin} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>{t("auth.email")}</Label>
+              <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{t("auth.password")}</Label>
+              <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+            </div>
+            <Button type="submit" className="w-full" disabled={busy}>{busy ? "…" : t("auth.sign_in")}</Button>
+            <button type="button" className="text-xs text-muted-foreground hover:text-foreground w-full text-center" onClick={() => setMode("forgot")}>
+              {t("auth.forgot_password")}
+            </button>
+            <p className="text-[11px] text-muted-foreground text-center pt-2 border-t">
+              Public sign-up is disabled. Contact an administrator for access.
+            </p>
+          </form>
           )}
         </CardContent>
       </Card>

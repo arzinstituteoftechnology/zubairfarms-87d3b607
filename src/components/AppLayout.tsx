@@ -83,6 +83,12 @@ const AppLayout = () => {
     if (!loading && !session) navigate("/auth", { replace: true });
   }, [loading, session, navigate]);
 
+  useEffect(() => {
+    if (!loading && session && role && role !== "admin") {
+      signOut().then(() => navigate("/auth", { replace: true }));
+    }
+  }, [loading, session, role, signOut, navigate]);
+
   if (loading || !session) {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">{t("common.loading")}</div>;
   }
