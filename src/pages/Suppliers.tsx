@@ -27,6 +27,7 @@ const Suppliers = () => {
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [payAmt, setPayAmt] = useState(""); const [payDate, setPayDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [payMethod, setPayMethod] = useState("cash");
+  const [ledgerFilterDate, setLedgerFilterDate] = useState<string>("");
 
   const load = async () => {
     setLoading(true);
@@ -48,6 +49,7 @@ const Suppliers = () => {
 
   const openLedger = async (r: Row) => {
     setLedger(r);
+    setLedgerFilterDate("");
     const [{ data: p }, { data: pr }] = await Promise.all([
       supabase.from("farm_payments").select("id, payment_date, amount, method").eq("farm_id", r.id).order("payment_date", { ascending: false }),
       supabase.from("purchases").select("id, purchase_date, total_amount, paid_amount, payment_method, meat_type, weight_kg, rate_per_kg").eq("farm_id", r.id).order("purchase_date", { ascending: false }),
@@ -62,6 +64,7 @@ const Suppliers = () => {
     list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
     setEntries(list);
   };
+  const filteredEntries = ledgerFilterDate ? entries.filter(e => e.date === ledgerFilterDate) : entries;
   const addPayment = async () => {
     if (!ledger || !payAmt) return;
     const { error } = await supabase.from("farm_payments").insert({ farm_id: ledger.id, amount: Number(payAmt), payment_date: payDate, method: payMethod, created_by: user?.id });
@@ -99,11 +102,19 @@ const Suppliers = () => {
                 <div className="text-xl font-bold">{ledger.name}</div>
                 <div className="text-xs text-muted-foreground">{ledger.phone || ""}</div>
                 <div className="text-xs">{new Date().toLocaleString()}</div>
+                {ledgerFilterDate && <div className="text-xs">{t("common.date")}: <span className="force-ltr">{ledgerFilterDate}</span></div>}
               </div>
               <div className="grid grid-cols-3 gap-3 text-sm">
                 <div className="rounded-md border p-3"><div className="text-muted-foreground">{t("suppliers.purchased")}</div><div className="font-semibold">{fmtMoney(ledger.purchased)}</div></div>
                 <div className="rounded-md border p-3"><div className="text-muted-foreground">{t("suppliers.paid")}</div><div className="font-semibold">{fmtMoney(ledger.paid)}</div></div>
                 <div className="rounded-md border p-3"><div className="text-muted-foreground">{t("suppliers.owed")}</div><div className="font-semibold text-destructive">{fmtMoney(ledger.balance)}</div></div>
+              </div>
+              <div className="flex flex-wrap items-end gap-2 no-print">
+                <div>
+                  <Label className="text-xs">{t("common.date")}</Label>
+                  <Input type="date" value={ledgerFilterDate} onChange={(e) => setLedgerFilterDate(e.target.value)} className="w-44" />
+                </div>
+                {ledgerFilterDate && <Button variant="outline" size="sm" onClick={() => setLedgerFilterDate("")}>All</Button>}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto] gap-2 items-end no-print">
                 <div><Label>{t("suppliers.pay_farm")}</Label><Input type="number" placeholder={t("common.amount")} value={payAmt} onChange={(e) => setPayAmt(e.target.value)} /></div>
@@ -121,7 +132,7 @@ const Suppliers = () => {
                       <tr><th className="text-start p-2">{t("common.date")}</th><th className="text-start p-2">{t("suppliers.detail")}</th><th className="text-end p-2">{t("suppliers.debit")}</th><th className="text-end p-2">{t("suppliers.credit")}</th></tr>
                     </thead>
                     <tbody>
-                      {entries.length === 0 ? <tr><td colSpan={4} className="p-3 text-center text-muted-foreground">{t("suppliers.no_entries")}</td></tr> : entries.map((e) => (
+                      {filteredEntries.length === 0 ? <tr><td colSpan={4} className="p-3 text-center text-muted-foreground">{t("suppliers.no_entries")}</td></tr> : filteredEntries.map((e) => (
                         <tr key={e.id} className="border-t">
                           <td className="p-2 force-ltr">{e.date}</td>
                           <td className="p-2">{e.meta}</td>
