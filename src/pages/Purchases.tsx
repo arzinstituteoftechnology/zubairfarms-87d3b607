@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { MEAT_TYPES, fmtKg, fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
@@ -40,18 +40,19 @@ const Purchases = () => {
   const [form, setForm] = useState<any>(emptyForm());
   const [editing, setEditing] = useState<Row | null>(null);
   const [delTarget, setDelTarget] = useState<Row | null>(null);
+  const [filterDate, setFilterDate] = useState<string>(today());
 
-  const load = async () => {
+  const load = async (date = filterDate) => {
     setLoading(true);
     const [{ data, error }, fr] = await Promise.all([
-      supabase.from("purchases").select("*, farms(name)").order("purchase_date", { ascending: false }).order("created_at", { ascending: false }),
+      supabase.from("purchases").select("*, farms(name)").eq("purchase_date", date).order("created_at", { ascending: false }),
       supabase.from("farms").select("id, name").order("name"),
     ]);
     if (error) toast.error(error.message); else setRows((data as any) ?? []);
     setFarms((fr.data as any) ?? []);
     setLoading(false);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(filterDate); }, [filterDate]);
 
   const save = async () => {
     if (!form.farm_id || !form.weight_kg || !form.rate_per_kg) return toast.error(t("purchases.required"));
@@ -70,18 +71,31 @@ const Purchases = () => {
     const { error } = await op;
     if (error) return toast.error(error.message);
     toast.success(editing ? t("purchases.updated") : t("purchases.recorded"));
-    setOpen(false); load();
+    setOpen(false); load(filterDate);
   };
 
   const doDelete = async () => {
     if (!delTarget) return;
     const { error } = await supabase.from("purchases").delete().eq("id", delTarget.id);
-    if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(); }
+    if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(filterDate); }
     setDelTarget(null);
   };
 
   return (
     <>
+      <div className="print-area">
+        <div className="hidden print:block mb-3">
+          <div className="text-xl font-bold">{t("purchases.title")}</div>
+          <div className="text-sm">{t("common.date")}: <span className="force-ltr">{filterDate}</span></div>
+        </div>
+        <div className="no-print flex flex-wrap items-end gap-2 mb-3">
+          <div>
+            <Label className="text-xs">{t("common.date")}</Label>
+            <Input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="w-44" />
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setFilterDate(today())}>{t("dashboard.today_btn")}</Button>
+          <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="h-4 w-4" /> {t("common.print")}</Button>
+        </div>
       <CrudPage<Row>
         title={t("purchases.title")}
         subtitle={t("purchases.subtitle")}
@@ -110,6 +124,7 @@ const Purchases = () => {
           )},
         ]}
       />
+      </div>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>{editing ? t("purchases.edit") : t("purchases.add")}</DialogTitle></DialogHeader>
