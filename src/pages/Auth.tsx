@@ -38,7 +38,7 @@ const Auth = () => {
     if (!email) return toast.error(t("auth.enter_email_first"));
     setBusy(true);
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: "https://zubairfarms.vercel.app/reset-password",
     });
     setBusy(false);
     if (error) toast.error(error.message);
