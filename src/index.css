@@ -105,11 +105,14 @@ All colors MUST be HSL.
   .print-area {
     position: absolute !important;
     left: 0 !important;
-    top: 0 !important;
+    top: var(--print-top-mm, 0mm) !important;
     width: 100% !important;
     display: block !important;
     margin: 0 !important;
-    padding: 10mm !important;
+    padding: var(--print-page-margin-mm, 10mm) !important;
+    padding-top: calc(var(--print-page-margin-mm, 10mm) + var(--print-header-space-mm, 0mm)) !important;
+    font-size: var(--print-font-size-px, 13px) !important;
+    line-height: var(--print-line-height, 1.5) !important;
     box-shadow: none !important;
     border: none !important;
     background: white !important;
@@ -125,7 +128,7 @@ All colors MUST be HSL.
     background: white !important;
   }
   .no-print { display: none !important; }
-  @page { margin: 10mm; size: auto; }
+  @page { margin: var(--print-page-margin-mm, 10mm); size: auto; }
 }
 .thermal-print { width: 80mm; font-family: 'Courier New', monospace; font-size: 12px; }
 
