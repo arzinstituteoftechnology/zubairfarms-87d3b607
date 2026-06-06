@@ -93,38 +93,30 @@ All colors MUST be HSL.
 
 /* Print styles for invoices */
 @media print {
-  body * { visibility: hidden; }
-  .print-area, .print-area * { visibility: visible; }
-  /* Neutralize any centering ancestors (dialogs, flex/grid centers, min-h-screen) */
+  body * {
+    visibility: hidden;
+  }
+
   .print-area,
   .print-area * {
-    place-items: start !important;
-    place-content: start !important;
-    align-items: flex-start !important;
-    justify-content: flex-start !important;
+    visibility: visible;
   }
-  body > *:not(.print-area) { display: none !important; }
+
   .print-area {
     position: absolute !important;
-    inset: 0 auto auto 0 !important;
     left: 0 !important;
     top: 0 !important;
-    right: auto !important;
-    bottom: auto !important;
     width: 100% !important;
-    min-height: 0 !important;
-    height: auto !important;
     display: block !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 10mm !important;
     box-shadow: none !important;
     border: none !important;
     background: white !important;
-    transform: none !important;
-    translate: none !important;
     max-height: none !important;
     overflow: visible !important;
   }
+
   html, body {
     margin: 0 !important;
     padding: 0 !important;
