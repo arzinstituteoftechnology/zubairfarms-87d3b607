@@ -337,6 +337,21 @@
     "more_soon": "More settings coming soon.",
     "admin_only": "Admin access required.",
     "language": "Language",
-    "language_hint": "Switch the entire app and printed documents to Urdu or English."
+    "language_hint": "Switch the entire app and printed documents to Urdu or English.",
+    "print": "Print settings",
+    "print_hint": "Control where the printed page starts, margins, and text size. Use the preview below and click Test print to check.",
+    "print_top": "Top offset (mm)",
+    "print_top_hint": "Extra space from the top edge of the paper.",
+    "print_margin": "Page margin (mm)",
+    "print_margin_hint": "Inner padding on all sides of the page.",
+    "print_header_space": "Header space (mm)",
+    "print_header_space_hint": "Extra gap between top margin and the first line of content.",
+    "print_font": "Font size (px)",
+    "print_font_hint": "Text size for printed documents.",
+    "print_line_height": "Line height",
+    "print_line_height_hint": "Spacing between lines (e.g. 1.5).",
+    "reset_defaults": "Reset defaults",
+    "test_print": "Test print",
+    "print_preview_sample": "This is a print preview sample. Adjust the settings above and reprint to see changes."
   }
 }
