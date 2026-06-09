@@ -34,18 +34,20 @@ const Supplies = () => {
   const [form, setForm] = useState<any>(emptyForm());
   const [editing, setEditing] = useState<Row | null>(null);
   const [delTarget, setDelTarget] = useState<Row | null>(null);
+  const [filterDate, setFilterDate] = useState<string>(today());
 
   const load = async () => {
     setLoading(true);
+    setRows([]);
     const [{ data, error }, sh] = await Promise.all([
-      supabase.from("supplies").select("*, shops(name)").order("supply_date", { ascending: false }).order("created_at", { ascending: false }),
+      supabase.from("supplies").select("*, shops(name)").eq("supply_date", filterDate).order("created_at", { ascending: false }),
       supabase.from("shops").select("id, name").order("name"),
     ]);
     if (error) toast.error(error.message); else setRows((data as any) ?? []);
     setShops((sh.data as any) ?? []);
     setLoading(false);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [filterDate]);
 
   // Auto-fill cost_per_kg from latest purchase of same meat type
   useEffect(() => {
@@ -111,6 +113,13 @@ const Supplies = () => {
           )},
         ]}
       />
+      <div className="flex items-end gap-2 -mt-2">
+        <div>
+          <Label className="text-xs uppercase tracking-wider text-muted-foreground">{t("common.date")}</Label>
+          <Input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value || today())} className="force-ltr w-[180px]" />
+        </div>
+        <Button variant="outline" disabled={filterDate === today()} onClick={() => setFilterDate(today())}>{t("dashboard.today_btn")}</Button>
+      </div>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>{editing ? t("supplies.edit") : t("supplies.add")}</DialogTitle></DialogHeader>
@@ -118,8 +127,8 @@ const Supplies = () => {
             <div className="grid grid-cols-2 gap-3">
               <div><Label>{t("common.date")}</Label><Input type="date" value={form.supply_date} onChange={(e) => setForm({ ...form, supply_date: e.target.value })} /></div>
               <div><Label>{t("supplies.shop")}</Label>
-                <Select value={form.shop_id} onValueChange={(v) => setForm({ ...form, shop_id: v })}>
-                  <SelectTrigger><SelectValue placeholder={t("supplies.select_shop")} /></SelectTrigger>
+                <Select value={form.shop_id} onValueChange={(v) => setForm({ ...form, shop_id: v })} disabled={!!editing}>
+                  <SelectTrigger disabled={!!editing} aria-readonly={!!editing}><SelectValue placeholder={t("supplies.select_shop")} /></SelectTrigger>
                   <SelectContent>{shops.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
