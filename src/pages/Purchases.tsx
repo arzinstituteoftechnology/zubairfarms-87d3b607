@@ -59,7 +59,8 @@ const Purchases = () => {
     const { total } = calcTotal(form);
     const paid = form.payment_method === "credit" ? 0 : (Number(form.paid_amount) || (form.payment_method === "cash" || form.payment_method === "bank" ? total : 0));
     const payload = {
-      farm_id: form.farm_id, meat_type: form.meat_type,
+      farm_id: editing ? editing.farm_id : form.farm_id,
+      meat_type: form.meat_type,
       weight_kg: Number(form.weight_kg), rate_per_kg: Number(form.rate_per_kg),
       faraq: Number(form.faraq) || 0,
       purchase_date: form.purchase_date, notes: form.notes || null,
@@ -132,10 +133,19 @@ const Purchases = () => {
             <div className="grid grid-cols-2 gap-3">
               <div><Label>{t("common.date")}</Label><Input type="date" value={form.purchase_date} onChange={(e) => setForm({ ...form, purchase_date: e.target.value })} /></div>
               <div><Label>{t("purchases.farm")}</Label>
-                <Select value={form.farm_id} onValueChange={(v) => setForm({ ...form, farm_id: v })}>
-                  <SelectTrigger><SelectValue placeholder={t("purchases.select_farm")} /></SelectTrigger>
-                  <SelectContent>{farms.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
-                </Select>
+                {editing ? (
+                  <Input
+                    value={farms.find((f) => f.id === editing.farm_id)?.name ?? editing.farms?.name ?? ""}
+                    readOnly
+                    disabled
+                    className="cursor-not-allowed opacity-70"
+                  />
+                ) : (
+                  <Select value={form.farm_id} onValueChange={(v) => setForm({ ...form, farm_id: v })}>
+                    <SelectTrigger><SelectValue placeholder={t("purchases.select_farm")} /></SelectTrigger>
+                    <SelectContent>{farms.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
