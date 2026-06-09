@@ -59,7 +59,8 @@ const Purchases = () => {
     const { total } = calcTotal(form);
     const paid = form.payment_method === "credit" ? 0 : (Number(form.paid_amount) || (form.payment_method === "cash" || form.payment_method === "bank" ? total : 0));
     const payload = {
-      farm_id: form.farm_id, meat_type: form.meat_type,
+      farm_id: editing ? editing.farm_id : form.farm_id,
+      meat_type: form.meat_type,
       weight_kg: Number(form.weight_kg), rate_per_kg: Number(form.rate_per_kg),
       faraq: Number(form.faraq) || 0,
       purchase_date: form.purchase_date, notes: form.notes || null,
