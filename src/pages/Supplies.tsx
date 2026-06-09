@@ -63,7 +63,8 @@ const Supplies = () => {
   const save = async () => {
     if (!form.shop_id || !form.weight_kg || !form.rate_per_kg) return toast.error(t("supplies.required"));
     const payload = {
-      shop_id: form.shop_id, meat_type: form.meat_type,
+      shop_id: editing ? editing.shop_id : form.shop_id,
+      meat_type: form.meat_type,
       weight_kg: Number(form.weight_kg), rate_per_kg: Number(form.rate_per_kg),
       cost_per_kg: Number(form.cost_per_kg) || 0,
       supply_date: form.supply_date, notes: form.notes || null,
