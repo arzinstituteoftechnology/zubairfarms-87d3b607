@@ -15,6 +15,7 @@ import { Pencil, Trash2, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { fmtKg, fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
+import { useLedgerDate } from "@/hooks/useLedgerDate";
 
 type D = {
   id: string; truck_id: string | null; farm_id: string | null; destination: string | null;
@@ -22,7 +23,7 @@ type D = {
   fuel_expense: number; labour_expense: number; other_expense: number; notes: string | null;
   trucks?: { number: string; driver_name: string | null } | null; farms?: { name: string } | null;
 };
-const empty = () => ({ truck_id: "", farm_id: "", destination: "", loading_date: format(new Date(), "yyyy-MM-dd"), loading_time: "", chickens_count: "0", total_weight_kg: "0", fuel_expense: "0", labour_expense: "0", other_expense: "0", notes: "" });
+const empty = (date = format(new Date(), "yyyy-MM-dd")) => ({ truck_id: "", farm_id: "", destination: "", loading_date: date, loading_time: "", chickens_count: "0", total_weight_kg: "0", fuel_expense: "0", labour_expense: "0", other_expense: "0", notes: "" });
 
 const Deliveries = () => {
   const { role, user } = useAuth();
@@ -33,32 +34,34 @@ const Deliveries = () => {
   const [open, setOpen] = useState(false); const [form, setForm] = useState<any>(empty());
   const [editing, setEditing] = useState<D | null>(null); const [del, setDel] = useState<D | null>(null);
   const [printRow, setPrintRow] = useState<D | null>(null);
+  const { selectedDate, setSelectedDate } = useLedgerDate();
 
-  const load = async () => {
+  const load = async (date = selectedDate) => {
     setLoading(true);
+    setRows([]);
     const [{ data, error }, t, f] = await Promise.all([
-      supabase.from("deliveries").select("*, trucks(number, driver_name), farms(name)").order("loading_date", { ascending: false }),
+      supabase.from("deliveries").select("*, trucks(number, driver_name), farms(name)").eq("loading_date", date).order("created_at", { ascending: false }),
       supabase.from("trucks").select("id, number, driver_name").order("number"),
       supabase.from("farms").select("id, name").order("name"),
     ]);
     if (error) toast.error(error.message); else setRows((data as any) ?? []);
     setTrucks(t.data ?? []); setFarms(f.data ?? []); setLoading(false);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(selectedDate); }, [selectedDate]);
 
   const save = async () => {
     const payload = {
       truck_id: form.truck_id || null, farm_id: form.farm_id || null, destination: form.destination || null,
-      loading_date: form.loading_date, loading_time: form.loading_time || null,
+      loading_date: form.loading_date || selectedDate, loading_time: form.loading_time || null,
       chickens_count: Number(form.chickens_count) || 0, total_weight_kg: Number(form.total_weight_kg) || 0,
       fuel_expense: Number(form.fuel_expense) || 0, labour_expense: Number(form.labour_expense) || 0, other_expense: Number(form.other_expense) || 0,
       notes: form.notes || null,
     };
     const op = editing ? supabase.from("deliveries").update(payload).eq("id", editing.id) : supabase.from("deliveries").insert({ ...payload, created_by: user?.id });
     const { error } = await op; if (error) return toast.error(error.message);
-    toast.success(t("common.saved")); setOpen(false); load();
+    toast.success(t("common.saved")); setOpen(false); setSelectedDate(payload.loading_date); load(payload.loading_date);
   };
-  const doDelete = async () => { if (!del) return; const { error } = await supabase.from("deliveries").delete().eq("id", del.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(); } setDel(null); };
+  const doDelete = async () => { if (!del) return; const { error } = await supabase.from("deliveries").delete().eq("id", del.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(selectedDate); } setDel(null); };
 
   const cur = (i18n.language as Lang) || "en";
   const togglePrintLang = () => setLang(cur === "ur" ? "en" : "ur");
@@ -68,7 +71,7 @@ const Deliveries = () => {
       <CrudPage<D>
         title={t("deliveries.title")} subtitle={t("deliveries.subtitle")}
         rows={rows} loading={loading} searchKeys={["destination"]}
-        onAdd={() => { setEditing(null); setForm(empty()); setOpen(true); }} addLabel={t("deliveries.add")}
+        onAdd={() => { setEditing(null); setForm(empty(selectedDate)); setOpen(true); }} addLabel={t("deliveries.add")}
         columns={[
           { key: "d", label: t("deliveries.date"), render: (r) => `${r.loading_date}${r.loading_time ? ` ${r.loading_time}` : ""}` },
           { key: "t", label: t("deliveries.truck"), render: (r) => r.trucks?.number ? <span className="font-medium">{r.trucks.number}{r.trucks.driver_name ? ` · ${r.trucks.driver_name}` : ""}</span> : "—" },

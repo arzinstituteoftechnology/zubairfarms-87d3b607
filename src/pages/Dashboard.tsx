@@ -9,6 +9,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useLedgerDate } from "@/hooks/useLedgerDate";
 
 interface KPI {
   purchaseKg: number; purchaseAmt: number;
@@ -17,6 +18,8 @@ interface KPI {
   profit: number;
   payableToFarms: number; receivableFromCustomers: number;
 }
+
+const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0 };
 
 const KpiCard = ({ icon: Icon, label, value, sub, tone = "default" }: any) => (
   <Card>
@@ -37,13 +40,15 @@ const KpiCard = ({ icon: Icon, label, value, sub, tone = "default" }: any) => (
 
 const Dashboard = () => {
   const { t } = useTranslation();
-  const [kpi, setKpi] = useState<KPI>({ purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0 });
+  const [kpi, setKpi] = useState<KPI>(emptyKpi);
   const [chart, setChart] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
+  const { selectedDate, setSelectedDate, today: currentDate, isToday } = useLedgerDate();
 
   useEffect(() => {
     setLoading(true);
+    setKpi(emptyKpi);
+    setChart([]);
     (async () => {
       const today = selectedDate;
       const last7 = format(subDays(new Date(selectedDate), 6), "yyyy-MM-dd");
@@ -62,14 +67,14 @@ const Dashboard = () => {
         supabase.from("purchases").select("weight_kg").lte("purchase_date", today),
         supabase.from("supplies").select("weight_kg").lte("supply_date", today),
       ]);
-      // All-time for outstanding payable/receivable
+      // Selected-date totals for outstanding payable/receivable
       const [{ data: pSum }, { data: sSum }] = await Promise.all([
-        supabase.from("purchases").select("total_amount, paid_amount"),
-        supabase.from("supplies").select("weight_kg, cost_per_kg, total_amount"),
+        supabase.from("purchases").select("total_amount, paid_amount").eq("purchase_date", today),
+        supabase.from("supplies").select("weight_kg, cost_per_kg, total_amount").eq("supply_date", today),
       ]);
       const [{ data: fpAll }, { data: posAll }] = await Promise.all([
-        supabase.from("farm_payments").select("amount"),
-        supabase.from("pos_sales").select("due"),
+        supabase.from("farm_payments").select("amount").eq("payment_date", today),
+        supabase.from("pos_sales").select("due").eq("sale_date", today),
       ]);
 
       const sum = (arr: any[] | null, k: string) => (arr ?? []).reduce((a, x) => a + Number(x[k] ?? 0), 0);
@@ -107,8 +112,6 @@ const Dashboard = () => {
     })();
   }, [selectedDate]);
 
-  const isToday = selectedDate === format(new Date(), "yyyy-MM-dd");
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
@@ -119,9 +122,9 @@ const Dashboard = () => {
         <div className="flex items-end gap-2">
           <div>
             <label className="text-xs uppercase tracking-wider text-muted-foreground block mb-1">{t("dashboard.select_date")}</label>
-            <Input type="date" value={selectedDate} max={format(new Date(), "yyyy-MM-dd")} onChange={(e) => setSelectedDate(e.target.value || format(new Date(), "yyyy-MM-dd"))} className="force-ltr w-[180px]" />
+            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value || currentDate)} className="force-ltr w-[180px]" />
           </div>
-          <Button variant="outline" disabled={isToday} onClick={() => setSelectedDate(format(new Date(), "yyyy-MM-dd"))}>{t("dashboard.today_btn")}</Button>
+          <Button variant="outline" disabled={isToday} onClick={() => setSelectedDate(currentDate)}>{t("dashboard.today_btn")}</Button>
         </div>
       </div>
 

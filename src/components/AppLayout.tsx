@@ -9,8 +9,10 @@ import {
   Users, Wallet, Receipt, TruckIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { useLedgerDate } from "@/hooks/useLedgerDate";
 
 const navItems = [
   { to: "/", key: "dashboard", icon: LayoutDashboard, end: true },
@@ -78,6 +80,7 @@ const AppLayout = () => {
   const { session, loading, role, signOut } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { selectedDate, setSelectedDate, today, isToday } = useLedgerDate();
 
   useEffect(() => {
     if (!loading && !session) navigate("/auth", { replace: true });
@@ -119,6 +122,13 @@ const AppLayout = () => {
           </div>
           <div className="ml-auto"><LanguageSwitcher /></div>
         </header>
+        <div className="border-b bg-card px-4 py-3 md:px-6 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <label className="text-xs uppercase tracking-wider text-muted-foreground block mb-1">{t("dashboard.select_date")}</label>
+            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value || today)} className="force-ltr w-[180px]" />
+          </div>
+          <Button variant="outline" size="sm" disabled={isToday} onClick={() => setSelectedDate(today)}>{t("dashboard.today_btn")}</Button>
+        </div>
         <main className="flex-1 overflow-auto">
           <div className="p-4 md:p-6 max-w-7xl mx-auto w-full">
             <Outlet />

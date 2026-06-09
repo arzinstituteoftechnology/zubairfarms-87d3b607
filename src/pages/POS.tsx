@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash2, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { MEAT_TYPES, fmtMoney } from "@/lib/constants";
-import { format } from "date-fns";
+import { useLedgerDate } from "@/hooks/useLedgerDate";
 
 type Item = { meat_type: string; weight_kg: string; rate_per_kg: string; faraq: string };
 const newItem = (): Item => ({ meat_type: "Chicken", weight_kg: "", rate_per_kg: "", faraq: "0" });
@@ -30,7 +30,7 @@ const POS = () => {
   const [items, setItems] = useState<Item[]>([newItem()]);
   const [customerId, setCustomerId] = useState<string>("");
   const [saleType, setSaleType] = useState("retail");
-  const [saleDate, setSaleDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const { selectedDate: saleDate, setSelectedDate: setSaleDate } = useLedgerDate();
   const [discount, setDiscount] = useState("0");
   const [paid, setPaid] = useState("");
   const [method, setMethod] = useState("cash");

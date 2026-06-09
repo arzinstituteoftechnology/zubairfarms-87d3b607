@@ -14,6 +14,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { MEAT_TYPES, fmtKg, fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
+import { useLedgerDate } from "@/hooks/useLedgerDate";
 
 type Row = {
   id: string; shop_id: string; meat_type: string; weight_kg: number; rate_per_kg: number;
@@ -34,31 +35,31 @@ const Supplies = () => {
   const [form, setForm] = useState<any>(emptyForm());
   const [editing, setEditing] = useState<Row | null>(null);
   const [delTarget, setDelTarget] = useState<Row | null>(null);
-  const [filterDate, setFilterDate] = useState<string>(today());
+  const { selectedDate: filterDate, setSelectedDate: setFilterDate, today: ledgerToday } = useLedgerDate();
 
-  const load = async () => {
+  const load = async (date = filterDate) => {
     setLoading(true);
     setRows([]);
     const [{ data, error }, sh] = await Promise.all([
-      supabase.from("supplies").select("*, shops(name)").eq("supply_date", filterDate).order("created_at", { ascending: false }),
+      supabase.from("supplies").select("*, shops(name)").eq("supply_date", date).order("created_at", { ascending: false }),
       supabase.from("shops").select("id, name").order("name"),
     ]);
     if (error) toast.error(error.message); else setRows((data as any) ?? []);
     setShops((sh.data as any) ?? []);
     setLoading(false);
   };
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [filterDate]);
+  useEffect(() => { load(); }, [filterDate]);
 
   // Auto-fill cost_per_kg from latest purchase of same meat type
   useEffect(() => {
     if (!form.meat_type || editing) return;
     supabase.from("purchases").select("rate_per_kg").eq("meat_type", form.meat_type)
+      .lte("purchase_date", filterDate)
       .order("purchase_date", { ascending: false }).limit(1)
       .then(({ data }) => {
         if (data?.[0] && !form.cost_per_kg) setForm((f: any) => ({ ...f, cost_per_kg: String(data[0].rate_per_kg) }));
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.meat_type, editing]);
+  }, [form.meat_type, editing, filterDate]);
 
   const save = async () => {
     if (!form.shop_id || !form.weight_kg || !form.rate_per_kg) return toast.error(t("supplies.required"));
@@ -67,7 +68,7 @@ const Supplies = () => {
       meat_type: form.meat_type,
       weight_kg: Number(form.weight_kg), rate_per_kg: Number(form.rate_per_kg),
       cost_per_kg: Number(form.cost_per_kg) || 0,
-      supply_date: form.supply_date, notes: form.notes || null,
+      supply_date: form.supply_date || filterDate, notes: form.notes || null,
     };
     const op = editing
       ? supabase.from("supplies").update(payload).eq("id", editing.id)
@@ -75,13 +76,15 @@ const Supplies = () => {
     const { error } = await op;
     if (error) return toast.error(error.message);
     toast.success(editing ? t("supplies.updated") : t("supplies.recorded"));
-    setOpen(false); load();
+    setOpen(false);
+    setFilterDate(payload.supply_date);
+    load(payload.supply_date);
   };
 
   const doDelete = async () => {
     if (!delTarget) return;
     const { error } = await supabase.from("supplies").delete().eq("id", delTarget.id);
-    if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(); }
+    if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(filterDate); }
     setDelTarget(null);
   };
 
@@ -97,7 +100,7 @@ const Supplies = () => {
         subtitle={t("supplies.subtitle")}
         rows={rows} loading={loading}
         searchKeys={["meat_type"]}
-        onAdd={() => { setEditing(null); setForm(emptyForm()); setOpen(true); }}
+        onAdd={() => { setEditing(null); setForm({ ...emptyForm(), supply_date: filterDate }); setOpen(true); }}
         addLabel={t("supplies.add")}
         columns={[
           { key: "date", label: t("common.date"), render: (r) => <span className="force-ltr">{r.supply_date}</span> },
@@ -117,9 +120,9 @@ const Supplies = () => {
       <div className="flex items-end gap-2 -mt-2">
         <div>
           <Label className="text-xs uppercase tracking-wider text-muted-foreground">{t("common.date")}</Label>
-          <Input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value || today())} className="force-ltr w-[180px]" />
+          <Input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value || ledgerToday)} className="force-ltr w-[180px]" />
         </div>
-        <Button variant="outline" disabled={filterDate === today()} onClick={() => setFilterDate(today())}>{t("dashboard.today_btn")}</Button>
+        <Button variant="outline" disabled={filterDate === ledgerToday} onClick={() => setFilterDate(ledgerToday)}>{t("dashboard.today_btn")}</Button>
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
