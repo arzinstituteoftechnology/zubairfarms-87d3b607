@@ -19,6 +19,8 @@ interface KPI {
   payableToFarms: number; receivableFromCustomers: number;
 }
 
+const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0 };
+
 const KpiCard = ({ icon: Icon, label, value, sub, tone = "default" }: any) => (
   <Card>
     <CardContent className="p-5">
@@ -38,13 +40,14 @@ const KpiCard = ({ icon: Icon, label, value, sub, tone = "default" }: any) => (
 
 const Dashboard = () => {
   const { t } = useTranslation();
-  const [kpi, setKpi] = useState<KPI>({ purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0 });
+  const [kpi, setKpi] = useState<KPI>(emptyKpi);
   const [chart, setChart] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { selectedDate, setSelectedDate, today: currentDate, isToday } = useLedgerDate();
 
   useEffect(() => {
     setLoading(true);
+    setKpi(emptyKpi);
     setChart([]);
     (async () => {
       const today = selectedDate;
