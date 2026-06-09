@@ -119,7 +119,7 @@ const Dashboard = () => {
         <div className="flex items-end gap-2">
           <div>
             <label className="text-xs uppercase tracking-wider text-muted-foreground block mb-1">{t("dashboard.select_date")}</label>
-            <Input type="date" value={selectedDate} max={currentDate} onChange={(e) => setSelectedDate(e.target.value || currentDate)} className="force-ltr w-[180px]" />
+            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value || currentDate)} className="force-ltr w-[180px]" />
           </div>
           <Button variant="outline" disabled={isToday} onClick={() => setSelectedDate(currentDate)}>{t("dashboard.today_btn")}</Button>
         </div>
