@@ -1,3 +1,3 @@
-# Welcome to your Lovable project
+# MeatFlow
 
-TODO: Document your project here
+Poultry & Meat Supply Manager
