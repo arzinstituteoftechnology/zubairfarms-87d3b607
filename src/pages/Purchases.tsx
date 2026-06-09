@@ -14,6 +14,7 @@ import { Pencil, Trash2, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { MEAT_TYPES, fmtKg, fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
+import { useLedgerDate } from "@/hooks/useLedgerDate";
 
 type Row = {
   id: string; farm_id: string; meat_type: string; weight_kg: number; rate_per_kg: number;
@@ -40,10 +41,11 @@ const Purchases = () => {
   const [form, setForm] = useState<any>(emptyForm());
   const [editing, setEditing] = useState<Row | null>(null);
   const [delTarget, setDelTarget] = useState<Row | null>(null);
-  const [filterDate, setFilterDate] = useState<string>(today());
+  const { selectedDate: filterDate, setSelectedDate: setFilterDate, today: ledgerToday } = useLedgerDate();
 
   const load = async (date = filterDate) => {
     setLoading(true);
+    setRows([]);
     const [{ data, error }, fr] = await Promise.all([
       supabase.from("purchases").select("*, farms(name)").eq("purchase_date", date).order("created_at", { ascending: false }),
       supabase.from("farms").select("id, name").order("name"),
@@ -63,7 +65,7 @@ const Purchases = () => {
       meat_type: form.meat_type,
       weight_kg: Number(form.weight_kg), rate_per_kg: Number(form.rate_per_kg),
       faraq: Number(form.faraq) || 0,
-      purchase_date: form.purchase_date, notes: form.notes || null,
+      purchase_date: form.purchase_date || filterDate, notes: form.notes || null,
       paid_amount: paid, payment_method: form.payment_method,
     };
     const op = editing
@@ -94,7 +96,7 @@ const Purchases = () => {
             <Label className="text-xs">{t("common.date")}</Label>
             <Input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="w-44" />
           </div>
-          <Button variant="outline" size="sm" onClick={() => setFilterDate(today())}>{t("dashboard.today_btn")}</Button>
+          <Button variant="outline" size="sm" onClick={() => setFilterDate(ledgerToday)}>{t("dashboard.today_btn")}</Button>
           <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="h-4 w-4" /> {t("common.print")}</Button>
         </div>
       <CrudPage<Row>
@@ -102,7 +104,7 @@ const Purchases = () => {
         subtitle={t("purchases.subtitle")}
         rows={rows} loading={loading}
         searchKeys={["meat_type"]}
-        onAdd={() => { setEditing(null); setForm(emptyForm()); setOpen(true); }}
+        onAdd={() => { setEditing(null); setForm({ ...emptyForm(), purchase_date: filterDate }); setOpen(true); }}
         addLabel={t("purchases.add")}
         columns={[
           { key: "date", label: t("common.date"), render: (r) => <span className="force-ltr">{r.purchase_date}</span> },
