@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "react-i18next";
@@ -22,10 +23,14 @@ type Row = {
   paid_amount: number; payment_method: string;
   farms?: { name: string } | null;
 };
+type PurchaseForm = {
+  farm_id: string; meat_type: string; weight_kg: string; rate_per_kg: string; faraq: string;
+  purchase_date: string; notes: string; paid_amount: string; payment_method: string;
+};
 
 const today = () => format(new Date(), "yyyy-MM-dd");
-const emptyForm = () => ({ farm_id: "", meat_type: "Beef", weight_kg: "", rate_per_kg: "", faraq: "0", purchase_date: today(), notes: "", paid_amount: "", payment_method: "credit" });
-const calcTotal = (f: any) => {
+const emptyForm = (): PurchaseForm => ({ farm_id: "", meat_type: "Beef", weight_kg: "", rate_per_kg: "", faraq: "0", purchase_date: today(), notes: "", paid_amount: "", payment_method: "credit" });
+const calcTotal = (f: Pick<PurchaseForm, "weight_kg" | "rate_per_kg" | "faraq">) => {
   const w = Number(f.weight_kg) || 0, r = Number(f.rate_per_kg) || 0, fa = Number(f.faraq) || 0;
   const finalRate = Math.max(0, r - fa);
   return { finalRate, total: finalRate * w };
@@ -34,27 +39,52 @@ const calcTotal = (f: any) => {
 const Purchases = () => {
   const { role, user } = useAuth();
   const { t } = useTranslation();
-  const [rows, setRows] = useState<Row[]>([]);
-  const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<any>(emptyForm());
+  const [form, setForm] = useState<PurchaseForm>(emptyForm());
   const [editing, setEditing] = useState<Row | null>(null);
   const [delTarget, setDelTarget] = useState<Row | null>(null);
   const { selectedDate: filterDate, setSelectedDate: setFilterDate, today: ledgerToday } = useLedgerDate();
 
-  const load = async (date = filterDate) => {
-    setLoading(true);
-    setRows([]);
-    const [{ data, error }, fr] = await Promise.all([
-      supabase.from("purchases").select("*, farms(name)").eq("purchase_date", date).order("created_at", { ascending: false }),
-      supabase.from("farms").select("id, name").order("name"),
-    ]);
-    if (error) toast.error(error.message); else setRows((data as any) ?? []);
-    setFarms((fr.data as any) ?? []);
-    setLoading(false);
-  };
-  useEffect(() => { load(filterDate); }, [filterDate]);
+  const purchasesQuery = useQuery({
+    queryKey: ["purchases", filterDate],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("purchases")
+        .select("*, farms(name)")
+        .eq("purchase_date", filterDate)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data as Row[]) ?? [];
+    },
+    placeholderData: [],
+  });
+
+  const farmsQuery = useQuery({
+    queryKey: ["farms", "purchase-options"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("farms").select("id, name").order("name");
+      if (error) throw error;
+      return (data as { id: string; name: string }[]) ?? [];
+    },
+    placeholderData: [],
+  });
+
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ["purchases", filterDate] });
+  }, [filterDate, queryClient]);
+
+  useEffect(() => {
+    if (purchasesQuery.error) toast.error(purchasesQuery.error.message);
+  }, [purchasesQuery.error]);
+
+  useEffect(() => {
+    if (farmsQuery.error) toast.error(farmsQuery.error.message);
+  }, [farmsQuery.error]);
+
+  const rows = purchasesQuery.data ?? [];
+  const farms = farmsQuery.data ?? [];
+  const loading = purchasesQuery.isPending || purchasesQuery.isFetching;
 
   const save = async () => {
     if (!form.farm_id || !form.weight_kg || !form.rate_per_kg) return toast.error(t("purchases.required"));
@@ -75,14 +105,14 @@ const Purchases = () => {
     if (error) return toast.error(error.message);
     toast.success(editing ? t("purchases.updated") : t("purchases.recorded"));
     setOpen(false);
-    setFilterDate(payload.purchase_date);
-    load(payload.purchase_date);
+    if (!editing) setFilterDate(payload.purchase_date);
+    await queryClient.invalidateQueries({ queryKey: ["purchases"] });
   };
 
   const doDelete = async () => {
     if (!delTarget) return;
     const { error } = await supabase.from("purchases").delete().eq("id", delTarget.id);
-    if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(filterDate); }
+    if (error) toast.error(error.message); else { toast.success(t("common.deleted")); queryClient.invalidateQueries({ queryKey: ["purchases", filterDate] }); }
     setDelTarget(null);
   };
 
@@ -123,7 +153,7 @@ const Purchases = () => {
           { key: "method", label: t("purchases.method"), render: (r) => <span className="text-xs uppercase">{r.payment_method}</span> },
           { key: "actions", label: "", className: "text-right w-24", render: (r) => (
             <div className="flex justify-end gap-1">
-              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ ...r, purchase_date: r.purchase_date, weight_kg: String(r.weight_kg), rate_per_kg: String(r.rate_per_kg), faraq: String(r.faraq ?? 0), paid_amount: String(r.paid_amount ?? 0), payment_method: r.payment_method ?? "credit" }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
+              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ farm_id: r.farm_id, meat_type: r.meat_type, purchase_date: r.purchase_date, weight_kg: String(r.weight_kg), rate_per_kg: String(r.rate_per_kg), faraq: String(r.faraq ?? 0), notes: r.notes ?? "", paid_amount: String(r.paid_amount ?? 0), payment_method: r.payment_method ?? "credit" }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => setDelTarget(r)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
             </div>
           )},
