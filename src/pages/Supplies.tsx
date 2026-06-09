@@ -141,7 +141,7 @@ const Supplies = () => {
           { key: "total", label: t("common.total"), className: "text-end font-medium", render: (r) => fmtMoney(r.total_amount) },
           { key: "actions", label: "", className: "text-right w-24", render: (r) => (
             <div className="flex justify-end gap-1">
-              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ ...r, weight_kg: String(r.weight_kg), rate_per_kg: String(r.rate_per_kg), cost_per_kg: String(r.cost_per_kg) }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
+              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ shop_id: r.shop_id, meat_type: r.meat_type, supply_date: r.supply_date, weight_kg: String(r.weight_kg), rate_per_kg: String(r.rate_per_kg), cost_per_kg: String(r.cost_per_kg), notes: r.notes ?? "" }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => setDelTarget(r)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
             </div>
           )},
