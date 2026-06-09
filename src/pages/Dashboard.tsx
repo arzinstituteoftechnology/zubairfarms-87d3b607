@@ -64,14 +64,14 @@ const Dashboard = () => {
         supabase.from("purchases").select("weight_kg").lte("purchase_date", today),
         supabase.from("supplies").select("weight_kg").lte("supply_date", today),
       ]);
-      // All-time for outstanding payable/receivable
+      // Selected-date totals for outstanding payable/receivable
       const [{ data: pSum }, { data: sSum }] = await Promise.all([
-        supabase.from("purchases").select("total_amount, paid_amount"),
-        supabase.from("supplies").select("weight_kg, cost_per_kg, total_amount"),
+        supabase.from("purchases").select("total_amount, paid_amount").eq("purchase_date", today),
+        supabase.from("supplies").select("weight_kg, cost_per_kg, total_amount").eq("supply_date", today),
       ]);
       const [{ data: fpAll }, { data: posAll }] = await Promise.all([
-        supabase.from("farm_payments").select("amount"),
-        supabase.from("pos_sales").select("due"),
+        supabase.from("farm_payments").select("amount").eq("payment_date", today),
+        supabase.from("pos_sales").select("due").eq("sale_date", today),
       ]);
 
       const sum = (arr: any[] | null, k: string) => (arr ?? []).reduce((a, x) => a + Number(x[k] ?? 0), 0);

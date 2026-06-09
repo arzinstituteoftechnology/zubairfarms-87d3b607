@@ -30,7 +30,7 @@ const Expenses = () => {
   const [form, setForm] = useState<any>(empty());
   const [editing, setEditing] = useState<E | null>(null);
   const [delTarget, setDelTarget] = useState<E | null>(null);
-  const { selectedDate } = useLedgerDate();
+  const { selectedDate, setSelectedDate } = useLedgerDate();
 
   const load = async (date = selectedDate) => {
     setLoading(true);
@@ -49,7 +49,7 @@ const Expenses = () => {
     const payload = { category: form.category, amount: Number(form.amount), expense_date: form.expense_date || selectedDate, farm_id: form.farm_id || null, notes: form.notes || null };
     const op = editing ? supabase.from("expenses").update(payload).eq("id", editing.id) : supabase.from("expenses").insert({ ...payload, created_by: user?.id });
     const { error } = await op; if (error) return toast.error(error.message);
-    toast.success(t("common.saved")); setOpen(false); load(selectedDate);
+    toast.success(t("common.saved")); setOpen(false); setSelectedDate(payload.expense_date); load(payload.expense_date);
   };
   const doDelete = async () => { if (!delTarget) return; const { error } = await supabase.from("expenses").delete().eq("id", delTarget.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(selectedDate); } setDelTarget(null); };
 

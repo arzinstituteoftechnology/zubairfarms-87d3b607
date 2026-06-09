@@ -34,7 +34,7 @@ const Deliveries = () => {
   const [open, setOpen] = useState(false); const [form, setForm] = useState<any>(empty());
   const [editing, setEditing] = useState<D | null>(null); const [del, setDel] = useState<D | null>(null);
   const [printRow, setPrintRow] = useState<D | null>(null);
-  const { selectedDate } = useLedgerDate();
+  const { selectedDate, setSelectedDate } = useLedgerDate();
 
   const load = async (date = selectedDate) => {
     setLoading(true);
@@ -59,7 +59,7 @@ const Deliveries = () => {
     };
     const op = editing ? supabase.from("deliveries").update(payload).eq("id", editing.id) : supabase.from("deliveries").insert({ ...payload, created_by: user?.id });
     const { error } = await op; if (error) return toast.error(error.message);
-    toast.success(t("common.saved")); setOpen(false); load(selectedDate);
+    toast.success(t("common.saved")); setOpen(false); setSelectedDate(payload.loading_date); load(payload.loading_date);
   };
   const doDelete = async () => { if (!del) return; const { error } = await supabase.from("deliveries").delete().eq("id", del.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(selectedDate); } setDel(null); };
 

@@ -74,7 +74,9 @@ const Purchases = () => {
     const { error } = await op;
     if (error) return toast.error(error.message);
     toast.success(editing ? t("purchases.updated") : t("purchases.recorded"));
-    setOpen(false); load(filterDate);
+    setOpen(false);
+    setFilterDate(payload.purchase_date);
+    load(payload.purchase_date);
   };
 
   const doDelete = async () => {
