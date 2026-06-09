@@ -130,7 +130,12 @@ const Supplies = () => {
               <div><Label>{t("supplies.shop")}</Label>
                 <Select value={form.shop_id} onValueChange={(v) => setForm({ ...form, shop_id: v })} disabled={!!editing}>
                   <SelectTrigger disabled={!!editing} aria-readonly={!!editing}><SelectValue placeholder={t("supplies.select_shop")} /></SelectTrigger>
-                  <SelectContent>{shops.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                  <SelectContent>
+                    {editing
+                      ? shops.filter((s) => s.id === editing.shop_id).map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)
+                      : shops.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)
+                    }
+                  </SelectContent>
                 </Select>
               </div>
             </div>
