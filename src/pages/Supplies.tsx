@@ -48,7 +48,7 @@ const Supplies = () => {
     setShops((sh.data as any) ?? []);
     setLoading(false);
   };
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [filterDate]);
+  useEffect(() => { load(); }, [filterDate]);
 
   // Auto-fill cost_per_kg from latest purchase of same meat type
   useEffect(() => {
@@ -59,7 +59,6 @@ const Supplies = () => {
       .then(({ data }) => {
         if (data?.[0] && !form.cost_per_kg) setForm((f: any) => ({ ...f, cost_per_kg: String(data[0].rate_per_kg) }));
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.meat_type, editing, filterDate]);
 
   const save = async () => {
