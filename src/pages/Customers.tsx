@@ -13,6 +13,7 @@ import { Pencil, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
+import { useLedgerDate } from "@/hooks/useLedgerDate";
 
 type C = { id: string; name: string; phone: string | null; address: string | null; credit_limit: number; notes: string | null };
 type Sale = { id: string; sale_date: string; total: number; paid: number; due: number };
@@ -35,13 +36,16 @@ const Customers = () => {
   const [pays, setPays] = useState<Pay[]>([]);
   const [payAmt, setPayAmt] = useState(""); const [payDate, setPayDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [payMethod, setPayMethod] = useState("cash");
+  const { selectedDate } = useLedgerDate();
 
   const load = async () => {
     setLoading(true);
+    setRows([]);
+    setBalances({});
     const [{ data: cs, error }, { data: salesAll }, { data: paysAll }] = await Promise.all([
       supabase.from("customers").select("*").order("name"),
-      supabase.from("pos_sales").select("customer_id, due"),
-      supabase.from("customer_payments").select("customer_id, amount"),
+      supabase.from("pos_sales").select("customer_id, due").eq("sale_date", selectedDate),
+      supabase.from("customer_payments").select("customer_id, amount").eq("payment_date", selectedDate),
     ]);
     if (error) toast.error(error.message);
     const bal: Record<string, number> = {};
@@ -49,7 +53,7 @@ const Customers = () => {
     (paysAll ?? []).forEach((p: any) => { bal[p.customer_id] = (bal[p.customer_id] ?? 0) - Number(p.amount); });
     setBalances(bal); setRows((cs as any) ?? []); setLoading(false);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [selectedDate]);
 
   const save = async () => {
     if (!form.name?.trim()) return toast.error(t("customers.name_required"));
@@ -68,8 +72,8 @@ const Customers = () => {
   const openLedger = async (c: C) => {
     setLedger(c);
     const [{ data: s }, { data: p }] = await Promise.all([
-      supabase.from("pos_sales").select("id, sale_date, total, paid, due").eq("customer_id", c.id).order("sale_date", { ascending: false }),
-      supabase.from("customer_payments").select("id, payment_date, amount, method, notes").eq("customer_id", c.id).order("payment_date", { ascending: false }),
+      supabase.from("pos_sales").select("id, sale_date, total, paid, due").eq("customer_id", c.id).eq("sale_date", selectedDate).order("sale_date", { ascending: false }),
+      supabase.from("customer_payments").select("id, payment_date, amount, method, notes").eq("customer_id", c.id).eq("payment_date", selectedDate).order("payment_date", { ascending: false }),
     ]);
     setSales((s as any) ?? []); setPays((p as any) ?? []);
   };
