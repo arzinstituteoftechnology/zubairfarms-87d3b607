@@ -128,11 +128,14 @@ const Supplies = () => {
             <div className="grid grid-cols-2 gap-3">
               <div><Label>{t("common.date")}</Label><Input type="date" value={form.supply_date} onChange={(e) => setForm({ ...form, supply_date: e.target.value })} /></div>
               <div><Label>{t("supplies.shop")}</Label>
-                <Select value={form.shop_id} onValueChange={(v) => setForm({ ...form, shop_id: v })} disabled={!!editing}>
-                  <SelectTrigger disabled={!!editing} aria-readonly={!!editing}><SelectValue placeholder={t("supplies.select_shop")} /></SelectTrigger>
+                <Select value={form.shop_id} onValueChange={(v) => { if (!editing) setForm({ ...form, shop_id: v }); }}>
+                  <SelectTrigger aria-readonly={!!editing}><SelectValue placeholder={t("supplies.select_shop")} /></SelectTrigger>
                   <SelectContent>
                     {editing
-                      ? shops.filter((s) => s.id === editing.shop_id).map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)
+                      ? (shops.find((s) => s.id === editing.shop_id)
+                          ? [shops.find((s) => s.id === editing.shop_id)!]
+                          : [{ id: editing.shop_id, name: editing.shops?.name ?? form.shop_id }]
+                        ).map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)
                       : shops.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)
                     }
                   </SelectContent>
