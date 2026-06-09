@@ -132,10 +132,19 @@ const Purchases = () => {
             <div className="grid grid-cols-2 gap-3">
               <div><Label>{t("common.date")}</Label><Input type="date" value={form.purchase_date} onChange={(e) => setForm({ ...form, purchase_date: e.target.value })} /></div>
               <div><Label>{t("purchases.farm")}</Label>
-                <Select value={form.farm_id} onValueChange={(v) => setForm({ ...form, farm_id: v })}>
-                  <SelectTrigger><SelectValue placeholder={t("purchases.select_farm")} /></SelectTrigger>
-                  <SelectContent>{farms.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
-                </Select>
+                {editing ? (
+                  <Input
+                    value={farms.find((f) => f.id === editing.farm_id)?.name ?? editing.farms?.name ?? ""}
+                    readOnly
+                    disabled
+                    className="cursor-not-allowed opacity-70"
+                  />
+                ) : (
+                  <Select value={form.farm_id} onValueChange={(v) => setForm({ ...form, farm_id: v })}>
+                    <SelectTrigger><SelectValue placeholder={t("purchases.select_farm")} /></SelectTrigger>
+                    <SelectContent>{farms.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
