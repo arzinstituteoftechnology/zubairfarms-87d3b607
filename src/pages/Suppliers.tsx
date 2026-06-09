@@ -11,6 +11,7 @@ import { Wallet, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
+import { useLedgerDate } from "@/hooks/useLedgerDate";
 
 type Row = { id: string; name: string; phone: string | null; purchased: number; paid: number; balance: number };
 type LedgerEntry = {
@@ -27,14 +28,16 @@ const Suppliers = () => {
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [payAmt, setPayAmt] = useState(""); const [payDate, setPayDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [payMethod, setPayMethod] = useState("cash");
+  const { selectedDate } = useLedgerDate();
   const [ledgerFilterDate, setLedgerFilterDate] = useState<string>("");
 
   const load = async () => {
     setLoading(true);
+    setRows([]);
     const [{ data: farms }, { data: pu }, { data: pa }] = await Promise.all([
       supabase.from("farms").select("id, name, phone").order("name"),
-      supabase.from("purchases").select("farm_id, total_amount, paid_amount"),
-      supabase.from("farm_payments").select("farm_id, amount"),
+      supabase.from("purchases").select("farm_id, total_amount, paid_amount").eq("purchase_date", selectedDate),
+      supabase.from("farm_payments").select("farm_id, amount").eq("payment_date", selectedDate),
     ]);
     const purMap: Record<string, number> = {}, payMap: Record<string, number> = {};
     (pu ?? []).forEach((x: any) => {
@@ -45,11 +48,11 @@ const Suppliers = () => {
     setRows((farms ?? []).map((f: any) => ({ ...f, purchased: purMap[f.id] ?? 0, paid: payMap[f.id] ?? 0, balance: (purMap[f.id] ?? 0) - (payMap[f.id] ?? 0) })));
     setLoading(false);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [selectedDate]);
 
   const openLedger = async (r: Row) => {
     setLedger(r);
-    setLedgerFilterDate("");
+    setLedgerFilterDate(selectedDate);
     const [{ data: p }, { data: pr }] = await Promise.all([
       supabase.from("farm_payments").select("id, payment_date, amount, method").eq("farm_id", r.id).order("payment_date", { ascending: false }),
       supabase.from("purchases").select("id, purchase_date, total_amount, paid_amount, payment_method, meat_type, weight_kg, rate_per_kg").eq("farm_id", r.id).order("purchase_date", { ascending: false }),
