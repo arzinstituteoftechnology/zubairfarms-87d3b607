@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "react-i18next";
@@ -28,27 +29,52 @@ const emptyForm = () => ({ shop_id: "", meat_type: "Beef", weight_kg: "", rate_p
 const Supplies = () => {
   const { role, user } = useAuth();
   const { t } = useTranslation();
-  const [rows, setRows] = useState<Row[]>([]);
-  const [shops, setShops] = useState<{ id: string; name: string }[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<any>(emptyForm());
   const [editing, setEditing] = useState<Row | null>(null);
   const [delTarget, setDelTarget] = useState<Row | null>(null);
   const { selectedDate: filterDate, setSelectedDate: setFilterDate, today: ledgerToday } = useLedgerDate();
 
-  const load = async (date = filterDate) => {
-    setLoading(true);
-    setRows([]);
-    const [{ data, error }, sh] = await Promise.all([
-      supabase.from("supplies").select("*, shops(name)").eq("supply_date", date).order("created_at", { ascending: false }),
-      supabase.from("shops").select("id, name").order("name"),
-    ]);
-    if (error) toast.error(error.message); else setRows((data as any) ?? []);
-    setShops((sh.data as any) ?? []);
-    setLoading(false);
-  };
-  useEffect(() => { load(); }, [filterDate]);
+  const suppliesQuery = useQuery({
+    queryKey: ["supplies", filterDate],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("supplies")
+        .select("*, shops(name)")
+        .eq("supply_date", filterDate)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data as Row[]) ?? [];
+    },
+    placeholderData: [],
+  });
+
+  const shopsQuery = useQuery({
+    queryKey: ["shops", "supply-options"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("shops").select("id, name").order("name");
+      if (error) throw error;
+      return (data as { id: string; name: string }[]) ?? [];
+    },
+    placeholderData: [],
+  });
+
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ["supplies", filterDate] });
+  }, [filterDate, queryClient]);
+
+  useEffect(() => {
+    if (suppliesQuery.error) toast.error(suppliesQuery.error.message);
+  }, [suppliesQuery.error]);
+
+  useEffect(() => {
+    if (shopsQuery.error) toast.error(shopsQuery.error.message);
+  }, [shopsQuery.error]);
+
+  const rows = suppliesQuery.data ?? [];
+  const shops = shopsQuery.data ?? [];
+  const loading = suppliesQuery.isPending || suppliesQuery.isFetching;
 
   // Auto-fill cost_per_kg from latest purchase of same meat type
   useEffect(() => {
@@ -77,14 +103,14 @@ const Supplies = () => {
     if (error) return toast.error(error.message);
     toast.success(editing ? t("supplies.updated") : t("supplies.recorded"));
     setOpen(false);
-    setFilterDate(payload.supply_date);
-    load(payload.supply_date);
+    if (!editing) setFilterDate(payload.supply_date);
+    await queryClient.invalidateQueries({ queryKey: ["supplies"] });
   };
 
   const doDelete = async () => {
     if (!delTarget) return;
     const { error } = await supabase.from("supplies").delete().eq("id", delTarget.id);
-    if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(filterDate); }
+    if (error) toast.error(error.message); else { toast.success(t("common.deleted")); queryClient.invalidateQueries({ queryKey: ["supplies", filterDate] }); }
     setDelTarget(null);
   };
 
