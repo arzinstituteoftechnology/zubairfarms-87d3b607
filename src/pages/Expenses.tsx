@@ -14,10 +14,11 @@ import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
+import { useLedgerDate } from "@/hooks/useLedgerDate";
 
 const CATEGORIES = ["Feed", "Labour", "Salary", "Transport", "Fuel", "Utilities", "Repairs", "Medicine", "Rent", "Other"];
 type E = { id: string; category: string; amount: number; expense_date: string; farm_id: string | null; notes: string | null; farms?: { name: string } | null };
-const empty = () => ({ category: "Feed", amount: "", expense_date: format(new Date(), "yyyy-MM-dd"), farm_id: "", notes: "" });
+const empty = (date = format(new Date(), "yyyy-MM-dd")) => ({ category: "Feed", amount: "", expense_date: date, farm_id: "", notes: "" });
 
 const Expenses = () => {
   const { role, user } = useAuth();
@@ -29,26 +30,28 @@ const Expenses = () => {
   const [form, setForm] = useState<any>(empty());
   const [editing, setEditing] = useState<E | null>(null);
   const [delTarget, setDelTarget] = useState<E | null>(null);
+  const { selectedDate } = useLedgerDate();
 
-  const load = async () => {
+  const load = async (date = selectedDate) => {
     setLoading(true);
+    setRows([]);
     const [{ data, error }, fr] = await Promise.all([
-      supabase.from("expenses").select("*, farms(name)").order("expense_date", { ascending: false }),
+      supabase.from("expenses").select("*, farms(name)").eq("expense_date", date).order("created_at", { ascending: false }),
       supabase.from("farms").select("id, name").order("name"),
     ]);
     if (error) toast.error(error.message); else setRows((data as any) ?? []);
     setFarms((fr.data as any) ?? []); setLoading(false);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(selectedDate); }, [selectedDate]);
 
   const save = async () => {
     if (!form.amount) return toast.error(t("expenses.amount_required"));
-    const payload = { category: form.category, amount: Number(form.amount), expense_date: form.expense_date, farm_id: form.farm_id || null, notes: form.notes || null };
+    const payload = { category: form.category, amount: Number(form.amount), expense_date: form.expense_date || selectedDate, farm_id: form.farm_id || null, notes: form.notes || null };
     const op = editing ? supabase.from("expenses").update(payload).eq("id", editing.id) : supabase.from("expenses").insert({ ...payload, created_by: user?.id });
     const { error } = await op; if (error) return toast.error(error.message);
-    toast.success(t("common.saved")); setOpen(false); load();
+    toast.success(t("common.saved")); setOpen(false); load(selectedDate);
   };
-  const doDelete = async () => { if (!delTarget) return; const { error } = await supabase.from("expenses").delete().eq("id", delTarget.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(); } setDelTarget(null); };
+  const doDelete = async () => { if (!delTarget) return; const { error } = await supabase.from("expenses").delete().eq("id", delTarget.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(selectedDate); } setDelTarget(null); };
 
   const total = rows.reduce((s, r) => s + Number(r.amount), 0);
 
@@ -57,7 +60,7 @@ const Expenses = () => {
       <CrudPage<E>
         title={t("expenses.title")} subtitle={t("expenses.subtitle_total", { value: fmtMoney(total) })}
         rows={rows} loading={loading} searchKeys={["category", "notes"]}
-        onAdd={() => { setEditing(null); setForm(empty()); setOpen(true); }} addLabel={t("expenses.add")}
+        onAdd={() => { setEditing(null); setForm(empty(selectedDate)); setOpen(true); }} addLabel={t("expenses.add")}
         columns={[
           { key: "date", label: t("common.date"), render: (r) => <span className="force-ltr">{r.expense_date}</span> },
           { key: "cat", label: t("expenses.category"), render: (r) => <span className="font-medium">{r.category}</span> },

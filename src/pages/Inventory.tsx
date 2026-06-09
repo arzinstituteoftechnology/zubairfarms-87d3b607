@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { fmtKg } from "@/lib/constants";
 import { Boxes } from "lucide-react";
+import { useLedgerDate } from "@/hooks/useLedgerDate";
 
 type Stock = { meat_type: string; purchased: number; supplied: number; balance: number };
 
@@ -12,12 +13,15 @@ const Inventory = () => {
   const { t } = useTranslation();
   const [rows, setRows] = useState<Stock[]>([]);
   const [loading, setLoading] = useState(true);
+  const { selectedDate } = useLedgerDate();
 
   useEffect(() => {
     (async () => {
+      setLoading(true);
+      setRows([]);
       const [{ data: p }, { data: s }] = await Promise.all([
-        supabase.from("purchases").select("meat_type, weight_kg"),
-        supabase.from("supplies").select("meat_type, weight_kg"),
+        supabase.from("purchases").select("meat_type, weight_kg").eq("purchase_date", selectedDate),
+        supabase.from("supplies").select("meat_type, weight_kg").eq("supply_date", selectedDate),
       ]);
       const map = new Map<string, Stock>();
       (p ?? []).forEach((r: any) => {
@@ -33,7 +37,7 @@ const Inventory = () => {
       const out = [...map.values()].map((x) => ({ ...x, balance: x.purchased - x.supplied })).sort((a, b) => a.meat_type.localeCompare(b.meat_type));
       setRows(out); setLoading(false);
     })();
-  }, []);
+  }, [selectedDate]);
 
   return (
     <div className="space-y-4">

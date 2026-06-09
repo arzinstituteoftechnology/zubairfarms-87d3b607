@@ -9,6 +9,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useLedgerDate } from "@/hooks/useLedgerDate";
 
 interface KPI {
   purchaseKg: number; purchaseAmt: number;
@@ -40,10 +41,11 @@ const Dashboard = () => {
   const [kpi, setKpi] = useState<KPI>({ purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0 });
   const [chart, setChart] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
+  const { selectedDate, setSelectedDate, today: currentDate, isToday } = useLedgerDate();
 
   useEffect(() => {
     setLoading(true);
+    setChart([]);
     (async () => {
       const today = selectedDate;
       const last7 = format(subDays(new Date(selectedDate), 6), "yyyy-MM-dd");
@@ -107,8 +109,6 @@ const Dashboard = () => {
     })();
   }, [selectedDate]);
 
-  const isToday = selectedDate === format(new Date(), "yyyy-MM-dd");
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
@@ -119,9 +119,9 @@ const Dashboard = () => {
         <div className="flex items-end gap-2">
           <div>
             <label className="text-xs uppercase tracking-wider text-muted-foreground block mb-1">{t("dashboard.select_date")}</label>
-            <Input type="date" value={selectedDate} max={format(new Date(), "yyyy-MM-dd")} onChange={(e) => setSelectedDate(e.target.value || format(new Date(), "yyyy-MM-dd"))} className="force-ltr w-[180px]" />
+            <Input type="date" value={selectedDate} max={currentDate} onChange={(e) => setSelectedDate(e.target.value || currentDate)} className="force-ltr w-[180px]" />
           </div>
-          <Button variant="outline" disabled={isToday} onClick={() => setSelectedDate(format(new Date(), "yyyy-MM-dd"))}>{t("dashboard.today_btn")}</Button>
+          <Button variant="outline" disabled={isToday} onClick={() => setSelectedDate(currentDate)}>{t("dashboard.today_btn")}</Button>
         </div>
       </div>
 
