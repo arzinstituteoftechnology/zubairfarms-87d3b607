@@ -22,16 +22,20 @@ type Row = {
   cost_per_kg: number; total_amount: number; supply_date: string; notes: string | null;
   shops?: { name: string } | null;
 };
+type SupplyForm = {
+  shop_id: string; meat_type: string; weight_kg: string; rate_per_kg: string; cost_per_kg: string;
+  supply_date: string; notes: string;
+};
 
 const today = () => format(new Date(), "yyyy-MM-dd");
-const emptyForm = () => ({ shop_id: "", meat_type: "Beef", weight_kg: "", rate_per_kg: "", cost_per_kg: "", supply_date: today(), notes: "" });
+const emptyForm = (): SupplyForm => ({ shop_id: "", meat_type: "Beef", weight_kg: "", rate_per_kg: "", cost_per_kg: "", supply_date: today(), notes: "" });
 
 const Supplies = () => {
   const { role, user } = useAuth();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<any>(emptyForm());
+  const [form, setForm] = useState<SupplyForm>(emptyForm());
   const [editing, setEditing] = useState<Row | null>(null);
   const [delTarget, setDelTarget] = useState<Row | null>(null);
   const { selectedDate: filterDate, setSelectedDate: setFilterDate, today: ledgerToday } = useLedgerDate();
@@ -83,9 +87,9 @@ const Supplies = () => {
       .lte("purchase_date", filterDate)
       .order("purchase_date", { ascending: false }).limit(1)
       .then(({ data }) => {
-        if (data?.[0] && !form.cost_per_kg) setForm((f: any) => ({ ...f, cost_per_kg: String(data[0].rate_per_kg) }));
+        if (data?.[0] && !form.cost_per_kg) setForm((f) => ({ ...f, cost_per_kg: String(data[0].rate_per_kg) }));
       });
-  }, [form.meat_type, editing, filterDate]);
+  }, [form.meat_type, form.cost_per_kg, editing, filterDate]);
 
   const save = async () => {
     if (!form.shop_id || !form.weight_kg || !form.rate_per_kg) return toast.error(t("supplies.required"));

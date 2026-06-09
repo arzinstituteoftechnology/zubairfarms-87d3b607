@@ -23,10 +23,14 @@ type Row = {
   paid_amount: number; payment_method: string;
   farms?: { name: string } | null;
 };
+type PurchaseForm = {
+  farm_id: string; meat_type: string; weight_kg: string; rate_per_kg: string; faraq: string;
+  purchase_date: string; notes: string; paid_amount: string; payment_method: string;
+};
 
 const today = () => format(new Date(), "yyyy-MM-dd");
-const emptyForm = () => ({ farm_id: "", meat_type: "Beef", weight_kg: "", rate_per_kg: "", faraq: "0", purchase_date: today(), notes: "", paid_amount: "", payment_method: "credit" });
-const calcTotal = (f: any) => {
+const emptyForm = (): PurchaseForm => ({ farm_id: "", meat_type: "Beef", weight_kg: "", rate_per_kg: "", faraq: "0", purchase_date: today(), notes: "", paid_amount: "", payment_method: "credit" });
+const calcTotal = (f: Pick<PurchaseForm, "weight_kg" | "rate_per_kg" | "faraq">) => {
   const w = Number(f.weight_kg) || 0, r = Number(f.rate_per_kg) || 0, fa = Number(f.faraq) || 0;
   const finalRate = Math.max(0, r - fa);
   return { finalRate, total: finalRate * w };
@@ -37,7 +41,7 @@ const Purchases = () => {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<any>(emptyForm());
+  const [form, setForm] = useState<PurchaseForm>(emptyForm());
   const [editing, setEditing] = useState<Row | null>(null);
   const [delTarget, setDelTarget] = useState<Row | null>(null);
   const { selectedDate: filterDate, setSelectedDate: setFilterDate, today: ledgerToday } = useLedgerDate();
