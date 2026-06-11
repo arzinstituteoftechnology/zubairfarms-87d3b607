@@ -141,11 +141,9 @@ const Auth = () => {
               <Button type="submit" className="w-full" disabled={busy}>
                 {busy ? "…" : isFirstUser ? "Create Admin Account" : "Create Account"}
               </Button>
-              {!isFirstUser && (
-                <button type="button" className="text-xs text-muted-foreground hover:text-foreground w-full text-center" onClick={() => setMode("signin")}>
-                  Already have an account? Sign in
-                </button>
-              )}
+              <button type="button" className="text-xs text-muted-foreground hover:text-foreground w-full text-center" onClick={() => setMode("signin")}>
+                Already have an account? Sign in
+              </button>
             </form>
           ) : (
           <form onSubmit={onLogin} className="space-y-4">
