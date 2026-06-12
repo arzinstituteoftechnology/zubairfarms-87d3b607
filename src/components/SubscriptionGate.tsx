@@ -11,7 +11,7 @@ export const SubscriptionGate = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (loading || !session || isSuperAdmin) return;
-    if (!tenant) return; // tenant_users not linked yet — leave to AppLayout
+    if (!tenant) { navigate("/subscription-expired?reason=none", { replace: true }); return; }
     if (tenant.status === "suspended") { navigate("/subscription-expired?reason=suspended", { replace: true }); return; }
     if (!subscription) { navigate("/subscription-expired?reason=none", { replace: true }); return; }
     const exp = new Date(subscription.expires_at).getTime();
