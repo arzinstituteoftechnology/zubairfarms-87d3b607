@@ -95,9 +95,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
       if (s?.user) {
-        setTimeout(() => { loadProfile(s.user.id); }, 0);
+        setLoading(true);
+        setTimeout(async () => { await loadProfile(s.user.id); setLoading(false); }, 0);
       } else {
         clearProfile();
+        setLoading(false);
       }
     });
 
