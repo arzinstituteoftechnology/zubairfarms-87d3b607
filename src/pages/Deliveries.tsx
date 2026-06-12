@@ -63,16 +63,26 @@ const Deliveries = () => {
     const op = editing ? supabase.from("deliveries").update(payload).eq("id", editing.id) : supabase.from("deliveries").insert({ ...payload, created_by: user?.id });
     const { data, error } = await op.select("*").maybeSingle();
     if (error) return toast.error(error.message);
-    console.log("[Deliveries] saved row", data);
+    console.log("[Deliveries] saved row", { recordId: data?.id, oldDate, newDate, returnedDate: data?.loading_date });
     if (!data) return toast.error("Save failed: no row returned (permission or RLS).");
     if (data.loading_date !== newDate) return toast.error(`Date mismatch: requested ${newDate}, DB stored ${data.loading_date}`);
     toast.success(t("common.saved"));
     setOpen(false);
     setEditing(null);
+    setForm(empty(selectedDate));
     setSelectedDate(data.loading_date);
-    load(data.loading_date);
+    await load(data.loading_date);
   };
   const doDelete = async () => { if (!del) return; const { error } = await supabase.from("deliveries").delete().eq("id", del.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(selectedDate); } setDel(null); };
+
+  const openEdit = async (rowId: string) => {
+    const { data, error } = await supabase.from("deliveries").select("*, trucks(number, driver_name), farms(name)").eq("id", rowId).maybeSingle();
+    if (error || !data) return toast.error(error?.message ?? "Failed to load record");
+    const r = data as D;
+    setEditing(r);
+    setForm({ ...r, truck_id: r.truck_id ?? "", farm_id: r.farm_id ?? "", chickens_count: String(r.chickens_count), total_weight_kg: String(r.total_weight_kg), fuel_expense: String(r.fuel_expense), labour_expense: String(r.labour_expense), other_expense: String(r.other_expense) });
+    setOpen(true);
+  };
 
   const cur = (i18n.language as Lang) || "en";
   const togglePrintLang = () => setLang(cur === "ur" ? "en" : "ur");
@@ -94,13 +104,13 @@ const Deliveries = () => {
           { key: "actions", label: "", className: "text-right w-32", render: (r) => (
             <div className="flex justify-end gap-1">
               <Button size="icon" variant="ghost" onClick={() => setPrintRow(r)}><Printer className="h-4 w-4" /></Button>
-              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ ...r, truck_id: r.truck_id ?? "", farm_id: r.farm_id ?? "", chickens_count: String(r.chickens_count), total_weight_kg: String(r.total_weight_kg), fuel_expense: String(r.fuel_expense), labour_expense: String(r.labour_expense), other_expense: String(r.other_expense) }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
+              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => openEdit(r.id)}><Pencil className="h-4 w-4" /></Button>}
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => setDel(r)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
             </div>
           )},
         ]}
       />
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setForm(empty(selectedDate)); } }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle>{editing ? t("deliveries.edit") : t("deliveries.add")}</DialogTitle></DialogHeader>
           <div className="space-y-3">
