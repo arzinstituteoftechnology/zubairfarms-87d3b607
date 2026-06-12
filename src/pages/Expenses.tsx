@@ -22,7 +22,7 @@ type E = { id: string; category: string; amount: number; expense_date: string; f
 const empty = (date = format(new Date(), "yyyy-MM-dd")) => ({ category: "Feed", amount: "", expense_date: date, farm_id: "", notes: "" });
 
 const Expenses = () => {
-  const { role, user } = useAuth();
+  const { role, user, tenant } = useAuth();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [rows, setRows] = useState<E[]>([]);
@@ -48,11 +48,12 @@ const Expenses = () => {
 
   const save = async () => {
     if (!form.amount) return toast.error(t("expenses.amount_required"));
+    if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
     const payload = { category: form.category, amount: Number(form.amount), expense_date: form.expense_date || selectedDate, farm_id: form.farm_id || null, notes: form.notes || null };
     const oldDate = editing?.expense_date;
     const newDate = payload.expense_date;
     console.log("[Expenses] save start", { recordId: editing?.id, oldDate, newDate, selectedDate, payload });
-    const op = editing ? supabase.from("expenses").update(payload).eq("id", editing.id) : supabase.from("expenses").insert({ ...payload, created_by: user?.id });
+    const op = editing ? supabase.from("expenses").update(payload).eq("id", editing.id) : supabase.from("expenses").insert({ ...payload, tenant_id: tenant.id, created_by: user?.id });
     const { data, error } = await op.select("*").maybeSingle();
     if (error) return toast.error(error.message);
     if (!data) return toast.error("Save failed: no row returned (permission or RLS).");

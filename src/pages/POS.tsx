@@ -23,7 +23,7 @@ const calc = (it: Item) => {
 };
 
 const POS = () => {
-  const { user } = useAuth();
+  const { user, tenant } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
@@ -48,16 +48,17 @@ const POS = () => {
   const save = async () => {
     const valid = items.filter((it) => Number(it.weight_kg) > 0 && Number(it.rate_per_kg) > 0);
     if (valid.length === 0) return toast.error(t("pos.need_item"));
+    if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
     setSaving(true);
     const { data: sale, error } = await supabase.from("pos_sales").insert({
       customer_id: customerId || null, sale_date: saleDate, sale_type: saleType,
       subtotal, discount: Number(discount) || 0, total, paid: paidNum, due,
-      payment_method: method, notes: notes || null, created_by: user?.id,
+      payment_method: method, notes: notes || null, tenant_id: tenant.id, created_by: user?.id,
     }).select().single();
     if (error || !sale) { setSaving(false); return toast.error(error?.message || t("pos.failed")); }
     const itemsPayload = valid.map((it) => {
       const c = calc(it);
-      return { sale_id: sale.id, meat_type: it.meat_type, weight_kg: Number(it.weight_kg), rate_per_kg: Number(it.rate_per_kg), faraq: Number(it.faraq) || 0, final_rate: c.finalRate, line_total: c.total };
+      return { sale_id: sale.id, meat_type: it.meat_type, weight_kg: Number(it.weight_kg), rate_per_kg: Number(it.rate_per_kg), faraq: Number(it.faraq) || 0, final_rate: c.finalRate, line_total: c.total, tenant_id: tenant.id };
     });
     const { error: ie } = await supabase.from("pos_sale_items").insert(itemsPayload);
     setSaving(false);

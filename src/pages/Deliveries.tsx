@@ -27,7 +27,7 @@ type D = {
 const empty = (date = format(new Date(), "yyyy-MM-dd")) => ({ truck_id: "", farm_id: "", destination: "", loading_date: date, loading_time: "", chickens_count: "0", total_weight_kg: "0", fuel_expense: "0", labour_expense: "0", other_expense: "0", notes: "" });
 
 const Deliveries = () => {
-  const { role, user } = useAuth();
+  const { role, user, tenant } = useAuth();
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const [rows, setRows] = useState<D[]>([]);
@@ -52,6 +52,7 @@ const Deliveries = () => {
   useEffect(() => { load(selectedDate); }, [selectedDate]);
 
   const save = async () => {
+    if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
     const payload = {
       truck_id: form.truck_id || null, farm_id: form.farm_id || null, destination: form.destination || null,
       loading_date: form.loading_date || selectedDate, loading_time: form.loading_time || null,
@@ -62,7 +63,7 @@ const Deliveries = () => {
     const oldDate = editing?.loading_date;
     const newDate = payload.loading_date;
     console.log("[Deliveries] save start", { recordId: editing?.id, oldDate, newDate, selectedDate, payload });
-    const op = editing ? supabase.from("deliveries").update(payload).eq("id", editing.id) : supabase.from("deliveries").insert({ ...payload, created_by: user?.id });
+    const op = editing ? supabase.from("deliveries").update(payload).eq("id", editing.id) : supabase.from("deliveries").insert({ ...payload, tenant_id: tenant.id, created_by: user?.id });
     const { data, error } = await op.select("*").maybeSingle();
     if (error) return toast.error(error.message);
     if (!data) return toast.error("Save failed: no row returned (permission or RLS).");

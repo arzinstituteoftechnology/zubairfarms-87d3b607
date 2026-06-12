@@ -22,7 +22,7 @@ type Pay = { id: string; payment_date: string; amount: number; method: string; n
 const empty = { name: "", phone: "", address: "", credit_limit: "0", notes: "" };
 
 const Customers = () => {
-  const { role, user } = useAuth();
+  const { role, user, tenant } = useAuth();
   const { t } = useTranslation();
   const [rows, setRows] = useState<C[]>([]);
   const [balances, setBalances] = useState<Record<string, number>>({});
@@ -57,8 +57,9 @@ const Customers = () => {
 
   const save = async () => {
     if (!form.name?.trim()) return toast.error(t("customers.name_required"));
+    if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
     const payload = { name: form.name, phone: form.phone || null, address: form.address || null, credit_limit: Number(form.credit_limit) || 0, notes: form.notes || null };
-    const op = editing ? supabase.from("customers").update(payload).eq("id", editing.id) : supabase.from("customers").insert({ ...payload, created_by: user?.id });
+    const op = editing ? supabase.from("customers").update(payload).eq("id", editing.id) : supabase.from("customers").insert({ ...payload, tenant_id: tenant.id, created_by: user?.id });
     const { error } = await op;
     if (error) return toast.error(error.message);
     toast.success(t("common.saved")); setOpen(false); load();
@@ -79,7 +80,8 @@ const Customers = () => {
   };
   const addPayment = async () => {
     if (!ledger || !payAmt) return;
-    const { error } = await supabase.from("customer_payments").insert({ customer_id: ledger.id, amount: Number(payAmt), payment_date: payDate, method: payMethod, created_by: user?.id });
+    if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
+    const { error } = await supabase.from("customer_payments").insert({ customer_id: ledger.id, amount: Number(payAmt), payment_date: payDate, method: payMethod, tenant_id: tenant.id, created_by: user?.id });
     if (error) return toast.error(error.message);
     toast.success(t("customers.payment_recorded")); setPayAmt(""); openLedger(ledger); load();
   };

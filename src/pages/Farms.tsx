@@ -17,7 +17,7 @@ type Farm = { id: string; name: string; contact_person: string | null; phone: st
 const empty: Partial<Farm> = { name: "", contact_person: "", phone: "", address: "", notes: "" };
 
 const Farms = () => {
-  const { role, user } = useAuth();
+  const { role, user, tenant } = useAuth();
   const { t } = useTranslation();
   const [rows, setRows] = useState<Farm[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,6 +39,7 @@ const Farms = () => {
 
   const save = async () => {
     if (!form.name?.trim()) return toast.error(t("farms.name_required"));
+    if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
     if (editing) {
       const { error } = await supabase.from("farms").update({
         name: form.name, contact_person: form.contact_person, phone: form.phone, address: form.address, notes: form.notes,
@@ -47,7 +48,7 @@ const Farms = () => {
       toast.success(t("farms.updated"));
     } else {
       const { error } = await supabase.from("farms").insert({
-        name: form.name!, contact_person: form.contact_person, phone: form.phone, address: form.address, notes: form.notes, created_by: user?.id,
+        name: form.name!, contact_person: form.contact_person, phone: form.phone, address: form.address, notes: form.notes, tenant_id: tenant.id, created_by: user?.id,
       });
       if (error) return toast.error(error.message);
       toast.success(t("farms.added"));

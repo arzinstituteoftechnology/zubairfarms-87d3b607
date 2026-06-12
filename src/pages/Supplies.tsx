@@ -31,7 +31,7 @@ const today = () => format(new Date(), "yyyy-MM-dd");
 const emptyForm = (): SupplyForm => ({ shop_id: "", meat_type: "Beef", weight_kg: "", rate_per_kg: "", cost_per_kg: "", supply_date: today(), notes: "" });
 
 const Supplies = () => {
-  const { role, user } = useAuth();
+  const { role, user, tenant } = useAuth();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -93,6 +93,7 @@ const Supplies = () => {
 
   const save = async () => {
     if (!form.shop_id || !form.weight_kg || !form.rate_per_kg) return toast.error(t("supplies.required"));
+    if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
     const payload = {
       shop_id: editing ? editing.shop_id : form.shop_id,
       meat_type: form.meat_type,
@@ -105,7 +106,7 @@ const Supplies = () => {
     console.log("[Supplies] save start", { recordId: editing?.id, oldDate, newDate, selectedDate: filterDate, payload });
     const op = editing
       ? supabase.from("supplies").update(payload).eq("id", editing.id)
-      : supabase.from("supplies").insert({ ...payload, created_by: user?.id });
+      : supabase.from("supplies").insert({ ...payload, tenant_id: tenant.id, created_by: user?.id });
     const { data, error } = await op.select("*").maybeSingle();
     if (error) return toast.error(error.message);
     if (!data) return toast.error("Save failed: no row returned (permission or RLS).");
