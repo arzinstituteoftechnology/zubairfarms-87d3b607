@@ -76,7 +76,7 @@ export type Database = {
           method?: string
           notes?: string | null
           payment_date?: string
-          tenant_id: string
+          tenant_id?: string
         }
         Update: {
           amount?: number
@@ -128,7 +128,7 @@ export type Database = {
           name: string
           notes?: string | null
           phone?: string | null
-          tenant_id: string
+          tenant_id?: string
           updated_at?: string
         }
         Update: {
@@ -185,7 +185,7 @@ export type Database = {
           loading_time?: string | null
           notes?: string | null
           other_expense?: number
-          tenant_id: string
+          tenant_id?: string
           total_weight_kg?: number
           truck_id?: string | null
           updated_at?: string
@@ -254,7 +254,7 @@ export type Database = {
           farm_id?: string | null
           id?: string
           notes?: string | null
-          tenant_id: string
+          tenant_id?: string
           updated_at?: string
         }
         Update: {
@@ -307,7 +307,7 @@ export type Database = {
           method?: string
           notes?: string | null
           payment_date?: string
-          tenant_id: string
+          tenant_id?: string
         }
         Update: {
           amount?: number
@@ -359,7 +359,7 @@ export type Database = {
           name: string
           notes?: string | null
           phone?: string | null
-          tenant_id: string
+          tenant_id?: string
           updated_at?: string
         }
         Update: {
@@ -466,7 +466,7 @@ export type Database = {
           meat_type: string
           rate_per_kg: number
           sale_id: string
-          tenant_id: string
+          tenant_id?: string
           weight_kg: number
         }
         Update: {
@@ -531,7 +531,7 @@ export type Database = {
           sale_date?: string
           sale_type?: string
           subtotal?: number
-          tenant_id: string
+          tenant_id?: string
           total?: number
           updated_at?: string
         }
@@ -621,7 +621,7 @@ export type Database = {
           payment_method?: string
           purchase_date?: string
           rate_per_kg: number
-          tenant_id: string
+          tenant_id?: string
           total_amount?: number | null
           updated_at?: string
           weight_kg: number
@@ -671,7 +671,7 @@ export type Database = {
         Insert: {
           id?: number
           row_id?: string
-          tenant_id: string
+          tenant_id?: string
           updated_at?: string
           wastage_threshold_pct?: number
         }
@@ -714,7 +714,7 @@ export type Database = {
           name: string
           notes?: string | null
           phone?: string | null
-          tenant_id: string
+          tenant_id?: string
           updated_at?: string
         }
         Update: {
@@ -851,7 +851,7 @@ export type Database = {
           rate_per_kg: number
           shop_id: string
           supply_date?: string
-          tenant_id: string
+          tenant_id?: string
           total_amount?: number | null
           updated_at?: string
           weight_kg: number
@@ -1014,7 +1014,7 @@ export type Database = {
           id?: string
           notes?: string | null
           number: string
-          tenant_id: string
+          tenant_id?: string
           updated_at?: string
         }
         Update: {
