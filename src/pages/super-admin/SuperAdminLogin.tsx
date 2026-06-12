@@ -11,7 +11,7 @@ import { toast } from "sonner";
 
 const SuperAdminLogin = () => {
   const navigate = useNavigate();
-  const { isSuperAdmin, loading, refresh, signOut } = useAuth();
+  const { isSuperAdmin, loading, refresh } = useAuth();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,12 +39,21 @@ const SuperAdminLogin = () => {
     setBusy(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) { setBusy(false); return toast.error(error.message); }
-    // Verify super admin role; if not, sign out.
-    const { data: rolesRow } = await supabase.from("user_roles").select("role").eq("role", "super_admin");
-    const me = (await supabase.auth.getUser()).data.user;
-    const isSa = (rolesRow ?? []).some((r: any) => r.role === "super_admin");
-    // The above lists rows visible — RLS only returns own row + super admin's. Safer: rpc is_super_admin.
-    const { data: saCheck } = await supabase.rpc("is_super_admin");
+    // After a full reset, email confirmation may complete before the role is claimed.
+    // This RPC only grants super_admin when no super_admin exists yet.
+    const { error: bootstrapErr } = await supabase.rpc("bootstrap_super_admin");
+    if (bootstrapErr) {
+      await supabase.auth.signOut();
+      setBusy(false);
+      return toast.error(bootstrapErr.message);
+    }
+
+    const { data: saCheck, error: saErr } = await supabase.rpc("is_super_admin");
+    if (saErr) {
+      await supabase.auth.signOut();
+      setBusy(false);
+      return toast.error(saErr.message);
+    }
     if (!saCheck) {
       await supabase.auth.signOut();
       setBusy(false);
