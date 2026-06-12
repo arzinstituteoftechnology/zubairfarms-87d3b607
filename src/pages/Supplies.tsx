@@ -108,7 +108,7 @@ const Supplies = () => {
       : supabase.from("supplies").insert({ ...payload, created_by: user?.id });
     const { data, error } = await op.select("*").maybeSingle();
     if (error) return toast.error(error.message);
-    console.log("[Supplies] saved row", data);
+    console.log("[Supplies] saved row", { recordId: data?.id, oldDate, newDate, returnedDate: data?.supply_date });
     if (!data) return toast.error("Save failed: no row returned (permission or RLS).");
     if (data.supply_date !== newDate) {
       return toast.error(`Date mismatch: requested ${newDate}, DB stored ${data.supply_date}`);
@@ -116,14 +116,16 @@ const Supplies = () => {
     toast.success(editing ? t("supplies.updated") : t("supplies.recorded"));
     setOpen(false);
     setEditing(null);
+    setForm(emptyForm());
     setFilterDate(data.supply_date);
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["supplies"], refetchType: "all" }),
-      queryClient.invalidateQueries({ queryKey: ["inventory"] }),
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      queryClient.invalidateQueries({ queryKey: ["customer_payments"] }),
-      queryClient.invalidateQueries({ queryKey: ["payments"] }),
+      queryClient.invalidateQueries({ queryKey: ["inventory"], refetchType: "all" }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"], refetchType: "all" }),
+      queryClient.invalidateQueries({ queryKey: ["customer_payments"], refetchType: "all" }),
+      queryClient.invalidateQueries({ queryKey: ["payments"], refetchType: "all" }),
     ]);
+    await queryClient.refetchQueries({ queryKey: ["supplies", data.supply_date] });
   };
 
   const doDelete = async () => {
@@ -131,6 +133,15 @@ const Supplies = () => {
     const { error } = await supabase.from("supplies").delete().eq("id", delTarget.id);
     if (error) toast.error(error.message); else { toast.success(t("common.deleted")); queryClient.invalidateQueries({ queryKey: ["supplies", filterDate] }); }
     setDelTarget(null);
+  };
+
+  const openEdit = async (rowId: string) => {
+    const { data, error } = await supabase.from("supplies").select("*, shops(name)").eq("id", rowId).maybeSingle();
+    if (error || !data) return toast.error(error?.message ?? "Failed to load record");
+    const r = data as Row;
+    setEditing(r);
+    setForm({ shop_id: r.shop_id, meat_type: r.meat_type, supply_date: r.supply_date, weight_kg: String(r.weight_kg), rate_per_kg: String(r.rate_per_kg), cost_per_kg: String(r.cost_per_kg), notes: r.notes ?? "" });
+    setOpen(true);
   };
 
   const w = Number(form.weight_kg) || 0;
@@ -156,7 +167,7 @@ const Supplies = () => {
           { key: "total", label: t("common.total"), className: "text-end font-medium", render: (r) => fmtMoney(r.total_amount) },
           { key: "actions", label: "", className: "text-right w-24", render: (r) => (
             <div className="flex justify-end gap-1">
-              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ shop_id: r.shop_id, meat_type: r.meat_type, supply_date: r.supply_date, weight_kg: String(r.weight_kg), rate_per_kg: String(r.rate_per_kg), cost_per_kg: String(r.cost_per_kg), notes: r.notes ?? "" }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
+              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => openEdit(r.id)}><Pencil className="h-4 w-4" /></Button>}
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => setDelTarget(r)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
             </div>
           )},
@@ -169,7 +180,7 @@ const Supplies = () => {
         </div>
         <Button variant="outline" disabled={filterDate === ledgerToday} onClick={() => setFilterDate(ledgerToday)}>{t("dashboard.today_btn")}</Button>
       </div>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setForm(emptyForm()); } }}>
         <DialogContent>
           <DialogHeader><DialogTitle>{editing ? t("supplies.edit") : t("supplies.add")}</DialogTitle></DialogHeader>
           <div className="space-y-3">

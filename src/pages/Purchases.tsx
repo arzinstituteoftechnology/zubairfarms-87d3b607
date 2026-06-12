@@ -106,7 +106,7 @@ const Purchases = () => {
       : supabase.from("purchases").insert({ ...payload, created_by: user?.id });
     const { data, error } = await op.select("*").maybeSingle();
     if (error) return toast.error(error.message);
-    console.log("[Purchases] saved row", data);
+    console.log("[Purchases] saved row", { recordId: data?.id, oldDate, newDate, returnedDate: data?.purchase_date });
     if (!data) return toast.error("Save failed: no row returned (permission or RLS).");
     if (data.purchase_date !== newDate) {
       return toast.error(`Date mismatch: requested ${newDate}, DB stored ${data.purchase_date}`);
@@ -114,14 +114,25 @@ const Purchases = () => {
     toast.success(editing ? t("purchases.updated") : t("purchases.recorded"));
     setOpen(false);
     setEditing(null);
+    setForm(emptyForm());
     setFilterDate(data.purchase_date);
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["purchases"], refetchType: "all" }),
-      queryClient.invalidateQueries({ queryKey: ["inventory"] }),
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      queryClient.invalidateQueries({ queryKey: ["farm_payments"] }),
-      queryClient.invalidateQueries({ queryKey: ["payments"] }),
+      queryClient.invalidateQueries({ queryKey: ["inventory"], refetchType: "all" }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"], refetchType: "all" }),
+      queryClient.invalidateQueries({ queryKey: ["farm_payments"], refetchType: "all" }),
+      queryClient.invalidateQueries({ queryKey: ["payments"], refetchType: "all" }),
     ]);
+    await queryClient.refetchQueries({ queryKey: ["purchases", data.purchase_date] });
+  };
+
+  const openEdit = async (rowId: string) => {
+    const { data, error } = await supabase.from("purchases").select("*, farms(name)").eq("id", rowId).maybeSingle();
+    if (error || !data) return toast.error(error?.message ?? "Failed to load record");
+    const r = data as Row;
+    setEditing(r);
+    setForm({ farm_id: r.farm_id, meat_type: r.meat_type, purchase_date: r.purchase_date, weight_kg: String(r.weight_kg), rate_per_kg: String(r.rate_per_kg), faraq: String(r.faraq ?? 0), notes: r.notes ?? "", paid_amount: String(r.paid_amount ?? 0), payment_method: r.payment_method ?? "credit" });
+    setOpen(true);
   };
 
   const doDelete = async () => {
@@ -168,14 +179,14 @@ const Purchases = () => {
           { key: "method", label: t("purchases.method"), render: (r) => <span className="text-xs uppercase">{r.payment_method}</span> },
           { key: "actions", label: "", className: "text-right w-24", render: (r) => (
             <div className="flex justify-end gap-1">
-              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ farm_id: r.farm_id, meat_type: r.meat_type, purchase_date: r.purchase_date, weight_kg: String(r.weight_kg), rate_per_kg: String(r.rate_per_kg), faraq: String(r.faraq ?? 0), notes: r.notes ?? "", paid_amount: String(r.paid_amount ?? 0), payment_method: r.payment_method ?? "credit" }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
+              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => openEdit(r.id)}><Pencil className="h-4 w-4" /></Button>}
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => setDelTarget(r)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
             </div>
           )},
         ]}
       />
       </div>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setForm(emptyForm()); } }}>
         <DialogContent>
           <DialogHeader><DialogTitle>{editing ? t("purchases.edit") : t("purchases.add")}</DialogTitle></DialogHeader>
           <div className="space-y-3">

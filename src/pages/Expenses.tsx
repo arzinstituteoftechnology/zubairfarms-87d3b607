@@ -53,16 +53,26 @@ const Expenses = () => {
     const op = editing ? supabase.from("expenses").update(payload).eq("id", editing.id) : supabase.from("expenses").insert({ ...payload, created_by: user?.id });
     const { data, error } = await op.select("*").maybeSingle();
     if (error) return toast.error(error.message);
-    console.log("[Expenses] saved row", data);
+    console.log("[Expenses] saved row", { recordId: data?.id, oldDate, newDate, returnedDate: data?.expense_date });
     if (!data) return toast.error("Save failed: no row returned (permission or RLS).");
     if (data.expense_date !== newDate) return toast.error(`Date mismatch: requested ${newDate}, DB stored ${data.expense_date}`);
     toast.success(t("common.saved"));
     setOpen(false);
     setEditing(null);
+    setForm(empty(selectedDate));
     setSelectedDate(data.expense_date);
-    load(data.expense_date);
+    await load(data.expense_date);
   };
   const doDelete = async () => { if (!delTarget) return; const { error } = await supabase.from("expenses").delete().eq("id", delTarget.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(selectedDate); } setDelTarget(null); };
+
+  const openEdit = async (rowId: string) => {
+    const { data, error } = await supabase.from("expenses").select("*, farms(name)").eq("id", rowId).maybeSingle();
+    if (error || !data) return toast.error(error?.message ?? "Failed to load record");
+    const r = data as E;
+    setEditing(r);
+    setForm({ ...r, amount: String(r.amount), farm_id: r.farm_id ?? "" });
+    setOpen(true);
+  };
 
   const total = rows.reduce((s, r) => s + Number(r.amount), 0);
 
@@ -80,13 +90,13 @@ const Expenses = () => {
           { key: "amt", label: t("common.amount"), className: "text-end font-semibold", render: (r) => fmtMoney(r.amount) },
           { key: "actions", label: "", className: "text-right w-24", render: (r) => (
             <div className="flex justify-end gap-1">
-              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => { setEditing(r); setForm({ ...r, amount: String(r.amount), farm_id: r.farm_id ?? "" }); setOpen(true); }}><Pencil className="h-4 w-4" /></Button>}
+              {role === "admin" && <Button size="icon" variant="ghost" onClick={() => openEdit(r.id)}><Pencil className="h-4 w-4" /></Button>}
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => setDelTarget(r)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
             </div>
           )},
         ]}
       />
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setForm(empty(selectedDate)); } }}>
         <DialogContent>
           <DialogHeader><DialogTitle>{editing ? t("expenses.edit") : t("expenses.add")}</DialogTitle></DialogHeader>
           <div className="space-y-3">
