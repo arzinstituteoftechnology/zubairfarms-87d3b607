@@ -80,7 +80,8 @@ const Customers = () => {
   };
   const addPayment = async () => {
     if (!ledger || !payAmt) return;
-    const { error } = await supabase.from("customer_payments").insert({ customer_id: ledger.id, amount: Number(payAmt), payment_date: payDate, method: payMethod, created_by: user?.id });
+    if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
+    const { error } = await supabase.from("customer_payments").insert({ customer_id: ledger.id, amount: Number(payAmt), payment_date: payDate, method: payMethod, tenant_id: tenant.id, created_by: user?.id });
     if (error) return toast.error(error.message);
     toast.success(t("customers.payment_recorded")); setPayAmt(""); openLedger(ledger); load();
   };

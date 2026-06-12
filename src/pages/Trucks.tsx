@@ -16,7 +16,7 @@ type T = { id: string; number: string; driver_name: string | null; driver_phone:
 const empty = { number: "", driver_name: "", driver_phone: "", notes: "" };
 
 const Trucks = () => {
-  const { role, user } = useAuth();
+  const { role, user, tenant } = useAuth();
   const { t } = useTranslation();
   const [rows, setRows] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,8 +30,9 @@ const Trucks = () => {
 
   const save = async () => {
     if (!form.number?.trim()) return toast.error(t("trucks.number_required"));
+    if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
     const payload = { number: form.number, driver_name: form.driver_name || null, driver_phone: form.driver_phone || null, notes: form.notes || null };
-    const op = editing ? supabase.from("trucks").update(payload).eq("id", editing.id) : supabase.from("trucks").insert({ ...payload, created_by: user?.id });
+    const op = editing ? supabase.from("trucks").update(payload).eq("id", editing.id) : supabase.from("trucks").insert({ ...payload, tenant_id: tenant.id, created_by: user?.id });
     const { error } = await op; if (error) return toast.error(error.message);
     toast.success(t("common.saved")); setOpen(false); load();
   };
