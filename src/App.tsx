@@ -22,6 +22,17 @@ import Trucks from "./pages/Trucks";
 import Deliveries from "./pages/Deliveries";
 import POS from "./pages/POS";
 import Invoice from "./pages/Invoice";
+import SubscriptionExpired from "./pages/SubscriptionExpired";
+import SuperAdminLogin from "./pages/super-admin/SuperAdminLogin";
+import SuperAdminLayout from "./components/SuperAdminLayout";
+import SADashboard from "./pages/super-admin/Dashboard";
+import SAClients from "./pages/super-admin/Clients";
+import SAPlans from "./pages/super-admin/Plans";
+import SASubscriptions from "./pages/super-admin/Subscriptions";
+import SAPayments from "./pages/super-admin/Payments";
+import SAUsers from "./pages/super-admin/Users";
+import SALogs from "./pages/super-admin/ActivityLogs";
+import SASettings from "./pages/super-admin/SystemSettings";
 
 const queryClient = new QueryClient();
 
@@ -35,6 +46,18 @@ const App = () => (
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/subscription-expired" element={<SubscriptionExpired />} />
+            <Route path="/super-admin/login" element={<SuperAdminLogin />} />
+            <Route path="/super-admin" element={<SuperAdminLayout />}>
+              <Route index element={<SADashboard />} />
+              <Route path="clients" element={<SAClients />} />
+              <Route path="plans" element={<SAPlans />} />
+              <Route path="subscriptions" element={<SASubscriptions />} />
+              <Route path="payments" element={<SAPayments />} />
+              <Route path="users" element={<SAUsers />} />
+              <Route path="logs" element={<SALogs />} />
+              <Route path="settings" element={<SASettings />} />
+            </Route>
             <Route element={<AppLayout />}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/pos" element={<POS />} />
