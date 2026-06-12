@@ -37,7 +37,18 @@ const Clients = () => {
     setBusy(true);
     const { data, error } = await supabase.functions.invoke("admin-create-tenant", { body: form });
     setBusy(false);
-    if (error || (data as any)?.error) return toast.error((data as any)?.error ?? error?.message ?? "Failed");
+    let backendError: string | null = (data as any)?.error ?? null;
+    if (!backendError && error) {
+      const ctx: any = (error as any).context;
+      if (ctx && typeof ctx.json === "function") {
+        try { const j = await ctx.json(); backendError = j?.error ?? null; } catch { /* ignore */ }
+      }
+      if (!backendError && ctx && typeof ctx.text === "function") {
+        try { backendError = await ctx.text(); } catch { /* ignore */ }
+      }
+      if (!backendError) backendError = error.message;
+    }
+    if (backendError) return toast.error(backendError);
     toast.success("Client created");
     setOpen(false);
     setForm({ company_name: "", farm_name: "", owner_name: "", mobile: "", email: "", password: "", country: "", city: "", plan_id: "" });

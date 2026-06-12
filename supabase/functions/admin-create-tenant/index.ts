@@ -21,6 +21,9 @@ interface Body {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  const json = (obj: unknown, status = 200) =>
+    new Response(JSON.stringify(obj), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
   try {
     const url = Deno.env.get("SUPABASE_URL")!;
     const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
@@ -29,26 +32,47 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization") ?? "";
     const userClient = createClient(url, anon, { global: { headers: { Authorization: authHeader } } });
     const { data: { user } } = await userClient.auth.getUser();
-    if (!user) return new Response(JSON.stringify({ error: "Not authenticated" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!user) return json({ error: "Not authenticated" }, 401);
 
     const admin = createClient(url, service);
     const { data: roleRow } = await admin.from("user_roles").select("role").eq("user_id", user.id).eq("role", "super_admin").maybeSingle();
-    if (!roleRow) return new Response(JSON.stringify({ error: "Forbidden — super admin only" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!roleRow) return json({ error: "Forbidden — super admin only" }, 403);
 
     const body: Body = await req.json();
     if (!body.email || !body.password || !body.company_name || !body.owner_name) {
-      return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return json({ error: "Missing required fields (company_name, owner_name, email, password)" }, 400);
     }
 
-    // 1. Create auth user
+    // 1. Create or reuse auth user
+    let newUserId: string | null = null;
+    let createdNewUser = false;
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email: body.email,
       password: body.password,
       email_confirm: true,
       user_metadata: { full_name: body.owner_name },
     });
-    if (createErr || !created.user) throw new Error(createErr?.message ?? "Failed to create user");
-    const newUserId = created.user.id;
+    if (createErr) {
+      const msg = (createErr.message ?? "").toLowerCase();
+      const isExists = msg.includes("already") || msg.includes("exists") || (createErr as any).code === "email_exists";
+      if (!isExists) {
+        console.error("createUser failed:", createErr);
+        return json({ error: `Auth user create failed: ${createErr.message}` }, 400);
+      }
+      // Find existing user and reuse only if not already linked to a tenant
+      const { data: list, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
+      if (listErr) return json({ error: `Lookup failed: ${listErr.message}` }, 500);
+      const existing = list.users.find((u) => u.email?.toLowerCase() === body.email.toLowerCase());
+      if (!existing) return json({ error: "Email exists in auth but user not found" }, 500);
+      const { data: link } = await admin.from("tenant_users").select("tenant_id").eq("user_id", existing.id).maybeSingle();
+      if (link) return json({ error: `Email ${body.email} is already linked to another tenant. Use a different email.` }, 409);
+      // Reset password to the one provided so admin's chosen password works
+      await admin.auth.admin.updateUserById(existing.id, { password: body.password, email_confirm: true });
+      newUserId = existing.id;
+    } else {
+      newUserId = created!.user!.id;
+      createdNewUser = true;
+    }
 
     // 2. Create tenant
     const { data: tenant, error: tenantErr } = await admin.from("tenants").insert({
@@ -62,14 +86,23 @@ Deno.serve(async (req) => {
       status: "active",
     }).select().single();
     if (tenantErr || !tenant) {
-      await admin.auth.admin.deleteUser(newUserId);
-      throw new Error(tenantErr?.message ?? "Failed to create tenant");
+      console.error("tenant insert failed:", tenantErr);
+      if (createdNewUser) await admin.auth.admin.deleteUser(newUserId!).catch(() => {});
+      return json({ error: `Tenant create failed: ${tenantErr?.message ?? "unknown"}` }, 400);
     }
 
     // 3. Link user to tenant as admin
-    await admin.from("tenant_users").insert({ tenant_id: tenant.id, user_id: newUserId, tenant_role: "admin" });
-    // 4. Grant app role 'admin' for in-app gating
-    await admin.from("user_roles").insert({ user_id: newUserId, role: "admin" });
+    const { error: tuErr } = await admin.from("tenant_users").insert({ tenant_id: tenant.id, user_id: newUserId, tenant_role: "admin" });
+    if (tuErr) {
+      console.error("tenant_users insert failed:", tuErr);
+      await admin.from("tenants").delete().eq("id", tenant.id);
+      if (createdNewUser) await admin.auth.admin.deleteUser(newUserId!).catch(() => {});
+      return json({ error: `Link user→tenant failed: ${tuErr.message}` }, 400);
+    }
+    // 4. Grant app role 'admin' for in-app gating (ignore if already exists)
+    await admin.from("user_roles").insert({ user_id: newUserId, role: "admin" }).then(({ error }) => {
+      if (error && !error.message.toLowerCase().includes("duplicate")) console.error("user_roles insert:", error);
+    });
 
     // 5. Create subscription if plan provided (else free trial default)
     let planId = body.plan_id ?? null;
@@ -82,12 +115,13 @@ Deno.serve(async (req) => {
       if (plan) {
         const expires = new Date();
         expires.setUTCDate(expires.getUTCDate() + (plan.duration_days ?? 30));
-        await admin.from("subscriptions").insert({
+        const { error: subErr } = await admin.from("subscriptions").insert({
           tenant_id: tenant.id,
           plan_id: plan.id,
           expires_at: expires.toISOString(),
           status: plan.billing_cycle === "trial" ? "trial" : "active",
         });
+        if (subErr) console.error("subscription insert failed:", subErr);
       }
     }
 
@@ -101,9 +135,10 @@ Deno.serve(async (req) => {
       metadata: { email: body.email },
     });
 
-    return new Response(JSON.stringify({ tenant, user_id: newUserId }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return json({ ok: true, tenant, user_id: newUserId, reused_user: !createdNewUser });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.error("admin-create-tenant fatal:", e);
+    return json({ error: msg }, 500);
   }
 });
