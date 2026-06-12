@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pause, Play, Trash2, KeyRound, CreditCard } from "lucide-react";
+import { Plus, Pause, Play, Trash2, KeyRound, CreditCard, Stethoscope, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 interface Tenant { id: string; company_name: string; owner_name: string; email: string; mobile: string | null; country: string | null; city: string | null; status: string; created_at: string }
@@ -23,6 +23,7 @@ const Clients = () => {
   });
   const [pwUser, setPwUser] = useState<{ tenant: Tenant; password: string } | null>(null);
   const [extendOpen, setExtendOpen] = useState<{ tenant: Tenant; plan_id: string; amount: string } | null>(null);
+  const [diagOpen, setDiagOpen] = useState<{ tenant: Tenant; report: any | null; loading: boolean } | null>(null);
 
   const load = async () => {
     const { data } = await supabase.from("tenants").select("*").order("created_at", { ascending: false });
@@ -66,6 +67,27 @@ const Clients = () => {
     if (error) return toast.error(error.message);
     toast.success("Deleted"); load();
   };
+
+  const diagnose = async (t: Tenant) => {
+    setDiagOpen({ tenant: t, report: null, loading: true });
+    const { data, error } = await supabase.functions.invoke("admin-tenant-action", { body: { action: "diagnose_login", email: t.email } });
+    if (error) { toast.error(error.message); setDiagOpen(null); return; }
+    setDiagOpen({ tenant: t, report: data, loading: false });
+  };
+
+  const syncAuth = async () => {
+    if (!confirm("Scan all tenants and repair missing/mismatched auth.users accounts? Newly created auth accounts will get a temp password you must reset.")) return;
+    const { data, error } = await supabase.functions.invoke("admin-tenant-action", { body: { action: "sync_auth_users" } });
+    if (error) return toast.error(error.message);
+    const repaired = (data as any)?.repaired ?? [];
+    if (!repaired.length) toast.success("All tenants already healthy.");
+    else {
+      toast.success(`Repaired ${repaired.length} tenant(s). See console.`);
+      console.table(repaired);
+      alert("Repair report:\n\n" + JSON.stringify(repaired, null, 2));
+    }
+    load();
+  };
   const resetPassword = async () => {
     if (!pwUser) return;
     const { data: tu } = await supabase.from("tenant_users").select("user_id").eq("tenant_id", pwUser.tenant.id).limit(1).maybeSingle();
@@ -101,6 +123,8 @@ const Clients = () => {
     <div className="space-y-4 text-zinc-100">
       <div className="flex items-center justify-between">
         <div><h1 className="text-2xl font-bold">Clients</h1><p className="text-zinc-400 text-sm">All tenant accounts</p></div>
+        <div className="flex items-center gap-2">
+        <Button variant="outline" onClick={syncAuth}><RefreshCw className="h-4 w-4"/> Sync auth users</Button>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button><Plus className="h-4 w-4"/> New Client</Button></DialogTrigger>
           <DialogContent className="max-w-lg">
@@ -126,6 +150,7 @@ const Clients = () => {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Card className="bg-zinc-900 border-zinc-800 overflow-x-auto">
@@ -143,6 +168,7 @@ const Clients = () => {
                 <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs ${t.status === "active" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>{t.status}</span></td>
                 <td className="p-3 text-right space-x-1">
                   <Button size="sm" variant="ghost" title="Extend / Pay" onClick={() => setExtendOpen({ tenant: t, plan_id: "", amount: "" })}><CreditCard className="h-4 w-4"/></Button>
+                  <Button size="sm" variant="ghost" title="Diagnose login" onClick={() => diagnose(t)}><Stethoscope className="h-4 w-4"/></Button>
                   <Button size="sm" variant="ghost" title="Reset Password" onClick={() => setPwUser({ tenant: t, password: "" })}><KeyRound className="h-4 w-4"/></Button>
                   <Button size="sm" variant="ghost" title={t.status === "active" ? "Suspend" : "Activate"} onClick={() => suspend(t)}>{t.status === "active" ? <Pause className="h-4 w-4"/> : <Play className="h-4 w-4"/>}</Button>
                   <Button size="sm" variant="ghost" title="Delete" onClick={() => remove(t)}><Trash2 className="h-4 w-4 text-red-400"/></Button>
@@ -180,6 +206,18 @@ const Clients = () => {
             </div>
           </div>
           <DialogFooter><Button onClick={extend}>Record Payment & Extend</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!diagOpen} onOpenChange={(o) => !o && setDiagOpen(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader><DialogTitle>Login Diagnostic — {diagOpen?.tenant.company_name}</DialogTitle></DialogHeader>
+          {diagOpen?.loading ? <p className="text-sm text-zinc-400">Checking…</p> : (
+            <div className="space-y-2 text-sm">
+              <div className="rounded bg-zinc-800/60 p-3"><b>Likely cause:</b> {diagOpen?.report?.likely_cause}</div>
+              <pre className="text-xs bg-zinc-900 border border-zinc-800 rounded p-3 overflow-auto max-h-80">{JSON.stringify(diagOpen?.report, null, 2)}</pre>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
