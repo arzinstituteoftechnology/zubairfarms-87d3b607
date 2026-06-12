@@ -57,9 +57,20 @@ const Deliveries = () => {
       fuel_expense: Number(form.fuel_expense) || 0, labour_expense: Number(form.labour_expense) || 0, other_expense: Number(form.other_expense) || 0,
       notes: form.notes || null,
     };
+    const oldDate = editing?.loading_date;
+    const newDate = payload.loading_date;
+    console.log("[Deliveries] save start", { recordId: editing?.id, oldDate, newDate, selectedDate, payload });
     const op = editing ? supabase.from("deliveries").update(payload).eq("id", editing.id) : supabase.from("deliveries").insert({ ...payload, created_by: user?.id });
-    const { error } = await op; if (error) return toast.error(error.message);
-    toast.success(t("common.saved")); setOpen(false); setSelectedDate(payload.loading_date); load(payload.loading_date);
+    const { data, error } = await op.select("*").maybeSingle();
+    if (error) return toast.error(error.message);
+    console.log("[Deliveries] saved row", data);
+    if (!data) return toast.error("Save failed: no row returned (permission or RLS).");
+    if (data.loading_date !== newDate) return toast.error(`Date mismatch: requested ${newDate}, DB stored ${data.loading_date}`);
+    toast.success(t("common.saved"));
+    setOpen(false);
+    setEditing(null);
+    setSelectedDate(data.loading_date);
+    load(data.loading_date);
   };
   const doDelete = async () => { if (!del) return; const { error } = await supabase.from("deliveries").delete().eq("id", del.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(selectedDate); } setDel(null); };
 
