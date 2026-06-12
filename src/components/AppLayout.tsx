@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
+import { SubscriptionGate } from "@/components/SubscriptionGate";
 
 const navItems = [
   { to: "/", key: "dashboard", icon: LayoutDashboard, end: true },
@@ -77,7 +78,7 @@ const SidebarContent = ({ role, onSignOut }: { role: string | null; onSignOut: (
 };
 
 const AppLayout = () => {
-  const { session, loading, role, signOut } = useAuth();
+  const { session, loading, role, isSuperAdmin, signOut } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { selectedDate, setSelectedDate, today, isToday } = useLedgerDate();
@@ -87,10 +88,10 @@ const AppLayout = () => {
   }, [loading, session, navigate]);
 
   useEffect(() => {
-    if (!loading && session && role && role !== "admin") {
-      signOut().then(() => navigate("/auth", { replace: true }));
+    if (!loading && session && isSuperAdmin) {
+      navigate("/super-admin", { replace: true });
     }
-  }, [loading, session, role, signOut, navigate]);
+  }, [loading, session, isSuperAdmin, navigate]);
 
   if (loading || !session) {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">{t("common.loading")}</div>;
@@ -102,6 +103,7 @@ const AppLayout = () => {
   };
 
   return (
+    <SubscriptionGate>
     <div className="min-h-screen flex bg-background">
       <aside className="hidden md:block w-64 shrink-0 border-r border-sidebar-border">
         <SidebarContent role={role} onSignOut={handleSignOut} />
@@ -136,6 +138,7 @@ const AppLayout = () => {
         </main>
       </div>
     </div>
+    </SubscriptionGate>
   );
 };
 

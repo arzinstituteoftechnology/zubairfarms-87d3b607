@@ -1,0 +1,143 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { ShieldAlert } from "lucide-react";
+import { toast } from "sonner";
+
+const SuperAdminLogin = () => {
+  const navigate = useNavigate();
+  const { isSuperAdmin, loading, refresh, signOut } = useAuth();
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [bootstrapAvailable, setBootstrapAvailable] = useState(false);
+
+  useEffect(() => {
+    if (!loading && isSuperAdmin) navigate("/super-admin", { replace: true });
+  }, [loading, isSuperAdmin, navigate]);
+
+  useEffect(() => {
+    // Check if any super admin exists; if not, allow signup as bootstrap.
+    (async () => {
+      const { data } = await supabase.from("subscription_plans").select("id").limit(1); // warm
+      // We can't read user_roles without auth. We use a small heuristic: try bootstrap RPC after login attempt.
+      // For UI gating, show signup option if there are no tenants AND no logged-in super admin.
+      const { count } = await supabase.from("tenants").select("id", { count: "exact", head: true });
+      setBootstrapAvailable((count ?? 0) === 0);
+    })();
+  }, []);
+
+  const onSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) { setBusy(false); return toast.error(error.message); }
+    // Verify super admin role; if not, sign out.
+    const { data: rolesRow } = await supabase.from("user_roles").select("role").eq("role", "super_admin");
+    const me = (await supabase.auth.getUser()).data.user;
+    const isSa = (rolesRow ?? []).some((r: any) => r.role === "super_admin");
+    // The above lists rows visible — RLS only returns own row + super admin's. Safer: rpc is_super_admin.
+    const { data: saCheck } = await supabase.rpc("is_super_admin");
+    if (!saCheck) {
+      await supabase.auth.signOut();
+      setBusy(false);
+      return toast.error("This account is not a super admin.");
+    }
+    await refresh();
+    setBusy(false);
+    toast.success("Welcome, Super Admin");
+    navigate("/super-admin", { replace: true });
+  };
+
+  const onSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 6) return toast.error("Password must be at least 6 characters");
+    setBusy(true);
+    const { data, error } = await supabase.auth.signUp({
+      email, password,
+      options: { emailRedirectTo: `${window.location.origin}/super-admin/login`, data: { full_name: fullName || email } },
+    });
+    if (error) { setBusy(false); return toast.error(error.message); }
+    if (!data.session) {
+      // need email confirmation
+      setBusy(false);
+      return toast.success("Check your email to confirm, then sign in.");
+    }
+    // claim super_admin
+    const { data: claimed, error: rpcErr } = await supabase.rpc("bootstrap_super_admin");
+    if (rpcErr) { setBusy(false); return toast.error(rpcErr.message); }
+    if (!claimed) {
+      await supabase.auth.signOut();
+      setBusy(false);
+      return toast.error("Super admin already exists. Sign in instead.");
+    }
+    await refresh();
+    setBusy(false);
+    toast.success("Super admin account created!");
+    navigate("/super-admin", { replace: true });
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-100 p-4">
+      <Card className="w-full max-w-md bg-zinc-900 border-zinc-800 text-zinc-100">
+        <CardHeader className="text-center">
+          <div className="mx-auto h-14 w-14 rounded-2xl bg-red-600 flex items-center justify-center mb-2">
+            <ShieldAlert className="h-7 w-7 text-white" />
+          </div>
+          <CardTitle>Super Admin {mode === "signup" ? "— Bootstrap" : "Console"}</CardTitle>
+          <CardDescription className="text-zinc-400">
+            {mode === "signup" ? "Create the first super admin account." : "Restricted access. Authorized personnel only."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {mode === "signin" ? (
+            <form onSubmit={onSignIn} className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>Email</Label>
+                <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="bg-zinc-800 border-zinc-700" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Password</Label>
+                <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="bg-zinc-800 border-zinc-700" />
+              </div>
+              <Button type="submit" variant="destructive" className="w-full" disabled={busy}>{busy ? "…" : "Sign In"}</Button>
+              {bootstrapAvailable && (
+                <button type="button" className="text-xs text-zinc-400 hover:text-zinc-100 w-full text-center pt-2" onClick={() => setMode("signup")}>
+                  No super admin yet — bootstrap the first one
+                </button>
+              )}
+            </form>
+          ) : (
+            <form onSubmit={onSignUp} className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>Full Name</Label>
+                <Input required value={fullName} onChange={(e) => setFullName(e.target.value)} className="bg-zinc-800 border-zinc-700" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Email</Label>
+                <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="bg-zinc-800 border-zinc-700" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Password</Label>
+                <Input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} className="bg-zinc-800 border-zinc-700" />
+              </div>
+              <Button type="submit" variant="destructive" className="w-full" disabled={busy}>{busy ? "…" : "Create Super Admin"}</Button>
+              <button type="button" className="text-xs text-zinc-400 hover:text-zinc-100 w-full text-center" onClick={() => setMode("signin")}>
+                Back to sign in
+              </button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default SuperAdminLogin;
