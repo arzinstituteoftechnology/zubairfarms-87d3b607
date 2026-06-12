@@ -98,15 +98,28 @@ const Purchases = () => {
       purchase_date: form.purchase_date || filterDate, notes: form.notes || null,
       paid_amount: paid, payment_method: form.payment_method,
     };
+    const oldDate = editing?.purchase_date;
+    const newDate = payload.purchase_date;
+    if (editing && oldDate !== newDate) {
+      console.log("[Purchases] date change", { oldDate, newDate, selectedDate: filterDate });
+    }
     const op = editing
       ? supabase.from("purchases").update(payload).eq("id", editing.id)
       : supabase.from("purchases").insert({ ...payload, created_by: user?.id });
-    const { error } = await op;
+    const { data, error } = await op.select("purchase_date").maybeSingle();
     if (error) return toast.error(error.message);
+    console.log("[Purchases] saved", { databaseUpdatedDate: data?.purchase_date, newDate });
     toast.success(editing ? t("purchases.updated") : t("purchases.recorded"));
     setOpen(false);
-    if (!editing) setFilterDate(payload.purchase_date);
-    await queryClient.invalidateQueries({ queryKey: ["purchases"] });
+    setEditing(null);
+    setFilterDate(payload.purchase_date);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["purchases"] }),
+      queryClient.invalidateQueries({ queryKey: ["inventory"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["farm_payments"] }),
+      queryClient.invalidateQueries({ queryKey: ["payments"] }),
+    ]);
   };
 
   const doDelete = async () => {

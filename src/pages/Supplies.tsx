@@ -100,15 +100,28 @@ const Supplies = () => {
       cost_per_kg: Number(form.cost_per_kg) || 0,
       supply_date: form.supply_date || filterDate, notes: form.notes || null,
     };
+    const oldDate = editing?.supply_date;
+    const newDate = payload.supply_date;
+    if (editing && oldDate !== newDate) {
+      console.log("[Supplies] date change", { oldDate, newDate, selectedDate: filterDate });
+    }
     const op = editing
       ? supabase.from("supplies").update(payload).eq("id", editing.id)
       : supabase.from("supplies").insert({ ...payload, created_by: user?.id });
-    const { error } = await op;
+    const { data, error } = await op.select("supply_date").maybeSingle();
     if (error) return toast.error(error.message);
+    console.log("[Supplies] saved", { databaseUpdatedDate: data?.supply_date, newDate });
     toast.success(editing ? t("supplies.updated") : t("supplies.recorded"));
     setOpen(false);
-    if (!editing) setFilterDate(payload.supply_date);
-    await queryClient.invalidateQueries({ queryKey: ["supplies"] });
+    setEditing(null);
+    setFilterDate(payload.supply_date);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["supplies"] }),
+      queryClient.invalidateQueries({ queryKey: ["inventory"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["customer_payments"] }),
+      queryClient.invalidateQueries({ queryKey: ["payments"] }),
+    ]);
   };
 
   const doDelete = async () => {
