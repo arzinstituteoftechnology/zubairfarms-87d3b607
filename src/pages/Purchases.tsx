@@ -100,21 +100,23 @@ const Purchases = () => {
     };
     const oldDate = editing?.purchase_date;
     const newDate = payload.purchase_date;
-    if (editing && oldDate !== newDate) {
-      console.log("[Purchases] date change", { oldDate, newDate, selectedDate: filterDate });
-    }
+    console.log("[Purchases] save start", { recordId: editing?.id, oldDate, newDate, selectedDate: filterDate, payload });
     const op = editing
       ? supabase.from("purchases").update(payload).eq("id", editing.id)
       : supabase.from("purchases").insert({ ...payload, created_by: user?.id });
-    const { data, error } = await op.select("purchase_date").maybeSingle();
+    const { data, error } = await op.select("*").maybeSingle();
     if (error) return toast.error(error.message);
-    console.log("[Purchases] saved", { databaseUpdatedDate: data?.purchase_date, newDate });
+    console.log("[Purchases] saved row", data);
+    if (!data) return toast.error("Save failed: no row returned (permission or RLS).");
+    if (data.purchase_date !== newDate) {
+      return toast.error(`Date mismatch: requested ${newDate}, DB stored ${data.purchase_date}`);
+    }
     toast.success(editing ? t("purchases.updated") : t("purchases.recorded"));
     setOpen(false);
     setEditing(null);
-    setFilterDate(payload.purchase_date);
+    setFilterDate(data.purchase_date);
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["purchases"] }),
+      queryClient.invalidateQueries({ queryKey: ["purchases"], refetchType: "all" }),
       queryClient.invalidateQueries({ queryKey: ["inventory"] }),
       queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       queryClient.invalidateQueries({ queryKey: ["farm_payments"] }),
