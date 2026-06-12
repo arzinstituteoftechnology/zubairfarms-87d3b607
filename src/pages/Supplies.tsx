@@ -102,21 +102,23 @@ const Supplies = () => {
     };
     const oldDate = editing?.supply_date;
     const newDate = payload.supply_date;
-    if (editing && oldDate !== newDate) {
-      console.log("[Supplies] date change", { oldDate, newDate, selectedDate: filterDate });
-    }
+    console.log("[Supplies] save start", { recordId: editing?.id, oldDate, newDate, selectedDate: filterDate, payload });
     const op = editing
       ? supabase.from("supplies").update(payload).eq("id", editing.id)
       : supabase.from("supplies").insert({ ...payload, created_by: user?.id });
-    const { data, error } = await op.select("supply_date").maybeSingle();
+    const { data, error } = await op.select("*").maybeSingle();
     if (error) return toast.error(error.message);
-    console.log("[Supplies] saved", { databaseUpdatedDate: data?.supply_date, newDate });
+    console.log("[Supplies] saved row", data);
+    if (!data) return toast.error("Save failed: no row returned (permission or RLS).");
+    if (data.supply_date !== newDate) {
+      return toast.error(`Date mismatch: requested ${newDate}, DB stored ${data.supply_date}`);
+    }
     toast.success(editing ? t("supplies.updated") : t("supplies.recorded"));
     setOpen(false);
     setEditing(null);
-    setFilterDate(payload.supply_date);
+    setFilterDate(data.supply_date);
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["supplies"] }),
+      queryClient.invalidateQueries({ queryKey: ["supplies"], refetchType: "all" }),
       queryClient.invalidateQueries({ queryKey: ["inventory"] }),
       queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       queryClient.invalidateQueries({ queryKey: ["customer_payments"] }),
