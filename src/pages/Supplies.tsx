@@ -108,16 +108,21 @@ const Supplies = () => {
       : supabase.from("supplies").insert({ ...payload, created_by: user?.id });
     const { data, error } = await op.select("*").maybeSingle();
     if (error) return toast.error(error.message);
-    console.log("[Supplies] saved row", { recordId: data?.id, oldDate, newDate, returnedDate: data?.supply_date });
     if (!data) return toast.error("Save failed: no row returned (permission or RLS).");
-    if (data.supply_date !== newDate) {
-      return toast.error(`Date mismatch: requested ${newDate}, DB stored ${data.supply_date}`);
+    const { data: freshRow, error: freshError } = await supabase.from("supplies").select("*, shops(name)").eq("id", data.id).maybeSingle();
+    if (freshError) return toast.error(`Saved but reload failed: ${freshError.message}`);
+    if (!freshRow) return toast.error("Save failed: updated row could not be reloaded from database.");
+    const returnedDate = freshRow.supply_date;
+    console.log("[Supplies] saved row", { recordId: freshRow.id, oldDate, newDate, returnedDate });
+    if (returnedDate !== newDate) {
+      return toast.error(`Date mismatch: requested ${newDate}, DB returned ${returnedDate}`);
     }
-    toast.success(editing ? t("supplies.updated") : t("supplies.recorded"));
     setOpen(false);
     setEditing(null);
     setForm(emptyForm());
-    setFilterDate(data.supply_date);
+    if (oldDate) queryClient.setQueryData<Row[]>(["supplies", oldDate], (oldRows = []) => oldRows.filter((r) => r.id !== freshRow.id));
+    queryClient.setQueryData<Row[]>(["supplies", returnedDate], (currentRows = []) => [freshRow as Row, ...currentRows.filter((r) => r.id !== freshRow.id)]);
+    setFilterDate(returnedDate);
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["supplies"], refetchType: "all" }),
       queryClient.invalidateQueries({ queryKey: ["inventory"], refetchType: "all" }),
@@ -125,7 +130,8 @@ const Supplies = () => {
       queryClient.invalidateQueries({ queryKey: ["customer_payments"], refetchType: "all" }),
       queryClient.invalidateQueries({ queryKey: ["payments"], refetchType: "all" }),
     ]);
-    await queryClient.refetchQueries({ queryKey: ["supplies", data.supply_date] });
+    await queryClient.refetchQueries({ queryKey: ["supplies", returnedDate], type: "all" });
+    toast.success(editing ? t("supplies.updated") : t("supplies.recorded"));
   };
 
   const doDelete = async () => {

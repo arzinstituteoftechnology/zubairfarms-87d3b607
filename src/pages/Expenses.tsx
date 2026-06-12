@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "react-i18next";
@@ -23,6 +24,7 @@ const empty = (date = format(new Date(), "yyyy-MM-dd")) => ({ category: "Feed", 
 const Expenses = () => {
   const { role, user } = useAuth();
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [rows, setRows] = useState<E[]>([]);
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,15 +55,25 @@ const Expenses = () => {
     const op = editing ? supabase.from("expenses").update(payload).eq("id", editing.id) : supabase.from("expenses").insert({ ...payload, created_by: user?.id });
     const { data, error } = await op.select("*").maybeSingle();
     if (error) return toast.error(error.message);
-    console.log("[Expenses] saved row", { recordId: data?.id, oldDate, newDate, returnedDate: data?.expense_date });
     if (!data) return toast.error("Save failed: no row returned (permission or RLS).");
-    if (data.expense_date !== newDate) return toast.error(`Date mismatch: requested ${newDate}, DB stored ${data.expense_date}`);
-    toast.success(t("common.saved"));
+    const { data: freshRow, error: freshError } = await supabase.from("expenses").select("*, farms(name)").eq("id", data.id).maybeSingle();
+    if (freshError) return toast.error(`Saved but reload failed: ${freshError.message}`);
+    if (!freshRow) return toast.error("Save failed: updated row could not be reloaded from database.");
+    const returnedDate = freshRow.expense_date;
+    console.log("[Expenses] saved row", { recordId: freshRow.id, oldDate, newDate, returnedDate });
+    if (returnedDate !== newDate) return toast.error(`Date mismatch: requested ${newDate}, DB returned ${returnedDate}`);
     setOpen(false);
     setEditing(null);
     setForm(empty(selectedDate));
-    setSelectedDate(data.expense_date);
-    await load(data.expense_date);
+    setRows((current) => [freshRow as E, ...current.filter((r) => r.id !== freshRow.id)]);
+    setSelectedDate(returnedDate);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["expenses"], refetchType: "all" }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"], refetchType: "all" }),
+      queryClient.invalidateQueries({ queryKey: ["payments"], refetchType: "all" }),
+    ]);
+    await load(returnedDate);
+    toast.success(t("common.saved"));
   };
   const doDelete = async () => { if (!delTarget) return; const { error } = await supabase.from("expenses").delete().eq("id", delTarget.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(selectedDate); } setDelTarget(null); };
 
