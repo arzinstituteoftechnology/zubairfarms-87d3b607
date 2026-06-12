@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "react-i18next";
@@ -28,6 +29,7 @@ const empty = (date = format(new Date(), "yyyy-MM-dd")) => ({ truck_id: "", farm
 const Deliveries = () => {
   const { role, user } = useAuth();
   const { t, i18n } = useTranslation();
+  const queryClient = useQueryClient();
   const [rows, setRows] = useState<D[]>([]);
   const [trucks, setTrucks] = useState<any[]>([]); const [farms, setFarms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,15 +65,25 @@ const Deliveries = () => {
     const op = editing ? supabase.from("deliveries").update(payload).eq("id", editing.id) : supabase.from("deliveries").insert({ ...payload, created_by: user?.id });
     const { data, error } = await op.select("*").maybeSingle();
     if (error) return toast.error(error.message);
-    console.log("[Deliveries] saved row", { recordId: data?.id, oldDate, newDate, returnedDate: data?.loading_date });
     if (!data) return toast.error("Save failed: no row returned (permission or RLS).");
-    if (data.loading_date !== newDate) return toast.error(`Date mismatch: requested ${newDate}, DB stored ${data.loading_date}`);
-    toast.success(t("common.saved"));
+    const { data: freshRow, error: freshError } = await supabase.from("deliveries").select("*, trucks(number, driver_name), farms(name)").eq("id", data.id).maybeSingle();
+    if (freshError) return toast.error(`Saved but reload failed: ${freshError.message}`);
+    if (!freshRow) return toast.error("Save failed: updated row could not be reloaded from database.");
+    const returnedDate = freshRow.loading_date;
+    console.log("[Deliveries] saved row", { recordId: freshRow.id, oldDate, newDate, returnedDate });
+    if (returnedDate !== newDate) return toast.error(`Date mismatch: requested ${newDate}, DB returned ${returnedDate}`);
     setOpen(false);
     setEditing(null);
     setForm(empty(selectedDate));
-    setSelectedDate(data.loading_date);
-    await load(data.loading_date);
+    setRows((current) => [freshRow as D, ...current.filter((r) => r.id !== freshRow.id)]);
+    setSelectedDate(returnedDate);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["deliveries"], refetchType: "all" }),
+      queryClient.invalidateQueries({ queryKey: ["inventory"], refetchType: "all" }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"], refetchType: "all" }),
+    ]);
+    await load(returnedDate);
+    toast.success(t("common.saved"));
   };
   const doDelete = async () => { if (!del) return; const { error } = await supabase.from("deliveries").delete().eq("id", del.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(selectedDate); } setDel(null); };
 
