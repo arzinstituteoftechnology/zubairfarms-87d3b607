@@ -18,8 +18,14 @@ export const SubscriptionGate = ({ children }: { children: ReactNode }) => {
     if (exp < Date.now()) navigate("/subscription-expired?reason=expired", { replace: true });
   }, [loading, session, isSuperAdmin, tenant, subscription, navigate]);
 
+  const isExpired = subscription ? new Date(subscription.expires_at).getTime() < Date.now() : false;
+  const isBlocked = !!session && !isSuperAdmin && (!tenant || tenant.status === "suspended" || !subscription || isExpired);
   const daysLeft = subscription ? Math.ceil((new Date(subscription.expires_at).getTime() - Date.now()) / 86400000) : null;
   const showWarn = !dismissed && daysLeft !== null && daysLeft > 0 && daysLeft <= 7;
+
+  if (isBlocked) {
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Checking account access…</div>;
+  }
 
   return (
     <>

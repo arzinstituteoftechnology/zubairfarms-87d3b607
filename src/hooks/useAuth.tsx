@@ -43,7 +43,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [subscription, setSubscription] = useState<SubInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const clearProfile = () => {
+    setRole(null);
+    setIsSuperAdmin(false);
+    setTenant(null);
+    setSubscription(null);
+  };
+
   const loadProfile = async (userId: string) => {
+    clearProfile();
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user || authData.user.id !== userId) {
+      await supabase.auth.signOut();
+      return;
+    }
+
     const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", userId);
     const list = (roles ?? []).map((r) => r.role as Role);
     const superAdmin = list.includes("super_admin");
@@ -83,10 +97,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (s?.user) {
         setTimeout(() => { loadProfile(s.user.id); }, 0);
       } else {
-        setRole(null);
-        setIsSuperAdmin(false);
-        setTenant(null);
-        setSubscription(null);
+        clearProfile();
       }
     });
 

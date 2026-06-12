@@ -16,7 +16,7 @@ type Shop = { id: string; name: string; contact_person: string | null; phone: st
 const empty: Partial<Shop> = { name: "", contact_person: "", phone: "", address: "", notes: "" };
 
 const Shops = () => {
-  const { role, user } = useAuth();
+  const { role, user, tenant } = useAuth();
   const { t } = useTranslation();
   const [rows, setRows] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,10 +35,11 @@ const Shops = () => {
 
   const save = async () => {
     if (!form.name?.trim()) return toast.error(t("farms.name_required"));
+    if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
     const payload: any = { name: form.name, contact_person: form.contact_person, phone: form.phone, address: form.address, notes: form.notes };
     const op = editing
       ? supabase.from("shops").update(payload).eq("id", editing.id)
-      : supabase.from("shops").insert({ ...payload, created_by: user?.id });
+      : supabase.from("shops").insert({ ...payload, tenant_id: tenant.id, created_by: user?.id });
     const { error } = await op;
     if (error) return toast.error(error.message);
     toast.success(editing ? t("shops.updated") : t("shops.added"));
