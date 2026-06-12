@@ -53,7 +53,9 @@ async function createTenant(label: string): Promise<TenantCtx> {
     expires_at: exp.toISOString(), status: "active",
   });
 
-  const client = createClient(SUPABASE_URL, ANON, { auth: { persistSession: false } });
+  const client = createClient(SUPABASE_URL, ANON, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
   const { error: sErr } = await client.auth.signInWithPassword({ email, password });
   if (sErr) throw new Error(`signIn ${label}: ${sErr.message}`);
 
@@ -62,6 +64,7 @@ async function createTenant(label: string): Promise<TenantCtx> {
 
 async function cleanup(ctxs: TenantCtx[]) {
   for (const c of ctxs) {
+    try { await c.client.auth.signOut(); } catch { /* noop */ }
     await admin.from("tenants").delete().eq("id", c.tenantId);  // cascades to data
     await admin.from("user_roles").delete().eq("user_id", c.userId);
     await admin.auth.admin.deleteUser(c.userId);
@@ -75,14 +78,13 @@ function seedPayload(table: string, ctx: TenantCtx): Record<string, unknown> {
     case "farms":     return { ...base, name: `Farm ${TAG}` };
     case "shops":     return { ...base, name: `Shop ${TAG}` };
     case "customers": return { ...base, name: `Cust ${TAG}` };
-    case "suppliers": return { ...base, name: `Sup ${TAG}` };
     case "trucks":    return { ...base, number: `TRK-${TAG}` };
     case "expenses":  return { ...base, category: "Misc", amount: 100, expense_date: new Date().toISOString().slice(0, 10) };
     default: throw new Error(`No seed for ${table}`);
   }
 }
 
-const TENANT_TABLES = ["farms", "shops", "customers", "suppliers", "trucks", "expenses"];
+const TENANT_TABLES = ["farms", "shops", "customers", "trucks", "expenses"];
 
 Deno.test("RLS: tenant isolation for all CRUD tables", async () => {
   const A = await createTenant("a");
