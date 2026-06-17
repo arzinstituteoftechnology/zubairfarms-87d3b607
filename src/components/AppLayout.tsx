@@ -84,21 +84,15 @@ const SidebarContent = ({ role, onSignOut, customersEnabled }: { role: string | 
 };
 
 const AppLayout = () => {
-  const { session, loading, role, isSuperAdmin, signOut } = useAuth();
+  const { session, loading, role, signOut } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { selectedDate, setSelectedDate, today, isToday } = useLedgerDate();
   const { customers_module_enabled } = useModuleFlags();
 
   useEffect(() => {
-    if (!loading && !session) navigate("/auth", { replace: true });
+    if (!loading && !session) navigate("/login", { replace: true });
   }, [loading, session, navigate]);
-
-  useEffect(() => {
-    if (!loading && session && isSuperAdmin) {
-      navigate("/super-admin", { replace: true });
-    }
-  }, [loading, session, isSuperAdmin, navigate]);
 
   if (loading || !session) {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">{t("common.loading")}</div>;
@@ -106,7 +100,7 @@ const AppLayout = () => {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate("/auth", { replace: true });
+    navigate("/login", { replace: true });
   };
 
   return (

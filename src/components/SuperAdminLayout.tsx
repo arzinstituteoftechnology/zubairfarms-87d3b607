@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
+import { useSuperAdminAuth } from "@/hooks/useSuperAdminAuth";
 import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard, Users, CreditCard, Package, Receipt,
@@ -22,7 +22,7 @@ const items = [
 ];
 
 const SuperAdminLayout = () => {
-  const { loading, isSuperAdmin, signOut } = useAuth();
+  const { loading, isSuperAdmin, signOut } = useSuperAdminAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
