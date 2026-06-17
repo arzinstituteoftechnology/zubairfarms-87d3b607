@@ -13,6 +13,7 @@ import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { ReverseTransactionDialog } from "@/components/ReverseTransactionDialog";
+import { printReport } from "@/lib/printReport";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -387,7 +388,28 @@ const Suppliers = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between gap-3">
               <span>{t("suppliers.ledger_for", { name: ledger?.name ?? "" })}</span>
-              <Button size="sm" variant="outline" onClick={() => window.print()} className="no-print">
+              <Button size="sm" variant="outline" className="no-print" onClick={() => ledger && printReport<any>({
+                businessName: tenant?.company_name,
+                title: `Supplier Ledger — ${ledger.name}`,
+                subtitle: ledger.phone ?? "",
+                dateLabel: ledgerFilterDate || "All",
+                columns: [
+                  { label: "Date", value: (e) => e.date },
+                  { label: "Type", value: (e) => KIND_LABEL[e.kind as LedgerKind] ?? e.kind },
+                  { label: "Detail", value: (e) => e.meta },
+                  { label: "Debit", value: (e) => e.debit > 0 ? fmtMoney(e.debit) : "—", align: "right" },
+                  { label: "Credit", value: (e) => e.credit > 0 ? fmtMoney(e.credit) : "—", align: "right" },
+                  { label: "Balance", value: (e) => fmtMoney(e.running ?? 0), align: "right" },
+                ],
+                rows: filteredEntries as any,
+                totals: [
+                  { label: "Opening", value: fmtMoney(ledger.opening_balance) },
+                  { label: "Total Purchased", value: fmtMoney(filteredEntries.reduce((s, e: any) => s + Number(e.debit || 0), 0)) },
+                  { label: "Total Paid", value: fmtMoney(filteredEntries.reduce((s, e: any) => s + Number(e.credit || 0), 0)) },
+                  { label: "Current Balance", value: fmtMoney(ledger.balance) },
+                ],
+                footer: `Printed by ${user?.email ?? ""}`,
+              })}>
                 <Printer className="h-4 w-4" /> {t("common.print") || "Print"}
               </Button>
             </DialogTitle>

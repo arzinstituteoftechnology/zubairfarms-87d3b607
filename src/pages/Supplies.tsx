@@ -11,11 +11,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { MEAT_TYPES, fmtKg, fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
+import { printReport } from "@/lib/printReport";
 
 type Row = {
   id: string; shop_id: string; meat_type: string; weight_kg: number; rate_per_kg: number;
@@ -186,6 +187,24 @@ const Supplies = () => {
           <Input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value || ledgerToday)} className="force-ltr w-[180px]" />
         </div>
         <Button variant="outline" disabled={filterDate === ledgerToday} onClick={() => setFilterDate(ledgerToday)}>{t("dashboard.today_btn")}</Button>
+        <Button variant="outline" onClick={() => printReport<Row>({
+          businessName: tenant?.company_name,
+          title: "Supplies Report",
+          dateLabel: filterDate,
+          columns: [
+            { label: "Shop", value: (r) => r.shops?.name ?? "—" },
+            { label: "Meat Type", value: (r) => r.meat_type },
+            { label: "Weight (kg)", value: (r) => fmtKg(r.weight_kg), align: "right" },
+            { label: "Rate/kg", value: (r) => fmtMoney(r.rate_per_kg), align: "right" },
+            { label: "Total Amount", value: (r) => fmtMoney(r.total_amount), align: "right" },
+          ],
+          rows,
+          totals: [
+            { label: "Total Weight", value: fmtKg(rows.reduce((s, r) => s + Number(r.weight_kg || 0), 0)) },
+            { label: "Total Amount", value: fmtMoney(rows.reduce((s, r) => s + Number(r.total_amount || 0), 0)) },
+          ],
+          footer: `Printed by ${user?.email ?? ""}`,
+        })}><Printer className="h-4 w-4" /> {t("common.print") || "Print"}</Button>
       </div>
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setForm(emptyForm()); } }}>
         <DialogContent>
