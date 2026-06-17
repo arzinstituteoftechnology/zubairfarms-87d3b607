@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { MEAT_TYPES, fmtKg, fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
+import { printReport } from "@/lib/printReport";
 
 type Row = {
   id: string; farm_id: string; meat_type: string; weight_kg: number; rate_per_kg: number;
@@ -162,7 +163,28 @@ const Purchases = () => {
             <Input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value || ledgerToday)} className="w-44" />
           </div>
           <Button variant="outline" size="sm" onClick={() => setFilterDate(ledgerToday)}>{t("dashboard.today_btn")}</Button>
-          <Button variant="outline" size="sm" onClick={() => window.print()}><Printer className="h-4 w-4" /> {t("common.print")}</Button>
+          <Button variant="outline" size="sm" onClick={() => printReport<Row>({
+            businessName: tenant?.company_name,
+            title: "Purchases Report",
+            dateLabel: filterDate,
+            columns: [
+              { label: "Farm", value: (r) => r.farms?.name ?? "—" },
+              { label: "Meat Type", value: (r) => r.meat_type },
+              { label: "Weight (kg)", value: (r) => fmtKg(r.weight_kg), align: "right" },
+              { label: "Rate/kg", value: (r) => fmtMoney(r.rate_per_kg), align: "right" },
+              { label: "Total Amount", value: (r) => fmtMoney(r.total_amount), align: "right" },
+              { label: "Paid", value: (r) => fmtMoney(r.paid_amount), align: "right" },
+              { label: "Balance", value: (r) => fmtMoney(Number(r.total_amount) - Number(r.paid_amount)), align: "right" },
+            ],
+            rows,
+            totals: [
+              { label: "Total Weight", value: fmtKg(rows.reduce((s, r) => s + Number(r.weight_kg || 0), 0)) },
+              { label: "Total Amount", value: fmtMoney(rows.reduce((s, r) => s + Number(r.total_amount || 0), 0)) },
+              { label: "Total Paid", value: fmtMoney(rows.reduce((s, r) => s + Number(r.paid_amount || 0), 0)) },
+              { label: "Total Balance", value: fmtMoney(rows.reduce((s, r) => s + (Number(r.total_amount || 0) - Number(r.paid_amount || 0)), 0)) },
+            ],
+            footer: `Printed by ${user?.email ?? ""}`,
+          })}><Printer className="h-4 w-4" /> {t("common.print")}</Button>
         </div>
       <CrudPage<Row>
         title={t("purchases.title")}
