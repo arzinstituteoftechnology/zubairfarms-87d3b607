@@ -1103,6 +1103,33 @@ export type Database = {
           },
         ]
       }
+      super_admin_login_attempts: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          ip: string | null
+          success: boolean
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          ip?: string | null
+          success?: boolean
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          ip?: string | null
+          success?: boolean
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       supplier_ledger_entries: {
         Row: {
           amount: number
@@ -1439,6 +1466,10 @@ export type Database = {
       }
       is_business_user: { Args: { _uid: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      record_super_admin_login_attempt: {
+        Args: { _email: string; _success: boolean }
+        Returns: undefined
+      }
       reverse_farm_payment: {
         Args: { p_id: string; p_notes?: string; p_reason: string }
         Returns: string
@@ -1463,6 +1494,8 @@ export type Database = {
         Args: { p_id: string; p_notes?: string; p_reason: string }
         Returns: string
       }
+      super_admin_exists: { Args: never; Returns: boolean }
+      super_admin_login_lockout: { Args: { _email: string }; Returns: number }
       tenant_has_active_subscription: {
         Args: { _tenant_id: string }
         Returns: boolean
