@@ -380,19 +380,19 @@ const ShopLedger = () => {
 
   const performReverse = async (e: LedgerEntry, reason: string, notes: string) => {
     if (!ledger) return;
-    let res;
+    let res: { error: any } | undefined;
     if (e.source === "supply" && e.rawId) {
       res = await supabase.rpc("reverse_supply", { p_id: e.rawId, p_reason: reason, p_notes: notes });
     } else if (e.source === "ledger" && e.ledgerType === "recovery" && e.ledgerId) {
       const { data: rec } = await supabase.from("shop_recoveries").select("id").eq("ledger_entry_id", e.ledgerId).maybeSingle();
-      if (!rec) return toast.error("Recovery record not found");
+      if (!rec) { toast.error("Recovery record not found"); return; }
       res = await supabase.rpc("reverse_shop_recovery", { p_id: rec.id, p_reason: reason, p_notes: notes });
     } else if (e.source === "ledger" && e.ledgerId) {
       res = await supabase.rpc("reverse_shop_ledger_entry", { p_id: e.ledgerId, p_reason: reason, p_notes: notes });
     } else {
       return;
     }
-    if (res.error) return toast.error(res.error.message);
+    if (res?.error) { toast.error(res.error.message); return; }
     toast.success("Transaction reversed");
     setReverseEntry(null);
     await refreshLedger(ledger); load();
