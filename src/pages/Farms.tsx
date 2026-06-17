@@ -12,9 +12,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-type Farm = { id: string; name: string; contact_person: string | null; phone: string | null; address: string | null; notes: string | null };
+type Farm = { id: string; name: string; contact_person: string | null; phone: string | null; address: string | null; notes: string | null; opening_balance: number };
 
-const empty: Partial<Farm> = { name: "", contact_person: "", phone: "", address: "", notes: "" };
+const empty: Partial<Farm> = { name: "", contact_person: "", phone: "", address: "", notes: "", opening_balance: 0 };
 
 const Farms = () => {
   const { role, user, tenant } = useAuth();
@@ -40,17 +40,35 @@ const Farms = () => {
   const save = async () => {
     if (!form.name?.trim()) return toast.error(t("farms.name_required"));
     if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
+    const openingBalance = Number(form.opening_balance ?? 0) || 0;
     if (editing) {
+      const prevOpening = Number(editing.opening_balance ?? 0) || 0;
       const { error } = await supabase.from("farms").update({
-        name: form.name, contact_person: form.contact_person, phone: form.phone, address: form.address, notes: form.notes,
+        name: form.name, contact_person: form.contact_person, phone: form.phone, address: form.address, notes: form.notes, opening_balance: openingBalance,
       }).eq("id", editing.id);
       if (error) return toast.error(error.message);
+      // Sync the matching opening_balance ledger entry
+      if (openingBalance !== prevOpening) {
+        await supabase.from("supplier_ledger_entries").delete().eq("supplier_id", editing.id).eq("entry_type", "opening_balance");
+        if (openingBalance > 0) {
+          await supabase.from("supplier_ledger_entries").insert({
+            supplier_id: editing.id, tenant_id: tenant.id, entry_type: "opening_balance",
+            amount: openingBalance, description: "Opening balance", entry_date: new Date().toISOString().slice(0, 10), created_by: user?.id,
+          });
+        }
+      }
       toast.success(t("farms.updated"));
     } else {
-      const { error } = await supabase.from("farms").insert({
-        name: form.name!, contact_person: form.contact_person, phone: form.phone, address: form.address, notes: form.notes, tenant_id: tenant.id, created_by: user?.id,
-      });
+      const { data: inserted, error } = await supabase.from("farms").insert({
+        name: form.name!, contact_person: form.contact_person, phone: form.phone, address: form.address, notes: form.notes, opening_balance: openingBalance, tenant_id: tenant.id, created_by: user?.id,
+      }).select("id").single();
       if (error) return toast.error(error.message);
+      if (inserted && openingBalance > 0) {
+        await supabase.from("supplier_ledger_entries").insert({
+          supplier_id: inserted.id, tenant_id: tenant.id, entry_type: "opening_balance",
+          amount: openingBalance, description: "Opening balance", entry_date: new Date().toISOString().slice(0, 10), created_by: user?.id,
+        });
+      }
       toast.success(t("farms.added"));
     }
     setOpen(false); load();
@@ -96,6 +114,12 @@ const Farms = () => {
               <div><Label>{t("common.phone")}</Label><Input value={form.phone ?? ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
             </div>
             <div><Label>{t("common.address")}</Label><Input value={form.address ?? ""} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
+            <div>
+              <Label>Opening Balance (previous due)</Label>
+              <Input type="number" min="0" step="0.01" value={form.opening_balance ?? 0}
+                onChange={(e) => setForm({ ...form, opening_balance: e.target.value === "" ? 0 : Number(e.target.value) })} />
+              <p className="text-xs text-muted-foreground mt-1">Amount the supplier was already owed before using this system. Shows in the ledger as the first entry.</p>
+            </div>
             <div><Label>{t("common.notes")}</Label><Textarea value={form.notes ?? ""} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button><Button onClick={save}>{t("common.save")}</Button></DialogFooter>
