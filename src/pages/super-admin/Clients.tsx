@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pause, Play, Trash2, KeyRound, CreditCard, Stethoscope, RefreshCw } from "lucide-react";
+import { Plus, Pause, Play, Trash2, KeyRound, CreditCard, Stethoscope, RefreshCw, Eraser, Download } from "lucide-react";
 import { toast } from "sonner";
 
 interface Tenant { id: string; company_name: string; owner_name: string; email: string; mobile: string | null; country: string | null; city: string | null; status: string; created_at: string }
@@ -24,6 +24,7 @@ const Clients = () => {
   const [pwUser, setPwUser] = useState<{ tenant: Tenant; password: string } | null>(null);
   const [extendOpen, setExtendOpen] = useState<{ tenant: Tenant; plan_id: string; amount: string } | null>(null);
   const [diagOpen, setDiagOpen] = useState<{ tenant: Tenant; report: any | null; loading: boolean } | null>(null);
+  const [resetOpen, setResetOpen] = useState<{ tenant: Tenant; mode: "business" | "full"; confirm: string; busy: boolean } | null>(null);
 
   const load = async () => {
     const { data } = await supabase.from("tenants").select("*").order("created_at", { ascending: false });
@@ -66,6 +67,35 @@ const Clients = () => {
     const { error } = await supabase.functions.invoke("admin-tenant-action", { body: { action: "delete_tenant", tenant_id: t.id } });
     if (error) return toast.error(error.message);
     toast.success("Deleted"); load();
+  };
+
+  const downloadBackup = async (t: Tenant) => {
+    toast.info("Building backup…");
+    const { data, error } = await supabase.functions.invoke("admin-reset-data", { body: { action: "backup", tenant_id: t.id } });
+    if (error || (data as any)?.error) return toast.error((data as any)?.error ?? error?.message ?? "Backup failed");
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `backup-${t.company_name.replace(/\s+/g, "_")}-${new Date().toISOString().slice(0,10)}.json`;
+    a.click(); URL.revokeObjectURL(url);
+    toast.success("Backup downloaded");
+  };
+
+  const runReset = async () => {
+    if (!resetOpen) return;
+    if (resetOpen.confirm !== "RESET") return toast.error("Type RESET to confirm");
+    setResetOpen({ ...resetOpen, busy: true });
+    const action = resetOpen.mode === "full" ? "full_client_reset" : "business_reset";
+    const { data, error } = await supabase.functions.invoke("admin-reset-data", {
+      body: { action, tenant_id: resetOpen.tenant.id, confirm: "RESET" },
+    });
+    if (error || (data as any)?.error) {
+      setResetOpen({ ...resetOpen, busy: false });
+      return toast.error((data as any)?.error ?? error?.message ?? "Reset failed");
+    }
+    toast.success(resetOpen.mode === "full" ? "Full client reset complete" : "Business data reset complete");
+    setResetOpen(null);
+    load();
   };
 
   const diagnose = async (t: Tenant) => {
@@ -168,6 +198,8 @@ const Clients = () => {
                 <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs ${t.status === "active" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>{t.status}</span></td>
                 <td className="p-3 text-right space-x-1">
                   <Button size="sm" variant="ghost" title="Extend / Pay" onClick={() => setExtendOpen({ tenant: t, plan_id: "", amount: "" })}><CreditCard className="h-4 w-4"/></Button>
+                  <Button size="sm" variant="ghost" title="Backup data" onClick={() => downloadBackup(t)}><Download className="h-4 w-4"/></Button>
+                  <Button size="sm" variant="ghost" title="Reset client data" onClick={() => setResetOpen({ tenant: t, mode: "business", confirm: "", busy: false })}><Eraser className="h-4 w-4 text-amber-400"/></Button>
                   <Button size="sm" variant="ghost" title="Diagnose login" onClick={() => diagnose(t)}><Stethoscope className="h-4 w-4"/></Button>
                   <Button size="sm" variant="ghost" title="Reset Password" onClick={() => setPwUser({ tenant: t, password: "" })}><KeyRound className="h-4 w-4"/></Button>
                   <Button size="sm" variant="ghost" title={t.status === "active" ? "Suspend" : "Activate"} onClick={() => suspend(t)}>{t.status === "active" ? <Pause className="h-4 w-4"/> : <Play className="h-4 w-4"/>}</Button>
@@ -218,6 +250,43 @@ const Clients = () => {
               <pre className="text-xs bg-zinc-900 border border-zinc-800 rounded p-3 overflow-auto max-h-80">{JSON.stringify(diagOpen?.report, null, 2)}</pre>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!resetOpen} onOpenChange={(o) => !o && setResetOpen(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Reset Client Data — {resetOpen?.tenant.company_name}</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div>
+              <Label>Reset mode</Label>
+              <Select value={resetOpen?.mode ?? "business"} onValueChange={(v) => resetOpen && setResetOpen({ ...resetOpen, mode: v as "business" | "full" })}>
+                <SelectTrigger><SelectValue/></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="business">Business Data Reset (purchases, supplies, expenses, deliveries, inventory, recoveries)</SelectItem>
+                  <SelectItem value="full">Full Client Reset (business data + settings)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-amber-200">
+              <p className="font-semibold mb-1">This will permanently delete this client's business data.</p>
+              <ul className="list-disc pl-5 text-xs space-y-0.5">
+                <li>Purchases, supplies, expenses, deliveries, sales, payments, recoveries</li>
+                <li>Customers, suppliers, shops, farms, trucks</li>
+                {resetOpen?.mode === "full" && <li>Tenant settings</li>}
+              </ul>
+              <p className="text-xs mt-2"><b>Preserved:</b> owner account, email/password, subscription, organization{resetOpen?.mode === "business" ? ", settings" : ""}. Other clients are not affected.</p>
+            </div>
+            <div>
+              <Label>Type <span className="font-mono">RESET</span> to confirm</Label>
+              <Input value={resetOpen?.confirm ?? ""} onChange={(e) => resetOpen && setResetOpen({ ...resetOpen, confirm: e.target.value })} placeholder="RESET"/>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetOpen(null)} disabled={resetOpen?.busy}>Cancel</Button>
+            <Button variant="destructive" onClick={runReset} disabled={!resetOpen || resetOpen.confirm !== "RESET" || resetOpen.busy}>
+              {resetOpen?.busy ? "Resetting…" : "Reset client data"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

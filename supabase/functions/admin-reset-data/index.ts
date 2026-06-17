@@ -31,11 +31,14 @@ const BUSINESS_TABLES = [
 
 type Body =
   | { action: "business_reset"; confirm: string; tenant_id?: string | null }
+  | { action: "full_client_reset"; confirm: string; tenant_id: string }
   | { action: "factory_reset"; confirm: string }
   | { action: "backup"; tenant_id?: string | null }
   | { action: "restore"; backup: Record<string, any[]>; confirm: string };
 
 const CONFIRM_PHRASE = "I understand this will permanently delete data";
+const SHORT_CONFIRM = "RESET";
+const isConfirmed = (s: string) => s === CONFIRM_PHRASE || s === SHORT_CONFIRM;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -68,7 +71,7 @@ Deno.serve(async (req) => {
 
     // ---------- BUSINESS RESET ----------
     if (body.action === "business_reset") {
-      if (body.confirm !== CONFIRM_PHRASE) return json({ error: "Confirmation phrase does not match" }, 400);
+      if (!isConfirmed(body.confirm)) return json({ error: "Type RESET to confirm" }, 400);
 
       // Take a safety backup first (business tables only).
       const backup = await buildBackup(admin, body.tenant_id ?? null, /*includeTenancy*/ false);
@@ -86,6 +89,15 @@ Deno.serve(async (req) => {
         counts[table] = count ?? 0;
       }
 
+      await admin.from("activity_logs").insert({
+        actor_user_id: user.id,
+        tenant_id: body.tenant_id ?? null,
+        action: "business_reset",
+        entity: "tenant",
+        entity_id: body.tenant_id ?? null,
+        metadata: { deleted_counts: counts },
+      });
+
       return json({
         ok: true,
         mode: "business_reset",
@@ -96,9 +108,41 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ---------- FULL CLIENT RESET (per-tenant: wipe business + settings, keep org/owner/subscription) ----------
+    if (body.action === "full_client_reset") {
+      if (!isConfirmed(body.confirm)) return json({ error: "Type RESET to confirm" }, 400);
+      if (!body.tenant_id) return json({ error: "tenant_id required" }, 400);
+
+      const backup = await buildBackup(admin, body.tenant_id, /*includeTenancy*/ false);
+      const counts: Record<string, number> = {};
+      const tables = [...BUSINESS_TABLES, "settings"];
+      for (const table of tables) {
+        const { error, count } = await admin.from(table).delete({ count: "exact" }).eq("tenant_id", body.tenant_id);
+        counts[table] = error ? -1 : (count ?? 0);
+      }
+
+      await admin.from("activity_logs").insert({
+        actor_user_id: user.id,
+        tenant_id: body.tenant_id,
+        action: "full_client_reset",
+        entity: "tenant",
+        entity_id: body.tenant_id,
+        metadata: { deleted_counts: counts },
+      });
+
+      return json({
+        ok: true,
+        mode: "full_client_reset",
+        tenant_id: body.tenant_id,
+        deleted_counts: counts,
+        backup,
+        message: "Full client reset complete. Owner account, organization and subscription preserved.",
+      });
+    }
+
     // ---------- FACTORY RESET (super admin only, wipes everything except super admins) ----------
     if (body.action === "factory_reset") {
-      if (body.confirm !== CONFIRM_PHRASE) return json({ error: "Confirmation phrase does not match" }, 400);
+      if (!isConfirmed(body.confirm)) return json({ error: "Type RESET to confirm" }, 400);
 
       const backup = await buildBackup(admin, null, /*includeTenancy*/ true);
 
@@ -142,7 +186,7 @@ Deno.serve(async (req) => {
 
     // ---------- RESTORE ----------
     if (body.action === "restore") {
-      if (body.confirm !== CONFIRM_PHRASE) return json({ error: "Confirmation phrase does not match" }, 400);
+      if (!isConfirmed(body.confirm)) return json({ error: "Type RESET to confirm" }, 400);
       const results: Record<string, { inserted: number; error?: string }> = {};
       // Insert in reverse dependency order: parents first.
       const restoreOrder = [...BUSINESS_TABLES].reverse();
