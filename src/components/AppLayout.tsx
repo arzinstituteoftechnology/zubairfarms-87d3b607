@@ -6,7 +6,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import {
   LayoutDashboard, Beef, Tractor, Store, ShoppingCart, Truck,
   Boxes, Settings as SettingsIcon, LogOut, Menu,
-  Users, Wallet, Receipt, TruckIcon,
+  Users, Wallet, Receipt, TruckIcon, HandCoins,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ const navItems = [
   { to: "/customers", key: "customers", icon: Users },
   { to: "/suppliers", key: "suppliers", icon: Wallet },
   { to: "/shop-ledger", key: "shop_ledger", icon: Wallet },
+  { to: "/daily-recovery", key: "daily_recovery", icon: HandCoins },
   { to: "/purchases", key: "purchases", icon: ShoppingCart },
   { to: "/supplies", key: "supplies", icon: Truck },
   { to: "/expenses", key: "expenses", icon: Wallet },
