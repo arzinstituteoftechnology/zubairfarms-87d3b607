@@ -567,6 +567,26 @@ const Suppliers = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ReverseTransactionDialog
+        open={!!reverseEntry}
+        target={reverseEntry ? { label: `${KIND_LABEL[reverseEntry.kind]} — ${reverseEntry.meta}`, amount: reverseEntry.debit || reverseEntry.credit, date: reverseEntry.date } : null}
+        onOpenChange={(o) => !o && setReverseEntry(null)}
+        onConfirm={(reason, notes) => reverseEntry ? performReverse(reverseEntry, reason, notes) : Promise.resolve()}
+      />
+      <AlertDialog open={!!confirmDel} onOpenChange={(o) => !o && setConfirmDel(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this ledger entry?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Hard delete removes the record permanently. Prefer Reverse Transaction to preserve the audit trail.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => confirmDel && deleteEntry(confirmDel)}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };
