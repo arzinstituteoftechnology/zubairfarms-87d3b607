@@ -50,7 +50,6 @@ const emptyForm = (): Form => ({
 const DailyRecovery = () => {
   const { user, tenant } = useAuth();
   const [shops, setShops] = useState<Shop[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [rows, setRows] = useState<Recovery[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -61,23 +60,20 @@ const DailyRecovery = () => {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: sh }, { data: pr }, { data: rc }] = await Promise.all([
+    const [{ data: sh }, { data: rc }] = await Promise.all([
       supabase.from("shops").select("id, name").order("name"),
-      supabase.from("profiles").select("id, full_name"),
       supabase.from("shop_recoveries").select("*").order("recovery_date", { ascending: false }).order("created_at", { ascending: false }),
     ]);
     setShops((sh ?? []) as Shop[]);
-    setProfiles((pr ?? []) as Profile[]);
     setRows((rc ?? []) as Recovery[]);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
 
   const shopName = (id: string) => shops.find((s) => s.id === id)?.name ?? "—";
-  const userName = (id: string | null) => (id ? profiles.find((p) => p.id === id)?.full_name || "—" : "—");
 
   const openNew = () => {
-    setForm({ ...emptyForm(), collected_by: user?.id ?? "" });
+    setForm(emptyForm());
     setOpen(true);
   };
   const openEdit = (r: Recovery) => {
@@ -104,7 +100,7 @@ const DailyRecovery = () => {
       amount: amt,
       payment_method: form.payment_method,
       notes: form.notes || null,
-      collected_by: form.collected_by || user?.id || null,
+      collected_by: form.collected_by || null,
     };
     if (form.id) {
       const { error } = await supabase.from("shop_recoveries").update(payload).eq("id", form.id);
