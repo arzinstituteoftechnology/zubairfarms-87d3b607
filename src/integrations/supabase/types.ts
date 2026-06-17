@@ -695,6 +695,53 @@ export type Database = {
           },
         ]
       }
+      shop_ledger_entries: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          description: string | null
+          entry_date: string
+          entry_type: Database["public"]["Enums"]["shop_ledger_type"]
+          id: string
+          shop_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          entry_date?: string
+          entry_type: Database["public"]["Enums"]["shop_ledger_type"]
+          id?: string
+          shop_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          entry_date?: string
+          entry_type?: Database["public"]["Enums"]["shop_ledger_type"]
+          id?: string
+          shop_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_ledger_entries_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shops: {
         Row: {
           address: string | null
@@ -704,6 +751,7 @@ export type Database = {
           id: string
           name: string
           notes: string | null
+          opening_balance: number
           phone: string | null
           tenant_id: string
           updated_at: string
@@ -716,6 +764,7 @@ export type Database = {
           id?: string
           name: string
           notes?: string | null
+          opening_balance?: number
           phone?: string | null
           tenant_id?: string
           updated_at?: string
@@ -728,6 +777,7 @@ export type Database = {
           id?: string
           name?: string
           notes?: string | null
+          opening_balance?: number
           phone?: string | null
           tenant_id?: string
           updated_at?: string
@@ -1132,6 +1182,12 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "staff" | "super_admin" | "manager"
+      shop_ledger_type:
+        | "opening_balance"
+        | "manual_supply"
+        | "manual_payment"
+        | "adjustment_increase"
+        | "adjustment_decrease"
       supplier_ledger_type:
         | "opening_balance"
         | "manual_purchase"
@@ -1266,6 +1322,13 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "staff", "super_admin", "manager"],
+      shop_ledger_type: [
+        "opening_balance",
+        "manual_supply",
+        "manual_payment",
+        "adjustment_increase",
+        "adjustment_decrease",
+      ],
       supplier_ledger_type: [
         "opening_balance",
         "manual_purchase",

@@ -12,8 +12,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-type Shop = { id: string; name: string; contact_person: string | null; phone: string | null; address: string | null; notes: string | null };
-const empty: Partial<Shop> = { name: "", contact_person: "", phone: "", address: "", notes: "" };
+type Shop = { id: string; name: string; contact_person: string | null; phone: string | null; address: string | null; notes: string | null; opening_balance: number };
+const empty: Partial<Shop> = { name: "", contact_person: "", phone: "", address: "", notes: "", opening_balance: 0 };
 
 const Shops = () => {
   const { role, user, tenant } = useAuth();
@@ -36,13 +36,33 @@ const Shops = () => {
   const save = async () => {
     if (!form.name?.trim()) return toast.error(t("farms.name_required"));
     if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
-    const payload: any = { name: form.name, contact_person: form.contact_person, phone: form.phone, address: form.address, notes: form.notes };
-    const op = editing
-      ? supabase.from("shops").update(payload).eq("id", editing.id)
-      : supabase.from("shops").insert({ ...payload, tenant_id: tenant.id, created_by: user?.id });
-    const { error } = await op;
-    if (error) return toast.error(error.message);
-    toast.success(editing ? t("shops.updated") : t("shops.added"));
+    const openingBalance = Number(form.opening_balance ?? 0) || 0;
+    const payload: any = { name: form.name, contact_person: form.contact_person, phone: form.phone, address: form.address, notes: form.notes, opening_balance: openingBalance };
+    if (editing) {
+      const prevOpening = Number(editing.opening_balance ?? 0) || 0;
+      const { error } = await supabase.from("shops").update(payload).eq("id", editing.id);
+      if (error) return toast.error(error.message);
+      if (openingBalance !== prevOpening) {
+        await supabase.from("shop_ledger_entries").delete().eq("shop_id", editing.id).eq("entry_type", "opening_balance");
+        if (openingBalance > 0) {
+          await supabase.from("shop_ledger_entries").insert({
+            shop_id: editing.id, tenant_id: tenant.id, entry_type: "opening_balance",
+            amount: openingBalance, description: "Opening balance", entry_date: new Date().toISOString().slice(0, 10), created_by: user?.id,
+          });
+        }
+      }
+      toast.success(t("shops.updated"));
+    } else {
+      const { data: inserted, error } = await supabase.from("shops").insert({ ...payload, tenant_id: tenant.id, created_by: user?.id }).select("id").single();
+      if (error) return toast.error(error.message);
+      if (inserted && openingBalance > 0) {
+        await supabase.from("shop_ledger_entries").insert({
+          shop_id: inserted.id, tenant_id: tenant.id, entry_type: "opening_balance",
+          amount: openingBalance, description: "Opening balance", entry_date: new Date().toISOString().slice(0, 10), created_by: user?.id,
+        });
+      }
+      toast.success(t("shops.added"));
+    }
     setOpen(false); load();
   };
 
@@ -85,6 +105,12 @@ const Shops = () => {
               <div><Label>{t("common.phone")}</Label><Input value={form.phone ?? ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
             </div>
             <div><Label>{t("common.address")}</Label><Input value={form.address ?? ""} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
+            <div>
+              <Label>Opening Balance (previous due)</Label>
+              <Input type="number" min="0" step="0.01" value={form.opening_balance ?? 0}
+                onChange={(e) => setForm({ ...form, opening_balance: e.target.value === "" ? 0 : Number(e.target.value) })} />
+              <p className="text-xs text-muted-foreground mt-1">Amount the shop already owed before using this system. Shows in the shop ledger as the first entry.</p>
+            </div>
             <div><Label>{t("common.notes")}</Label><Textarea value={form.notes ?? ""} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button><Button onClick={save}>{t("common.save")}</Button></DialogFooter>
