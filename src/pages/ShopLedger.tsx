@@ -7,7 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Wallet, Printer, Pencil, Trash2, Plus } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Wallet, Printer, Pencil, Trash2, Plus, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
@@ -58,7 +62,8 @@ type SupplyForm = {
 };
 
 const ShopLedger = () => {
-  const { user, tenant } = useAuth();
+  const { user, tenant, role, isSuperAdmin } = useAuth();
+  const canManage = isSuperAdmin || role === "admin";
   const { t } = useTranslation();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,6 +84,13 @@ const ShopLedger = () => {
   });
   const [supplyOpen, setSupplyOpen] = useState(false);
   const [supplyForm, setSupplyForm] = useState<SupplyForm | null>(null);
+  const [openingOpen, setOpeningOpen] = useState(false);
+  const [openingAmt, setOpeningAmt] = useState("");
+  const [openingLedgerId, setOpeningLedgerId] = useState<string | null>(null);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recoveryForm, setRecoveryForm] = useState<{ id: string; recovery_date: string; amount: string; payment_method: string; collected_by: string; notes: string } | null>(null);
+  const [viewEntry, setViewEntry] = useState<LedgerEntry | null>(null);
+  const [confirmDel, setConfirmDel] = useState<LedgerEntry | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -140,7 +152,7 @@ const ShopLedger = () => {
         id: `le-${x.id}`, source: "ledger", kind, date: x.entry_date,
         debit: isDebit ? amt : 0, credit: isDebit ? 0 : amt,
         meta: x.description || KIND_LABEL[kind],
-        editable: x.entry_type !== "opening_balance" && x.entry_type !== "recovery" && x.entry_type !== "reversed_recovery",
+        editable: x.entry_type !== "reversed_recovery",
         ledgerId: x.id, ledgerType: x.entry_type,
       });
     });
@@ -223,7 +235,19 @@ const ShopLedger = () => {
   };
 
   const editEntry = (e: LedgerEntry) => {
-    if (e.source === "ledger") return editManual(e);
+    if (e.source === "ledger") {
+      if (e.ledgerType === "opening_balance") {
+        setOpeningAmt(String(e.debit || 0));
+        setOpeningLedgerId(e.ledgerId ?? null);
+        setOpeningOpen(true);
+        return;
+      }
+      if (e.ledgerType === "recovery") {
+        openRecoveryEdit(e);
+        return;
+      }
+      return editManual(e);
+    }
     if (e.source === "supply" && e.raw) {
       setSupplyForm({
         id: e.raw.id,
@@ -237,14 +261,81 @@ const ShopLedger = () => {
     }
   };
 
-  const deleteEntry = async (e: LedgerEntry) => {
-    if (!ledger) return;
-    if (e.source === "ledger") return deleteManual(e);
-    if (!e.rawId) return;
-    if (!confirm("Delete this entry? This will recalculate the shop balance.")) return;
-    const { error } = await supabase.from("supplies").delete().eq("id", e.rawId);
+  const openRecoveryEdit = async (e: LedgerEntry) => {
+    if (!e.ledgerId) return;
+    const { data, error } = await supabase
+      .from("shop_recoveries")
+      .select("id, recovery_date, amount, payment_method, collected_by, notes")
+      .eq("ledger_entry_id", e.ledgerId)
+      .maybeSingle();
+    if (error || !data) return toast.error(error?.message || "Recovery record not found");
+    setRecoveryForm({
+      id: data.id, recovery_date: data.recovery_date, amount: String(data.amount),
+      payment_method: data.payment_method, collected_by: data.collected_by ?? "", notes: data.notes ?? "",
+    });
+    setRecoveryOpen(true);
+  };
+
+  const saveRecovery = async () => {
+    if (!ledger || !recoveryForm) return;
+    const amt = Number(recoveryForm.amount);
+    if (!amt || amt <= 0) return toast.error("Enter a valid amount");
+    const { error } = await supabase.from("shop_recoveries").update({
+      recovery_date: recoveryForm.recovery_date,
+      amount: amt,
+      payment_method: recoveryForm.payment_method,
+      collected_by: recoveryForm.collected_by || null,
+      notes: recoveryForm.notes || null,
+    }).eq("id", recoveryForm.id);
     if (error) return toast.error(error.message);
-    toast.success("Entry deleted");
+    toast.success("Recovery updated");
+    setRecoveryOpen(false);
+    await refreshLedger(ledger); load();
+  };
+
+  const saveOpening = async () => {
+    if (!ledger) return;
+    const amt = Number(openingAmt);
+    if (amt < 0 || Number.isNaN(amt)) return toast.error("Enter a valid amount");
+    const { error: e1 } = await supabase.from("shops").update({ opening_balance: amt }).eq("id", ledger.id);
+    if (e1) return toast.error(e1.message);
+    if (openingLedgerId) {
+      const { error: e2 } = await supabase.from("shop_ledger_entries")
+        .update({ amount: amt }).eq("id", openingLedgerId);
+      if (e2) return toast.error(e2.message);
+    }
+    toast.success("Opening balance updated");
+    setOpeningOpen(false);
+    await refreshLedger(ledger); load();
+  };
+
+  const performDelete = async (e: LedgerEntry) => {
+    if (!ledger) return;
+    if (e.source === "ledger") {
+      if (e.ledgerType === "opening_balance") {
+        const { error: e1 } = await supabase.from("shops").update({ opening_balance: 0 }).eq("id", ledger.id);
+        if (e1) return toast.error(e1.message);
+        if (e.ledgerId) await supabase.from("shop_ledger_entries").delete().eq("id", e.ledgerId);
+        toast.success("Opening balance removed");
+      } else if (e.ledgerType === "recovery") {
+        if (!e.ledgerId) return;
+        const { data: rec } = await supabase.from("shop_recoveries").select("id").eq("ledger_entry_id", e.ledgerId).maybeSingle();
+        if (!rec) return toast.error("Recovery record not found");
+        const { error } = await supabase.from("shop_recoveries").delete().eq("id", rec.id);
+        if (error) return toast.error(error.message);
+        toast.success("Recovery deleted (reversal posted)");
+      } else {
+        if (!e.ledgerId) return;
+        const { error } = await supabase.from("shop_ledger_entries").delete().eq("id", e.ledgerId);
+        if (error) return toast.error(error.message);
+        toast.success("Entry deleted");
+      }
+    } else if (e.source === "supply" && e.rawId) {
+      const { error } = await supabase.from("supplies").delete().eq("id", e.rawId);
+      if (error) return toast.error(error.message);
+      toast.success("Entry deleted");
+    }
+    setConfirmDel(null);
     await refreshLedger(ledger); load();
   };
 
@@ -359,12 +450,15 @@ const ShopLedger = () => {
                           <td className="p-2 text-end text-success force-ltr">{e.credit > 0 ? fmtMoney(e.credit) : "—"}</td>
                           <td className="p-2 text-end force-ltr font-medium">{fmtMoney((e as any).running ?? 0)}</td>
                           <td className="p-2 text-end no-print">
-                            {e.editable && (
-                              <div className="flex justify-end gap-1">
-                                <Button size="icon" variant="ghost" onClick={() => editEntry(e)}><Pencil className="h-3.5 w-3.5" /></Button>
-                                <Button size="icon" variant="ghost" onClick={() => deleteEntry(e)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
-                              </div>
-                            )}
+                            <div className="flex justify-end gap-1">
+                              <Button size="icon" variant="ghost" onClick={() => setViewEntry(e)} title="View"><Eye className="h-3.5 w-3.5" /></Button>
+                              {canManage && e.editable && (
+                                <Button size="icon" variant="ghost" onClick={() => editEntry(e)} title="Edit"><Pencil className="h-3.5 w-3.5" /></Button>
+                              )}
+                              {canManage && e.ledgerType !== "reversed_recovery" && (
+                                <Button size="icon" variant="ghost" onClick={() => setConfirmDel(e)} title="Delete"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -422,6 +516,76 @@ const ShopLedger = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={openingOpen} onOpenChange={setOpeningOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Opening Balance</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Amount</Label><Input type="number" min="0" step="0.01" value={openingAmt} onChange={(e) => setOpeningAmt(e.target.value)} /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpeningOpen(false)}>Cancel</Button>
+            <Button onClick={saveOpening}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={recoveryOpen} onOpenChange={setRecoveryOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Recovery</DialogTitle></DialogHeader>
+          {recoveryForm && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Date</Label><Input type="date" value={recoveryForm.recovery_date} onChange={(e) => setRecoveryForm({ ...recoveryForm, recovery_date: e.target.value })} /></div>
+                <div><Label>Amount</Label><Input type="number" step="0.01" value={recoveryForm.amount} onChange={(e) => setRecoveryForm({ ...recoveryForm, amount: e.target.value })} /></div>
+                <div>
+                  <Label>Payment Method</Label>
+                  <select className="border rounded-md h-10 px-2 w-full bg-background" value={recoveryForm.payment_method}
+                    onChange={(e) => setRecoveryForm({ ...recoveryForm, payment_method: e.target.value })}>
+                    <option value="cash">Cash</option>
+                    <option value="bank">Bank</option>
+                    <option value="jazzcash">JazzCash</option>
+                    <option value="easypaisa">Easypaisa</option>
+                  </select>
+                </div>
+                <div><Label>Collected By</Label><Input value={recoveryForm.collected_by} onChange={(e) => setRecoveryForm({ ...recoveryForm, collected_by: e.target.value })} /></div>
+                <div className="col-span-2"><Label>Notes</Label><Input value={recoveryForm.notes} onChange={(e) => setRecoveryForm({ ...recoveryForm, notes: e.target.value })} /></div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRecoveryOpen(false)}>Cancel</Button>
+            <Button onClick={saveRecovery}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!viewEntry} onOpenChange={(o) => !o && setViewEntry(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Ledger Entry</DialogTitle></DialogHeader>
+          {viewEntry && (
+            <div className="space-y-2 text-sm">
+              <div><span className="text-muted-foreground">Date: </span><span className="force-ltr">{viewEntry.date}</span></div>
+              <div><span className="text-muted-foreground">Type: </span>{KIND_LABEL[viewEntry.kind]}</div>
+              <div><span className="text-muted-foreground">Description: </span>{viewEntry.meta}</div>
+              <div><span className="text-muted-foreground">Debit: </span><span className="force-ltr">{viewEntry.debit > 0 ? fmtMoney(viewEntry.debit) : "—"}</span></div>
+              <div><span className="text-muted-foreground">Credit: </span><span className="force-ltr">{viewEntry.credit > 0 ? fmtMoney(viewEntry.credit) : "—"}</span></div>
+              <div><span className="text-muted-foreground">Running Balance: </span><span className="force-ltr font-medium">{fmtMoney((viewEntry as any).running ?? 0)}</span></div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      <AlertDialog open={!!confirmDel} onOpenChange={(o) => !o && setConfirmDel(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this ledger entry?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action recalculates all balances. {confirmDel?.ledgerType === "recovery" ? "A reversed-recovery entry will be posted to keep the audit trail." : "This cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => confirmDel && performDelete(confirmDel)}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };

@@ -701,6 +701,8 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string | null
+          edited_at: string | null
+          edited_by: string | null
           entry_date: string
           entry_type: Database["public"]["Enums"]["shop_ledger_type"]
           id: string
@@ -713,6 +715,8 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          edited_at?: string | null
+          edited_by?: string | null
           entry_date?: string
           entry_type: Database["public"]["Enums"]["shop_ledger_type"]
           id?: string
@@ -725,6 +729,8 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          edited_at?: string | null
+          edited_by?: string | null
           entry_date?: string
           entry_type?: Database["public"]["Enums"]["shop_ledger_type"]
           id?: string
@@ -748,6 +754,8 @@ export type Database = {
           collected_by: string | null
           created_at: string
           created_by: string | null
+          edited_at: string | null
+          edited_by: string | null
           id: string
           ledger_entry_id: string | null
           notes: string | null
@@ -762,6 +770,8 @@ export type Database = {
           collected_by?: string | null
           created_at?: string
           created_by?: string | null
+          edited_at?: string | null
+          edited_by?: string | null
           id?: string
           ledger_entry_id?: string | null
           notes?: string | null
@@ -776,6 +786,8 @@ export type Database = {
           collected_by?: string | null
           created_at?: string
           created_by?: string | null
+          edited_at?: string | null
+          edited_by?: string | null
           id?: string
           ledger_entry_id?: string | null
           notes?: string | null
