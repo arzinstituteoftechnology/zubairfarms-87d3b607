@@ -11,11 +11,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
+import { printReport } from "@/lib/printReport";
 
 const CATEGORIES = ["Feed", "Labour", "Salary", "Transport", "Fuel", "Utilities", "Repairs", "Medicine", "Rent", "Other"];
 type E = { id: string; category: string; amount: number; expense_date: string; farm_id: string | null; notes: string | null; farms?: { name: string } | null };
@@ -33,6 +34,7 @@ const Expenses = () => {
   const [editing, setEditing] = useState<E | null>(null);
   const [delTarget, setDelTarget] = useState<E | null>(null);
   const { selectedDate, setSelectedDate } = useLedgerDate();
+  const ledgerToday = format(new Date(), "yyyy-MM-dd");
 
   const load = async (date = selectedDate) => {
     setLoading(true);
@@ -109,6 +111,29 @@ const Expenses = () => {
           )},
         ]}
       />
+      <div className="flex items-end gap-2 -mt-2">
+        <div>
+          <Label className="text-xs uppercase tracking-wider text-muted-foreground">{t("common.date")}</Label>
+          <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value || ledgerToday)} className="force-ltr w-[180px]" />
+        </div>
+        <Button variant="outline" disabled={selectedDate === ledgerToday} onClick={() => setSelectedDate(ledgerToday)}>{t("dashboard.today_btn")}</Button>
+        <Button variant="outline" onClick={() => printReport<E>({
+          businessName: tenant?.company_name,
+          title: "Expenses Report",
+          dateLabel: selectedDate,
+          columns: [
+            { label: "Category", value: (r) => r.category },
+            { label: "Farm", value: (r) => r.farms?.name ?? "—" },
+            { label: "Notes", value: (r) => r.notes ?? "—" },
+            { label: "Amount", value: (r) => fmtMoney(r.amount), align: "right" },
+          ],
+          rows,
+          totals: [
+            { label: "Total Amount", value: fmtMoney(total) },
+          ],
+          footer: `Printed by ${user?.email ?? ""}`,
+        })}><Printer className="h-4 w-4" /> {t("common.print") || "Print"}</Button>
+      </div>
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setForm(empty(selectedDate)); } }}>
         <DialogContent>
           <DialogHeader><DialogTitle>{editing ? t("expenses.edit") : t("expenses.add")}</DialogTitle></DialogHeader>
