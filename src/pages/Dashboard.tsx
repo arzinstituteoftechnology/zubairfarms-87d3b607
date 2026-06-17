@@ -3,8 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtKg, fmtMoney } from "@/lib/constants";
-import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users } from "lucide-react";
-import { format, subDays } from "date-fns";
+import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins } from "lucide-react";
+import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
 import { Input } from "@/components/ui/input";
@@ -17,9 +17,10 @@ interface KPI {
   stockKg: number;
   profit: number;
   payableToFarms: number; receivableFromCustomers: number;
+  recoveryToday: number; recoveryWeek: number; recoveryMonth: number;
 }
 
-const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0 };
+const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0 };
 
 const KpiCard = ({ icon: Icon, label, value, sub, tone = "default" }: any) => (
   <Card>
@@ -76,6 +77,13 @@ const Dashboard = () => {
         supabase.from("farm_payments").select("amount").eq("payment_date", today),
         supabase.from("pos_sales").select("due").eq("sale_date", today),
       ]);
+      const weekStart = format(startOfWeek(new Date(selectedDate), { weekStartsOn: 1 }), "yyyy-MM-dd");
+      const monthStart = format(startOfMonth(new Date(selectedDate)), "yyyy-MM-dd");
+      const { data: recAll } = await supabase
+        .from("shop_recoveries")
+        .select("amount, recovery_date")
+        .gte("recovery_date", monthStart)
+        .lte("recovery_date", today);
 
       const sum = (arr: any[] | null, k: string) => (arr ?? []).reduce((a, x) => a + Number(x[k] ?? 0), 0);
       const purchaseKg = sum(pAll, "weight_kg");
@@ -95,7 +103,11 @@ const Dashboard = () => {
       const payableToFarms = Math.max(0, totalPurchaseAmt - paidOnPurchases - extraFarmPaid);
       const receivableFromCustomers = (posAll ?? []).reduce((a, x: any) => a + Number(x.due ?? 0), 0);
 
-      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, payableToFarms, receivableFromCustomers });
+      const recoveryToday = (recAll ?? []).filter((x: any) => x.recovery_date === today).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
+      const recoveryWeek = (recAll ?? []).filter((x: any) => x.recovery_date >= weekStart).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
+      const recoveryMonth = (recAll ?? []).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
+
+      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, payableToFarms, receivableFromCustomers, recoveryToday, recoveryWeek, recoveryMonth });
 
       // 7-day chart ending at selected date
       const days: any[] = [];
@@ -137,6 +149,9 @@ const Dashboard = () => {
         <KpiCard icon={Users} label={t("dashboard.receivable")} value={fmtMoney(kpi.receivableFromCustomers)} sub={t("dashboard.customer_dues")} tone="danger" />
         <KpiCard icon={Beef} label={t("dashboard.total_purchase_value")} value={fmtMoney(kpi.purchaseAmt)} sub={selectedDate} />
         <KpiCard icon={Truck} label={t("dashboard.total_supply_value")} value={fmtMoney(kpi.supplyAmt)} sub={selectedDate} />
+        <KpiCard icon={HandCoins} label="Today's Recovery" value={fmtMoney(kpi.recoveryToday)} sub={selectedDate} tone="success" />
+        <KpiCard icon={HandCoins} label="This Week Recovery" value={fmtMoney(kpi.recoveryWeek)} sub="Mon → selected" tone="success" />
+        <KpiCard icon={HandCoins} label="This Month Recovery" value={fmtMoney(kpi.recoveryMonth)} sub="Month to date" tone="success" />
       </div>
 
       <div className="grid gap-4">
