@@ -13,6 +13,7 @@ import { Plus, Trash2, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { MEAT_TYPES, fmtMoney } from "@/lib/constants";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
+import { useModuleFlags } from "@/hooks/useModuleFlags";
 
 type Item = { meat_type: string; weight_kg: string; rate_per_kg: string; faraq: string };
 const newItem = (): Item => ({ meat_type: "Chicken", weight_kg: "", rate_per_kg: "", faraq: "0" });
@@ -26,6 +27,7 @@ const POS = () => {
   const { user, tenant } = useAuth();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { customers_module_enabled: customersEnabled } = useModuleFlags();
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
   const [items, setItems] = useState<Item[]>([newItem()]);
   const [customerId, setCustomerId] = useState<string>("");
@@ -37,7 +39,10 @@ const POS = () => {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { supabase.from("customers").select("id, name").order("name").then(({ data }) => setCustomers(data ?? [])); }, []);
+  useEffect(() => {
+    if (!customersEnabled) { setCustomers([]); setCustomerId(""); return; }
+    supabase.from("customers").select("id, name").order("name").then(({ data }) => setCustomers(data ?? []));
+  }, [customersEnabled]);
 
   const update = (i: number, k: keyof Item, v: string) => setItems((arr) => arr.map((x, idx) => idx === i ? { ...x, [k]: v } : x));
   const subtotal = items.reduce((s, it) => s + calc(it).total, 0);
@@ -79,12 +84,14 @@ const POS = () => {
         <Card className="p-4 space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <div><Label>{t("pos.date")}</Label><Input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} /></div>
+            {customersEnabled && (
             <div><Label>{t("pos.customer_optional")}</Label>
               <Select value={customerId || "__walk"} onValueChange={(v) => setCustomerId(v === "__walk" ? "" : v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent><SelectItem value="__walk">{t("pos.walk_in")}</SelectItem>{customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
+            )}
             <div><Label>{t("pos.type")}</Label>
               <Select value={saleType} onValueChange={setSaleType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
