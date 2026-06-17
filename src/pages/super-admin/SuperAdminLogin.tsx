@@ -14,6 +14,7 @@ const SuperAdminLogin = () => {
   const [searchParams] = useSearchParams();
   const { isSuperAdmin, loading, refresh } = useAuth();
   const [mode, setMode] = useState<"signin" | "signup">(searchParams.get("setup") === "1" ? "signup" : "signin");
+  const [saExists, setSaExists] = useState<boolean | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -23,15 +24,36 @@ const SuperAdminLogin = () => {
     if (!loading && isSuperAdmin) navigate("/super-admin", { replace: true });
   }, [loading, isSuperAdmin, navigate]);
 
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.rpc("super_admin_exists");
+      const exists = !!data;
+      setSaExists(exists);
+      if (exists && mode === "signup") setMode("signin");
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
+    // Rate limit check
+    const { data: lock } = await supabase.rpc("super_admin_login_lockout", { _email: email });
+    if (typeof lock === "number" && lock > 0) {
+      setBusy(false);
+      return toast.error(`Too many failed attempts. Try again in ${Math.ceil(lock / 60)} minute(s).`);
+    }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) { setBusy(false); return toast.error(error.message); }
+    if (error) {
+      await supabase.rpc("record_super_admin_login_attempt", { _email: email, _success: false });
+      setBusy(false);
+      return toast.error(error.message);
+    }
     // After a full reset, email confirmation may complete before the role is claimed.
     // This RPC only grants super_admin when no super_admin exists yet.
     const { error: bootstrapErr } = await supabase.rpc("bootstrap_super_admin");
     if (bootstrapErr) {
+      await supabase.rpc("record_super_admin_login_attempt", { _email: email, _success: false });
       await supabase.auth.signOut();
       setBusy(false);
       return toast.error(bootstrapErr.message);
@@ -39,15 +61,18 @@ const SuperAdminLogin = () => {
 
     const { data: saCheck, error: saErr } = await supabase.rpc("is_super_admin");
     if (saErr) {
+      await supabase.rpc("record_super_admin_login_attempt", { _email: email, _success: false });
       await supabase.auth.signOut();
       setBusy(false);
       return toast.error(saErr.message);
     }
     if (!saCheck) {
+      await supabase.rpc("record_super_admin_login_attempt", { _email: email, _success: false });
       await supabase.auth.signOut();
       setBusy(false);
       return toast.error("This account is not a super admin.");
     }
+    await supabase.rpc("record_super_admin_login_attempt", { _email: email, _success: true });
     await refresh();
     setBusy(false);
     toast.success("Welcome, Super Admin");
@@ -56,6 +81,7 @@ const SuperAdminLogin = () => {
 
   const onSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saExists) return toast.error("A Super Admin already exists. Bootstrap is permanently disabled.");
     if (password.length < 6) return toast.error("Password must be at least 6 characters");
     setBusy(true);
     const { data, error } = await supabase.auth.signUp({
@@ -106,14 +132,16 @@ const SuperAdminLogin = () => {
                 <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="bg-zinc-800 border-zinc-700" />
               </div>
               <Button type="submit" variant="destructive" className="w-full" disabled={busy}>{busy ? "…" : "Sign In"}</Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full border-red-700 bg-zinc-900 text-red-200 hover:bg-red-950 hover:text-red-100"
-                onClick={() => setMode("signup")}
-              >
-                Create the first Super Admin account
-              </Button>
+              {saExists === false && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full border-red-700 bg-zinc-900 text-red-200 hover:bg-red-950 hover:text-red-100"
+                  onClick={() => setMode("signup")}
+                >
+                  Create the first Super Admin account
+                </Button>
+              )}
             </form>
           ) : (
             <form onSubmit={onSignUp} className="space-y-3">
