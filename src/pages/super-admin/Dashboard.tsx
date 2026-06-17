@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, CheckCircle2, AlertOctagon, PauseCircle, DollarSign, TrendingUp, Tractor, Users } from "lucide-react";
+import { Building2, CheckCircle2, AlertOctagon, PauseCircle, DollarSign, TrendingUp, Tractor, Users, Database } from "lucide-react";
 
 interface Stat { label: string; value: string | number; icon: any; color: string }
 
 const Dashboard = () => {
   const [stats, setStats] = useState<Stat[]>([]);
+  const [lastBackup, setLastBackup] = useState<{ created_at: string; status: string; backup_type: string } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -35,6 +37,11 @@ const Dashboard = () => {
         { label: "Active Farms", value: farms?.length ?? 0, icon: Tractor, color: "bg-amber-500" },
         { label: "Total Users", value: tu?.length ?? 0, icon: Users, color: "bg-purple-500" },
       ]);
+      const { data: bk } = await supabase
+        .from("backup_history")
+        .select("created_at, status, backup_type")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      setLastBackup(bk as any);
     })();
   }, []);
 
@@ -55,6 +62,24 @@ const Dashboard = () => {
           </Card>
         ))}
       </div>
+      <Link to="/super-admin/backups" className="block">
+        <Card className="bg-zinc-900 border-zinc-800 hover:border-zinc-700 transition-colors">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm font-medium text-zinc-400">Last Backup</CardTitle>
+            <div className={`h-8 w-8 rounded-md flex items-center justify-center ${lastBackup?.status === "success" ? "bg-emerald-500" : lastBackup?.status === "warning" ? "bg-amber-500" : lastBackup?.status === "failed" ? "bg-red-500" : "bg-zinc-600"}`}>
+              <Database className="h-4 w-4 text-white" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {lastBackup ? new Date(lastBackup.created_at).toLocaleString() : "No backups yet"}
+            </div>
+            <div className="text-xs text-zinc-500 mt-1">
+              {lastBackup ? `${lastBackup.backup_type} · ${lastBackup.status}` : "Click to create your first backup"}
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
     </div>
   );
 };
