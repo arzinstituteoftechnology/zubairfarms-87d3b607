@@ -1325,6 +1325,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _assert_can_reverse: { Args: never; Returns: undefined }
       bootstrap_super_admin: { Args: never; Returns: boolean }
       current_tenant_id: { Args: never; Returns: string }
       has_role: {
@@ -1336,6 +1337,30 @@ export type Database = {
       }
       is_business_user: { Args: { _uid: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      reverse_farm_payment: {
+        Args: { p_id: string; p_notes?: string; p_reason: string }
+        Returns: string
+      }
+      reverse_purchase: {
+        Args: { p_id: string; p_notes?: string; p_reason: string }
+        Returns: string
+      }
+      reverse_shop_ledger_entry: {
+        Args: { p_id: string; p_notes?: string; p_reason: string }
+        Returns: string
+      }
+      reverse_shop_recovery: {
+        Args: { p_id: string; p_notes?: string; p_reason: string }
+        Returns: string
+      }
+      reverse_supplier_ledger_entry: {
+        Args: { p_id: string; p_notes?: string; p_reason: string }
+        Returns: string
+      }
+      reverse_supply: {
+        Args: { p_id: string; p_notes?: string; p_reason: string }
+        Returns: string
+      }
       tenant_has_active_subscription: {
         Args: { _tenant_id: string }
         Returns: boolean
