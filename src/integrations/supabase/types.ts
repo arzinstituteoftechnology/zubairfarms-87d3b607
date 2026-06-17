@@ -742,6 +742,59 @@ export type Database = {
           },
         ]
       }
+      shop_recoveries: {
+        Row: {
+          amount: number
+          collected_by: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          ledger_entry_id: string | null
+          notes: string | null
+          payment_method: string
+          recovery_date: string
+          shop_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          collected_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          ledger_entry_id?: string | null
+          notes?: string | null
+          payment_method?: string
+          recovery_date?: string
+          shop_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          collected_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          ledger_entry_id?: string | null
+          notes?: string | null
+          payment_method?: string
+          recovery_date?: string
+          shop_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_recoveries_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shops: {
         Row: {
           address: string | null
