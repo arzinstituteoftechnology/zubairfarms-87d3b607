@@ -6,9 +6,11 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { AlertTriangle, Database, Download, RotateCcw, Upload } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { refreshModuleFlags } from "@/hooks/useModuleFlags";
 
 const SystemSettings = () => {
-  const [s, setS] = useState({ app_name: "", currency: "USD", default_trial_days: 15 });
+  const [s, setS] = useState({ app_name: "", currency: "USD", default_trial_days: 15, customers_module_enabled: false });
   const [confirmPhrase, setConfirmPhrase] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const REQUIRED = "I understand this will permanently delete data";
@@ -16,14 +18,21 @@ const SystemSettings = () => {
   useEffect(() => {
     (async () => {
       const { data } = await supabase.from("system_settings").select("*").eq("id", 1).maybeSingle();
-      if (data) setS({ app_name: data.app_name, currency: data.currency, default_trial_days: data.default_trial_days });
+      if (data) setS({
+        app_name: data.app_name,
+        currency: data.currency,
+        default_trial_days: data.default_trial_days,
+        customers_module_enabled: !!(data as any).customers_module_enabled,
+      });
     })();
   }, []);
   const save = async () => {
     const { error } = await supabase.from("system_settings").update({
       app_name: s.app_name, currency: s.currency, default_trial_days: Number(s.default_trial_days),
+      customers_module_enabled: s.customers_module_enabled,
     }).eq("id", 1);
     if (error) return toast.error(error.message);
+    await refreshModuleFlags();
     toast.success("Saved");
   };
 
@@ -87,6 +96,13 @@ const SystemSettings = () => {
           <div><Label>App Name</Label><Input value={s.app_name} onChange={e => setS({ ...s, app_name: e.target.value })}/></div>
           <div><Label>Currency</Label><Input value={s.currency} onChange={e => setS({ ...s, currency: e.target.value })}/></div>
           <div><Label>Default Trial Days</Label><Input type="number" value={s.default_trial_days} onChange={e => setS({ ...s, default_trial_days: Number(e.target.value) })}/></div>
+          <div className="flex items-center justify-between rounded-md border border-zinc-800 bg-zinc-950 p-3">
+            <div>
+              <Label className="text-zinc-100">Enable Customers Module</Label>
+              <p className="text-xs text-zinc-500 mt-1">Hides Customers menu, POS selector and dashboard widget when off. Existing data is preserved.</p>
+            </div>
+            <Switch checked={s.customers_module_enabled} onCheckedChange={(v) => setS({ ...s, customers_module_enabled: v })} />
+          </div>
           <Button onClick={save}>Save</Button>
         </CardContent>
       </Card>

@@ -14,13 +14,14 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { SubscriptionGate } from "@/components/SubscriptionGate";
+import { useModuleFlags } from "@/hooks/useModuleFlags";
 
 const navItems = [
   { to: "/", key: "dashboard", icon: LayoutDashboard, end: true },
   { to: "/pos", key: "pos", icon: Receipt },
   { to: "/farms", key: "farms", icon: Tractor },
   { to: "/shops", key: "shops", icon: Store },
-  { to: "/customers", key: "customers", icon: Users },
+  { to: "/customers", key: "customers", icon: Users, customersModule: true },
   { to: "/suppliers", key: "suppliers", icon: Wallet },
   { to: "/shop-ledger", key: "shop_ledger", icon: Wallet },
   { to: "/daily-recovery", key: "daily_recovery", icon: HandCoins },
@@ -33,7 +34,7 @@ const navItems = [
   { to: "/settings", key: "settings", icon: SettingsIcon, adminOnly: true },
 ];
 
-const SidebarContent = ({ role, onSignOut }: { role: string | null; onSignOut: () => void }) => {
+const SidebarContent = ({ role, onSignOut, customersEnabled }: { role: string | null; onSignOut: () => void; customersEnabled: boolean }) => {
   const { t } = useTranslation();
   return (
   <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
@@ -51,7 +52,10 @@ const SidebarContent = ({ role, onSignOut }: { role: string | null; onSignOut: (
       <LanguageSwitcher />
     </div>
     <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-      {navItems.filter((n) => !n.adminOnly || role === "admin").map((n) => (
+      {navItems
+        .filter((n) => !n.adminOnly || role === "admin")
+        .filter((n: any) => !n.customersModule || customersEnabled)
+        .map((n) => (
         <NavLink
           key={n.to}
           to={n.to}
@@ -84,6 +88,7 @@ const AppLayout = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { selectedDate, setSelectedDate, today, isToday } = useLedgerDate();
+  const { customers_module_enabled } = useModuleFlags();
 
   useEffect(() => {
     if (!loading && !session) navigate("/auth", { replace: true });
@@ -108,7 +113,7 @@ const AppLayout = () => {
     <SubscriptionGate>
     <div className="min-h-screen flex bg-background">
       <aside className="hidden md:block w-64 shrink-0 border-r border-sidebar-border">
-        <SidebarContent role={role} onSignOut={handleSignOut} />
+        <SidebarContent role={role} onSignOut={handleSignOut} customersEnabled={customers_module_enabled} />
       </aside>
       <div className="flex-1 flex flex-col min-w-0">
         <header className="md:hidden h-14 border-b flex items-center px-4 gap-3 bg-card">
@@ -117,7 +122,7 @@ const AppLayout = () => {
               <Button variant="ghost" size="icon"><Menu className="h-5 w-5" /></Button>
             </SheetTrigger>
             <SheetContent side="left" className="p-0 w-64">
-              <SidebarContent role={role} onSignOut={handleSignOut} />
+              <SidebarContent role={role} onSignOut={handleSignOut} customersEnabled={customers_module_enabled} />
             </SheetContent>
           </Sheet>
           <div className="flex items-center gap-2">
