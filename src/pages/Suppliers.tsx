@@ -26,6 +26,8 @@ type LedgerEntry = {
   editable: boolean;
   ledgerId?: string;
   ledgerType?: string;
+  rawId?: string; // underlying purchases/farm_payments row id
+  raw?: any;
 };
 
 const KIND_LABEL: Record<LedgerKind, string> = {
@@ -46,6 +48,24 @@ type ManualForm = {
   amount: string;
 };
 
+type PurchaseForm = {
+  id: string;
+  purchase_date: string;
+  meat_type: string;
+  weight_kg: string;
+  rate_per_kg: string;
+  total_amount: string;
+  paid_amount: string;
+  payment_method: string;
+};
+
+type PaymentForm = {
+  id: string;
+  payment_date: string;
+  amount: string;
+  method: string;
+};
+
 const Suppliers = () => {
   const { user, tenant } = useAuth();
   const { t } = useTranslation();
@@ -64,6 +84,10 @@ const Suppliers = () => {
     description: "",
     amount: "",
   });
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [purchaseForm, setPurchaseForm] = useState<PurchaseForm | null>(null);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentForm, setPaymentForm] = useState<PaymentForm | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -117,14 +141,18 @@ const Suppliers = () => {
         id: `pu-${x.id}`, source: "purchase", kind: "purchase", date: x.purchase_date,
         debit: Number(x.total_amount ?? 0), credit: Number(x.paid_amount ?? 0),
         meta: `${x.meat_type} · ${Number(x.weight_kg).toFixed(2)}kg @ ${Number(x.rate_per_kg).toFixed(2)} · ${x.payment_method}`,
-        editable: false,
+        editable: true,
+        rawId: x.id,
+        raw: x,
       });
     });
     (p ?? []).forEach((x: any) => {
       list.push({
         id: `pa-${x.id}`, source: "payment", kind: "payment", date: x.payment_date,
         debit: 0, credit: Number(x.amount), meta: `Payment · ${x.method}`,
-        editable: false,
+        editable: true,
+        rawId: x.id,
+        raw: x,
       });
     });
     (le ?? []).forEach((x: any) => {
@@ -209,6 +237,76 @@ const Suppliers = () => {
     const { error } = await supabase.from("supplier_ledger_entries").delete().eq("id", e.ledgerId);
     if (error) return toast.error(error.message);
     toast.success("Entry deleted");
+    await refreshLedger(ledger);
+    load();
+  };
+
+  const editEntry = (e: LedgerEntry) => {
+    if (e.source === "ledger") return editManual(e);
+    if (e.source === "purchase" && e.raw) {
+      setPurchaseForm({
+        id: e.raw.id,
+        purchase_date: e.raw.purchase_date,
+        meat_type: e.raw.meat_type ?? "",
+        weight_kg: String(e.raw.weight_kg ?? ""),
+        rate_per_kg: String(e.raw.rate_per_kg ?? ""),
+        total_amount: String(e.raw.total_amount ?? ""),
+        paid_amount: String(e.raw.paid_amount ?? ""),
+        payment_method: e.raw.payment_method ?? "cash",
+      });
+      setPurchaseOpen(true);
+    } else if (e.source === "payment" && e.raw) {
+      setPaymentForm({
+        id: e.raw.id,
+        payment_date: e.raw.payment_date,
+        amount: String(e.raw.amount ?? ""),
+        method: e.raw.method ?? "cash",
+      });
+      setPaymentOpen(true);
+    }
+  };
+
+  const deleteEntry = async (e: LedgerEntry) => {
+    if (!ledger) return;
+    if (e.source === "ledger") return deleteManual(e);
+    if (!e.rawId) return;
+    if (!confirm("Delete this entry? This will recalculate the supplier balance.")) return;
+    const table = e.source === "purchase" ? "purchases" : "farm_payments";
+    const { error } = await supabase.from(table).delete().eq("id", e.rawId);
+    if (error) return toast.error(error.message);
+    toast.success("Entry deleted");
+    await refreshLedger(ledger);
+    load();
+  };
+
+  const savePurchase = async () => {
+    if (!ledger || !purchaseForm) return;
+    const { error } = await supabase.from("purchases").update({
+      purchase_date: purchaseForm.purchase_date,
+      meat_type: purchaseForm.meat_type,
+      weight_kg: Number(purchaseForm.weight_kg) || 0,
+      rate_per_kg: Number(purchaseForm.rate_per_kg) || 0,
+      total_amount: Number(purchaseForm.total_amount) || 0,
+      paid_amount: Number(purchaseForm.paid_amount) || 0,
+      payment_method: purchaseForm.payment_method,
+    }).eq("id", purchaseForm.id);
+    if (error) return toast.error(error.message);
+    toast.success("Purchase updated");
+    setPurchaseOpen(false);
+    await refreshLedger(ledger);
+    load();
+  };
+
+  const savePayment = async () => {
+    if (!ledger || !paymentForm) return;
+    const { error } = await supabase.from("farm_payments").update({
+      payment_date: paymentForm.payment_date,
+      amount: Number(paymentForm.amount) || 0,
+      method: paymentForm.method,
+    }).eq("id", paymentForm.id);
+    if (error) return toast.error(error.message);
+    toast.success("Payment updated");
+    setPaymentOpen(false);
     await refreshLedger(ledger);
     load();
   };
@@ -299,8 +397,8 @@ const Suppliers = () => {
                           <td className="p-2 text-end no-print">
                             {e.editable && (
                               <div className="flex justify-end gap-1">
-                                <Button size="icon" variant="ghost" onClick={() => editManual(e)}><Pencil className="h-3.5 w-3.5" /></Button>
-                                <Button size="icon" variant="ghost" onClick={() => deleteManual(e)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                                <Button size="icon" variant="ghost" onClick={() => editEntry(e)}><Pencil className="h-3.5 w-3.5" /></Button>
+                                <Button size="icon" variant="ghost" onClick={() => deleteEntry(e)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                               </div>
                             )}
                           </td>
@@ -348,6 +446,59 @@ const Suppliers = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setManualOpen(false)}>Cancel</Button>
             <Button onClick={saveManual}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={purchaseOpen} onOpenChange={setPurchaseOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Purchase</DialogTitle></DialogHeader>
+          {purchaseForm && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Date</Label><Input type="date" value={purchaseForm.purchase_date} onChange={(e) => setPurchaseForm({ ...purchaseForm, purchase_date: e.target.value })} /></div>
+                <div><Label>Meat Type</Label><Input value={purchaseForm.meat_type} onChange={(e) => setPurchaseForm({ ...purchaseForm, meat_type: e.target.value })} /></div>
+                <div><Label>Weight (kg)</Label><Input type="number" step="0.01" value={purchaseForm.weight_kg} onChange={(e) => setPurchaseForm({ ...purchaseForm, weight_kg: e.target.value })} /></div>
+                <div><Label>Rate / kg</Label><Input type="number" step="0.01" value={purchaseForm.rate_per_kg} onChange={(e) => setPurchaseForm({ ...purchaseForm, rate_per_kg: e.target.value })} /></div>
+                <div><Label>Total Amount</Label><Input type="number" step="0.01" value={purchaseForm.total_amount} onChange={(e) => setPurchaseForm({ ...purchaseForm, total_amount: e.target.value })} /></div>
+                <div><Label>Paid Amount</Label><Input type="number" step="0.01" value={purchaseForm.paid_amount} onChange={(e) => setPurchaseForm({ ...purchaseForm, paid_amount: e.target.value })} /></div>
+                <div className="col-span-2">
+                  <Label>Payment Method</Label>
+                  <select className="border rounded-md h-10 px-2 w-full bg-background" value={purchaseForm.payment_method} onChange={(e) => setPurchaseForm({ ...purchaseForm, payment_method: e.target.value })}>
+                    <option value="cash">Cash</option>
+                    <option value="bank">Bank</option>
+                    <option value="credit">Credit</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPurchaseOpen(false)}>Cancel</Button>
+            <Button onClick={savePurchase}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Payment</DialogTitle></DialogHeader>
+          {paymentForm && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Date</Label><Input type="date" value={paymentForm.payment_date} onChange={(e) => setPaymentForm({ ...paymentForm, payment_date: e.target.value })} /></div>
+                <div><Label>Amount</Label><Input type="number" step="0.01" value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} /></div>
+                <div className="col-span-2">
+                  <Label>Method</Label>
+                  <select className="border rounded-md h-10 px-2 w-full bg-background" value={paymentForm.method} onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })}>
+                    <option value="cash">Cash</option>
+                    <option value="bank">Bank</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPaymentOpen(false)}>Cancel</Button>
+            <Button onClick={savePayment}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
