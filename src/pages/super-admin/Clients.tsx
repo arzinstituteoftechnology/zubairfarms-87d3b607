@@ -154,8 +154,8 @@ const Clients = () => {
       </div>
 
       <Card className="bg-zinc-900 border-zinc-800 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-800/50 text-zinc-400 text-left">
+        <table className="w-full text-sm text-zinc-100">
+          <thead className="bg-zinc-800/50 text-zinc-100 text-left">
             <tr><th className="p-3">Company</th><th className="p-3">Owner</th><th className="p-3">Email</th><th className="p-3">Location</th><th className="p-3">Status</th><th className="p-3 text-right">Actions</th></tr>
           </thead>
           <tbody>
@@ -163,8 +163,8 @@ const Clients = () => {
               <tr key={t.id} className="border-t border-zinc-800">
                 <td className="p-3 font-medium">{t.company_name}</td>
                 <td className="p-3">{t.owner_name}</td>
-                <td className="p-3 text-zinc-400">{t.email}</td>
-                <td className="p-3 text-zinc-400">{[t.city, t.country].filter(Boolean).join(", ") || "—"}</td>
+                <td className="p-3 text-zinc-300">{t.email}</td>
+                <td className="p-3 text-zinc-300">{[t.city, t.country].filter(Boolean).join(", ") || "—"}</td>
                 <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs ${t.status === "active" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>{t.status}</span></td>
                 <td className="p-3 text-right space-x-1">
                   <Button size="sm" variant="ghost" title="Extend / Pay" onClick={() => setExtendOpen({ tenant: t, plan_id: "", amount: "" })}><CreditCard className="h-4 w-4"/></Button>
@@ -175,7 +175,7 @@ const Clients = () => {
                 </td>
               </tr>
             ))}
-            {!tenants.length && <tr><td colSpan={6} className="p-6 text-center text-zinc-500">No clients yet.</td></tr>}
+            {!tenants.length && <tr><td colSpan={6} className="p-6 text-center text-zinc-300">No clients yet.</td></tr>}
           </tbody>
         </table>
       </Card>

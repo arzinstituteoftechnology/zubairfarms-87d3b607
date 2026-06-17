@@ -22,8 +22,8 @@ const Users = () => {
     <div className="space-y-4 text-zinc-100">
       <h1 className="text-2xl font-bold">Users</h1>
       <Card className="bg-zinc-900 border-zinc-800 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-800/50 text-zinc-400 text-left">
+        <table className="w-full text-sm text-zinc-100">
+          <thead className="bg-zinc-800/50 text-zinc-100 text-left">
             <tr><th className="p-3">User</th><th className="p-3">Tenant</th><th className="p-3">Role</th><th className="p-3">Added</th></tr>
           </thead>
           <tbody>
@@ -32,10 +32,10 @@ const Users = () => {
                 <td className="p-3">{r.full_name}</td>
                 <td className="p-3">{r.tenants?.company_name ?? "—"}</td>
                 <td className="p-3">{r.tenant_role}</td>
-                <td className="p-3 text-zinc-400">{new Date(r.created_at).toLocaleDateString()}</td>
+                <td className="p-3 text-zinc-300">{new Date(r.created_at).toLocaleDateString()}</td>
               </tr>
             ))}
-            {!rows.length && <tr><td colSpan={4} className="p-6 text-center text-zinc-500">No users yet.</td></tr>}
+            {!rows.length && <tr><td colSpan={4} className="p-6 text-center text-zinc-300">No users yet.</td></tr>}
           </tbody>
         </table>
       </Card>
