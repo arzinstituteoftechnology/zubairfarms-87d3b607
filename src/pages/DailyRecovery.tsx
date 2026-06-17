@@ -13,7 +13,6 @@ import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
 
 type Shop = { id: string; name: string };
-type Profile = { id: string; full_name: string | null };
 type Recovery = {
   id: string;
   shop_id: string;
