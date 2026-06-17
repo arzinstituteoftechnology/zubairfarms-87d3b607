@@ -89,6 +89,15 @@ Deno.serve(async (req) => {
         counts[table] = count ?? 0;
       }
 
+      await admin.from("activity_logs").insert({
+        actor_user_id: user.id,
+        tenant_id: body.tenant_id ?? null,
+        action: "business_reset",
+        entity: "tenant",
+        entity_id: body.tenant_id ?? null,
+        metadata: { deleted_counts: counts },
+      });
+
       return json({
         ok: true,
         mode: "business_reset",
