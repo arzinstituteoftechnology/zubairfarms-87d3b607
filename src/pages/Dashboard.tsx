@@ -10,6 +10,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
+import { useModuleFlags } from "@/hooks/useModuleFlags";
 
 interface KPI {
   purchaseKg: number; purchaseAmt: number;
@@ -45,6 +46,7 @@ const Dashboard = () => {
   const [chart, setChart] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { selectedDate, setSelectedDate, today: currentDate, isToday } = useLedgerDate();
+  const { customers_module_enabled: customersEnabled } = useModuleFlags();
 
   useEffect(() => {
     setLoading(true);
