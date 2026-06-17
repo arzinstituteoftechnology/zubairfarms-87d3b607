@@ -33,7 +33,7 @@ const SuperAdminLayout = () => {
   if (!isSuperAdmin) return null;
 
   return (
-    <div className="min-h-screen flex bg-zinc-950 text-zinc-100">
+    <div className="super-admin-scope min-h-screen flex bg-zinc-950 text-white">
       <aside className="w-64 shrink-0 border-r border-zinc-800 bg-zinc-900 flex flex-col">
         <div className="h-16 flex items-center gap-2 px-5 border-b border-zinc-800">
           <div className="h-9 w-9 rounded-lg bg-red-600 flex items-center justify-center">
