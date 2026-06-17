@@ -37,6 +37,7 @@ import SALogs from "./pages/super-admin/ActivityLogs";
 import SASettings from "./pages/super-admin/SystemSettings";
 import SABackups from "./pages/super-admin/Backups";
 import SABackupEmail from "./pages/super-admin/BackupEmailSettings";
+import Trust from "./pages/Trust";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +51,7 @@ const App = () => (
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/trust" element={<Trust />} />
             <Route path="/subscription-expired" element={<SubscriptionExpired />} />
             <Route path="/super-admin/login" element={<SuperAdminLogin />} />
             <Route path="/super-admin" element={<SuperAdminLayout />}>
