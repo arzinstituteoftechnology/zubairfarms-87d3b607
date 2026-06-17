@@ -17,6 +17,7 @@ import Inventory from "./pages/Inventory";
 import Settings from "./pages/Settings";
 import Customers from "./pages/Customers";
 import Suppliers from "./pages/Suppliers";
+import ShopLedger from "./pages/ShopLedger";
 import Expenses from "./pages/Expenses";
 import Trucks from "./pages/Trucks";
 import Deliveries from "./pages/Deliveries";
@@ -65,6 +66,7 @@ const App = () => (
               <Route path="/shops" element={<Shops />} />
               <Route path="/customers" element={<Customers />} />
               <Route path="/suppliers" element={<Suppliers />} />
+              <Route path="/shop-ledger" element={<ShopLedger />} />
               <Route path="/purchases" element={<Purchases />} />
               <Route path="/supplies" element={<Supplies />} />
               <Route path="/expenses" element={<Expenses />} />

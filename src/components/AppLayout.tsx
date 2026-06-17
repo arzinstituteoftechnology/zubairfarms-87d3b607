@@ -22,6 +22,7 @@ const navItems = [
   { to: "/shops", key: "shops", icon: Store },
   { to: "/customers", key: "customers", icon: Users },
   { to: "/suppliers", key: "suppliers", icon: Wallet },
+  { to: "/shop-ledger", key: "shop_ledger", icon: Wallet },
   { to: "/purchases", key: "purchases", icon: ShoppingCart },
   { to: "/supplies", key: "supplies", icon: Truck },
   { to: "/expenses", key: "expenses", icon: Wallet },
