@@ -7,10 +7,15 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Printer, Pencil, Trash2, Wallet } from "lucide-react";
+import { Plus, Printer, Pencil, Trash2, Wallet, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
+import { ReverseTransactionDialog } from "@/components/ReverseTransactionDialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Shop = { id: string; name: string };
 type Recovery = {
@@ -21,6 +26,8 @@ type Recovery = {
   payment_method: "cash" | "bank" | "jazzcash" | "easypaisa";
   notes: string | null;
   collected_by: string | null;
+  reversed_at?: string | null;
+  reversal_reason?: string | null;
 };
 
 const METHODS: Recovery["payment_method"][] = ["cash", "bank", "jazzcash", "easypaisa"];
@@ -48,7 +55,9 @@ const emptyForm = (): Form => ({
 });
 
 const DailyRecovery = () => {
-  const { user, tenant } = useAuth();
+  const { user, tenant, role, isSuperAdmin } = useAuth();
+  const canManage = isSuperAdmin || role === "admin";
+  const canDelete = isSuperAdmin;
   const [shops, setShops] = useState<Shop[]>([]);
   const [rows, setRows] = useState<Recovery[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +66,8 @@ const DailyRecovery = () => {
   const [filterDate, setFilterDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [rangeFrom, setRangeFrom] = useState("");
   const [rangeTo, setRangeTo] = useState("");
+  const [reverseTarget, setReverseTarget] = useState<Recovery | null>(null);
+  const [confirmDel, setConfirmDel] = useState<Recovery | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -116,10 +127,19 @@ const DailyRecovery = () => {
   };
 
   const remove = async (r: Recovery) => {
-    if (!confirm("Delete this recovery? Shop ledger will be recalculated.")) return;
+    if (!canDelete) { toast.error("Only Super Admin can delete. Use Reverse instead."); return; }
     const { error } = await supabase.from("shop_recoveries").delete().eq("id", r.id);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     toast.success("Recovery deleted");
+    setConfirmDel(null);
+    load();
+  };
+
+  const performReverse = async (r: Recovery, reason: string, notes: string) => {
+    const { error } = await supabase.rpc("reverse_shop_recovery", { p_id: r.id, p_reason: reason, p_notes: notes });
+    if (error) { toast.error(error.message); return; }
+    toast.success("Recovery reversed");
+    setReverseTarget(null);
     load();
   };
 
@@ -205,9 +225,19 @@ const DailyRecovery = () => {
                   <TableCell>{r.collected_by || "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{r.notes || "—"}</TableCell>
                   <TableCell className="text-end no-print">
-                    <div className="flex justify-end gap-1">
-                      <Button size="icon" variant="ghost" onClick={() => openEdit(r)}><Pencil className="h-3.5 w-3.5" /></Button>
-                      <Button size="icon" variant="ghost" onClick={() => remove(r)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                    <div className="flex justify-end gap-1 items-center">
+                      {canManage && !r.reversed_at && (
+                        <Button size="icon" variant="ghost" onClick={() => openEdit(r)} title="Edit"><Pencil className="h-3.5 w-3.5" /></Button>
+                      )}
+                      {canManage && !r.reversed_at && (
+                        <Button size="icon" variant="ghost" onClick={() => setReverseTarget(r)} title="Reverse Transaction">
+                          <Undo2 className="h-3.5 w-3.5 text-amber-600" />
+                        </Button>
+                      )}
+                      {r.reversed_at && <span className="text-[10px] uppercase font-semibold text-amber-600 px-1">Reversed</span>}
+                      {canDelete && (
+                        <Button size="icon" variant="ghost" onClick={() => setConfirmDel(r)} title="Delete"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -254,6 +284,26 @@ const DailyRecovery = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ReverseTransactionDialog
+        open={!!reverseTarget}
+        target={reverseTarget ? { label: `Recovery — ${shopName(reverseTarget.shop_id)}`, amount: Number(reverseTarget.amount), date: reverseTarget.recovery_date } : null}
+        onOpenChange={(o) => !o && setReverseTarget(null)}
+        onConfirm={(reason, notes) => reverseTarget ? performReverse(reverseTarget, reason, notes) : Promise.resolve()}
+      />
+      <AlertDialog open={!!confirmDel} onOpenChange={(o) => !o && setConfirmDel(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this recovery?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Hard delete removes the record permanently. Prefer Reverse Transaction to preserve the audit trail.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => confirmDel && remove(confirmDel)}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

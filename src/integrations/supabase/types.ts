@@ -296,6 +296,11 @@ export type Database = {
           method: string
           notes: string | null
           payment_date: string
+          reversal_ledger_entry_id: string | null
+          reversal_notes: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by: string | null
           tenant_id: string
         }
         Insert: {
@@ -307,6 +312,11 @@ export type Database = {
           method?: string
           notes?: string | null
           payment_date?: string
+          reversal_ledger_entry_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           tenant_id?: string
         }
         Update: {
@@ -318,6 +328,11 @@ export type Database = {
           method?: string
           notes?: string | null
           payment_date?: string
+          reversal_ledger_entry_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           tenant_id?: string
         }
         Relationships: [
@@ -607,6 +622,11 @@ export type Database = {
           payment_method: string
           purchase_date: string
           rate_per_kg: number
+          reversal_ledger_entry_id: string | null
+          reversal_notes: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by: string | null
           tenant_id: string
           total_amount: number | null
           updated_at: string
@@ -624,6 +644,11 @@ export type Database = {
           payment_method?: string
           purchase_date?: string
           rate_per_kg: number
+          reversal_ledger_entry_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           tenant_id?: string
           total_amount?: number | null
           updated_at?: string
@@ -641,6 +666,11 @@ export type Database = {
           payment_method?: string
           purchase_date?: string
           rate_per_kg?: number
+          reversal_ledger_entry_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           tenant_id?: string
           total_amount?: number | null
           updated_at?: string
@@ -706,6 +736,12 @@ export type Database = {
           entry_date: string
           entry_type: Database["public"]["Enums"]["shop_ledger_type"]
           id: string
+          original_entry_id: string | null
+          reversal_entry_id: string | null
+          reversal_notes: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by: string | null
           shop_id: string
           tenant_id: string
           updated_at: string
@@ -720,6 +756,12 @@ export type Database = {
           entry_date?: string
           entry_type: Database["public"]["Enums"]["shop_ledger_type"]
           id?: string
+          original_entry_id?: string | null
+          reversal_entry_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           shop_id: string
           tenant_id: string
           updated_at?: string
@@ -734,6 +776,12 @@ export type Database = {
           entry_date?: string
           entry_type?: Database["public"]["Enums"]["shop_ledger_type"]
           id?: string
+          original_entry_id?: string | null
+          reversal_entry_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           shop_id?: string
           tenant_id?: string
           updated_at?: string
@@ -761,6 +809,11 @@ export type Database = {
           notes: string | null
           payment_method: string
           recovery_date: string
+          reversal_ledger_entry_id: string | null
+          reversal_notes: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by: string | null
           shop_id: string
           tenant_id: string
           updated_at: string
@@ -777,6 +830,11 @@ export type Database = {
           notes?: string | null
           payment_method?: string
           recovery_date?: string
+          reversal_ledger_entry_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           shop_id: string
           tenant_id: string
           updated_at?: string
@@ -793,6 +851,11 @@ export type Database = {
           notes?: string | null
           payment_method?: string
           recovery_date?: string
+          reversal_ledger_entry_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           shop_id?: string
           tenant_id?: string
           updated_at?: string
@@ -950,6 +1013,12 @@ export type Database = {
           entry_date: string
           entry_type: Database["public"]["Enums"]["supplier_ledger_type"]
           id: string
+          original_entry_id: string | null
+          reversal_entry_id: string | null
+          reversal_notes: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by: string | null
           supplier_id: string
           tenant_id: string
           updated_at: string
@@ -962,6 +1031,12 @@ export type Database = {
           entry_date?: string
           entry_type: Database["public"]["Enums"]["supplier_ledger_type"]
           id?: string
+          original_entry_id?: string | null
+          reversal_entry_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           supplier_id: string
           tenant_id: string
           updated_at?: string
@@ -974,6 +1049,12 @@ export type Database = {
           entry_date?: string
           entry_type?: Database["public"]["Enums"]["supplier_ledger_type"]
           id?: string
+          original_entry_id?: string | null
+          reversal_entry_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           supplier_id?: string
           tenant_id?: string
           updated_at?: string
@@ -998,6 +1079,11 @@ export type Database = {
           notes: string | null
           purchase_id: string | null
           rate_per_kg: number
+          reversal_ledger_entry_id: string | null
+          reversal_notes: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by: string | null
           shop_id: string
           supply_date: string
           tenant_id: string
@@ -1014,6 +1100,11 @@ export type Database = {
           notes?: string | null
           purchase_id?: string | null
           rate_per_kg: number
+          reversal_ledger_entry_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           shop_id: string
           supply_date?: string
           tenant_id?: string
@@ -1030,6 +1121,11 @@ export type Database = {
           notes?: string | null
           purchase_id?: string | null
           rate_per_kg?: number
+          reversal_ledger_entry_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           shop_id?: string
           supply_date?: string
           tenant_id?: string
@@ -1229,6 +1325,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _assert_can_reverse: { Args: never; Returns: undefined }
       bootstrap_super_admin: { Args: never; Returns: boolean }
       current_tenant_id: { Args: never; Returns: string }
       has_role: {
@@ -1240,6 +1337,30 @@ export type Database = {
       }
       is_business_user: { Args: { _uid: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      reverse_farm_payment: {
+        Args: { p_id: string; p_notes?: string; p_reason: string }
+        Returns: string
+      }
+      reverse_purchase: {
+        Args: { p_id: string; p_notes?: string; p_reason: string }
+        Returns: string
+      }
+      reverse_shop_ledger_entry: {
+        Args: { p_id: string; p_notes?: string; p_reason: string }
+        Returns: string
+      }
+      reverse_shop_recovery: {
+        Args: { p_id: string; p_notes?: string; p_reason: string }
+        Returns: string
+      }
+      reverse_supplier_ledger_entry: {
+        Args: { p_id: string; p_notes?: string; p_reason: string }
+        Returns: string
+      }
+      reverse_supply: {
+        Args: { p_id: string; p_notes?: string; p_reason: string }
+        Returns: string
+      }
       tenant_has_active_subscription: {
         Args: { _tenant_id: string }
         Returns: boolean
@@ -1255,12 +1376,25 @@ export type Database = {
         | "adjustment_decrease"
         | "recovery"
         | "reversed_recovery"
+        | "reversed_supply"
+        | "reversed_manual_supply"
+        | "reversed_manual_payment"
+        | "reversed_adjustment_increase"
+        | "reversed_adjustment_decrease"
+        | "reversed_opening_balance"
       supplier_ledger_type:
         | "opening_balance"
         | "manual_purchase"
         | "manual_payment"
         | "adjustment_increase"
         | "adjustment_decrease"
+        | "reversed_purchase"
+        | "reversed_payment"
+        | "reversed_manual_purchase"
+        | "reversed_manual_payment"
+        | "reversed_adjustment_increase"
+        | "reversed_adjustment_decrease"
+        | "reversed_opening_balance"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1397,6 +1531,12 @@ export const Constants = {
         "adjustment_decrease",
         "recovery",
         "reversed_recovery",
+        "reversed_supply",
+        "reversed_manual_supply",
+        "reversed_manual_payment",
+        "reversed_adjustment_increase",
+        "reversed_adjustment_decrease",
+        "reversed_opening_balance",
       ],
       supplier_ledger_type: [
         "opening_balance",
@@ -1404,6 +1544,13 @@ export const Constants = {
         "manual_payment",
         "adjustment_increase",
         "adjustment_decrease",
+        "reversed_purchase",
+        "reversed_payment",
+        "reversed_manual_purchase",
+        "reversed_manual_payment",
+        "reversed_adjustment_increase",
+        "reversed_adjustment_decrease",
+        "reversed_opening_balance",
       ],
     },
   },

@@ -12,12 +12,18 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Wallet, Printer, Pencil, Trash2, Plus, Eye } from "lucide-react";
+import { Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
+import { ReverseTransactionDialog, type ReverseTarget } from "@/components/ReverseTransactionDialog";
 
 type Row = { id: string; name: string; phone: string | null; opening_balance: number; supplied: number; paid: number; balance: number };
-type LedgerKind = "opening" | "supply" | "manual_supply" | "manual_payment" | "adjustment_increase" | "adjustment_decrease" | "recovery" | "reversed_recovery";
+type LedgerKind =
+  | "opening" | "supply" | "manual_supply" | "manual_payment"
+  | "adjustment_increase" | "adjustment_decrease" | "recovery"
+  | "reversed_recovery" | "reversed_supply" | "reversed_manual_supply" | "reversed_manual_payment"
+  | "reversed_adjustment_increase" | "reversed_adjustment_decrease" | "reversed_opening_balance";
 type LedgerEntry = {
   id: string;
   source: "supply" | "ledger";
@@ -31,6 +37,8 @@ type LedgerEntry = {
   ledgerType?: string;
   rawId?: string;
   raw?: any;
+  reversed?: boolean;
+  isReversal?: boolean;
 };
 
 const KIND_LABEL: Record<LedgerKind, string> = {
@@ -42,6 +50,12 @@ const KIND_LABEL: Record<LedgerKind, string> = {
   adjustment_decrease: "Adjustment (-)",
   recovery: "Recovery",
   reversed_recovery: "Reversed Recovery",
+  reversed_supply: "Reversed Supply",
+  reversed_manual_supply: "Reversed Previous Supply",
+  reversed_manual_payment: "Reversed Previous Payment",
+  reversed_adjustment_increase: "Reversed Adjustment (+)",
+  reversed_adjustment_decrease: "Reversed Adjustment (-)",
+  reversed_opening_balance: "Reversed Opening Balance",
 };
 
 type ManualForm = {
@@ -64,6 +78,7 @@ type SupplyForm = {
 const ShopLedger = () => {
   const { user, tenant, role, isSuperAdmin } = useAuth();
   const canManage = isSuperAdmin || role === "admin";
+  const canDelete = isSuperAdmin;
   const { t } = useTranslation();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,6 +106,7 @@ const ShopLedger = () => {
   const [recoveryForm, setRecoveryForm] = useState<{ id: string; recovery_date: string; amount: string; payment_method: string; collected_by: string; notes: string } | null>(null);
   const [viewEntry, setViewEntry] = useState<LedgerEntry | null>(null);
   const [confirmDel, setConfirmDel] = useState<LedgerEntry | null>(null);
+  const [reverseEntry, setReverseEntry] = useState<LedgerEntry | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -102,15 +118,30 @@ const ShopLedger = () => {
     ]);
     const supMap: Record<string, number> = {}, payMap: Record<string, number> = {}, adjMap: Record<string, number> = {};
     (su ?? []).forEach((x: any) => {
+      // Original supplies always count; reversal is posted as ledger 'reversed_supply' credit
       supMap[x.shop_id] = (supMap[x.shop_id] ?? 0) + Number(x.total_amount ?? 0);
     });
     (le ?? []).forEach((x: any) => {
       const amt = Number(x.amount ?? 0);
       const sid = x.shop_id;
-      if (x.entry_type === "manual_supply" || x.entry_type === "adjustment_increase" || x.entry_type === "reversed_recovery") adjMap[sid] = (adjMap[sid] ?? 0) + amt;
-      else if (x.entry_type === "manual_payment" || x.entry_type === "recovery") payMap[sid] = (payMap[sid] ?? 0) + amt;
-      else if (x.entry_type === "adjustment_decrease") adjMap[sid] = (adjMap[sid] ?? 0) - amt;
-      // opening_balance lives on shops.opening_balance
+      switch (x.entry_type) {
+        case "manual_supply":
+        case "adjustment_increase":
+        case "reversed_recovery":
+        case "reversed_manual_payment":
+          adjMap[sid] = (adjMap[sid] ?? 0) + amt; break;
+        case "manual_payment":
+        case "recovery":
+        case "reversed_supply":
+        case "reversed_manual_supply":
+        case "reversed_adjustment_increase":
+        case "reversed_opening_balance":
+          payMap[sid] = (payMap[sid] ?? 0) + amt; break;
+        case "adjustment_decrease":
+        case "reversed_adjustment_decrease":
+          adjMap[sid] = (adjMap[sid] ?? 0) + (x.entry_type === "adjustment_decrease" ? -amt : amt); break;
+        // opening_balance lives on shops.opening_balance — don't double count
+      }
     });
     setRows((shops ?? []).map((s: any) => {
       const opening = Number(s.opening_balance ?? 0);
@@ -132,8 +163,8 @@ const ShopLedger = () => {
 
   const refreshLedger = async (r: Row) => {
     const [{ data: su }, { data: le }] = await Promise.all([
-      supabase.from("supplies").select("id, supply_date, total_amount, meat_type, weight_kg, rate_per_kg, notes").eq("shop_id", r.id),
-      supabase.from("shop_ledger_entries").select("id, entry_date, entry_type, description, amount").eq("shop_id", r.id),
+      supabase.from("supplies").select("id, supply_date, total_amount, meat_type, weight_kg, rate_per_kg, notes, reversed_at").eq("shop_id", r.id),
+      supabase.from("shop_ledger_entries").select("id, entry_date, entry_type, description, amount, reversed_at, original_entry_id").eq("shop_id", r.id),
     ]);
     const list: LedgerEntry[] = [];
     (su ?? []).forEach((x: any) => {
@@ -141,19 +172,26 @@ const ShopLedger = () => {
         id: `su-${x.id}`, source: "supply", kind: "supply", date: x.supply_date,
         debit: Number(x.total_amount ?? 0), credit: 0,
         meta: `${x.meat_type} · ${Number(x.weight_kg).toFixed(2)}kg @ ${Number(x.rate_per_kg).toFixed(2)}`,
-        editable: true, rawId: x.id, raw: x,
+        editable: !x.reversed_at, rawId: x.id, raw: x, reversed: !!x.reversed_at,
       });
     });
     (le ?? []).forEach((x: any) => {
       const amt = Number(x.amount ?? 0);
-      const isDebit = x.entry_type === "opening_balance" || x.entry_type === "manual_supply" || x.entry_type === "adjustment_increase" || x.entry_type === "reversed_recovery";
+      const debitTypes = new Set([
+        "opening_balance", "manual_supply", "adjustment_increase",
+        "reversed_recovery", "reversed_manual_payment",
+      ]);
+      const isDebit = debitTypes.has(x.entry_type);
+      // adjustment_decrease & reversed_adjustment_decrease are signed credits already in balance calc
       const kind: LedgerKind = x.entry_type === "opening_balance" ? "opening" : (x.entry_type as LedgerKind);
+      const isReversal = String(x.entry_type).startsWith("reversed_");
       list.push({
         id: `le-${x.id}`, source: "ledger", kind, date: x.entry_date,
         debit: isDebit ? amt : 0, credit: isDebit ? 0 : amt,
         meta: x.description || KIND_LABEL[kind],
-        editable: x.entry_type !== "reversed_recovery",
+        editable: !isReversal && !x.reversed_at,
         ledgerId: x.id, ledgerType: x.entry_type,
+        reversed: !!x.reversed_at, isReversal,
       });
     });
     list.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
@@ -311,6 +349,7 @@ const ShopLedger = () => {
 
   const performDelete = async (e: LedgerEntry) => {
     if (!ledger) return;
+    if (!canDelete) { toast.error("Only Super Admin can delete. Use Reverse instead."); return; }
     if (e.source === "ledger") {
       if (e.ledgerType === "opening_balance") {
         const { error: e1 } = await supabase.from("shops").update({ opening_balance: 0 }).eq("id", ledger.id);
@@ -336,6 +375,26 @@ const ShopLedger = () => {
       toast.success("Entry deleted");
     }
     setConfirmDel(null);
+    await refreshLedger(ledger); load();
+  };
+
+  const performReverse = async (e: LedgerEntry, reason: string, notes: string) => {
+    if (!ledger) return;
+    let res: { error: any } | undefined;
+    if (e.source === "supply" && e.rawId) {
+      res = await supabase.rpc("reverse_supply", { p_id: e.rawId, p_reason: reason, p_notes: notes });
+    } else if (e.source === "ledger" && e.ledgerType === "recovery" && e.ledgerId) {
+      const { data: rec } = await supabase.from("shop_recoveries").select("id").eq("ledger_entry_id", e.ledgerId).maybeSingle();
+      if (!rec) { toast.error("Recovery record not found"); return; }
+      res = await supabase.rpc("reverse_shop_recovery", { p_id: rec.id, p_reason: reason, p_notes: notes });
+    } else if (e.source === "ledger" && e.ledgerId) {
+      res = await supabase.rpc("reverse_shop_ledger_entry", { p_id: e.ledgerId, p_reason: reason, p_notes: notes });
+    } else {
+      return;
+    }
+    if (res?.error) { toast.error(res.error.message); return; }
+    toast.success("Transaction reversed");
+    setReverseEntry(null);
     await refreshLedger(ledger); load();
   };
 
@@ -455,7 +514,13 @@ const ShopLedger = () => {
                               {canManage && e.editable && (
                                 <Button size="icon" variant="ghost" onClick={() => editEntry(e)} title="Edit"><Pencil className="h-3.5 w-3.5" /></Button>
                               )}
-                              {canManage && e.ledgerType !== "reversed_recovery" && (
+                              {canManage && !e.isReversal && !e.reversed && (
+                                <Button size="icon" variant="ghost" onClick={() => setReverseEntry(e)} title="Reverse Transaction">
+                                  <Undo2 className="h-3.5 w-3.5 text-amber-600" />
+                                </Button>
+                              )}
+                              {e.reversed && <span className="text-[10px] uppercase font-semibold text-amber-600 px-1">Reversed</span>}
+                              {canDelete && !e.isReversal && (
                                 <Button size="icon" variant="ghost" onClick={() => setConfirmDel(e)} title="Delete"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                               )}
                             </div>
@@ -586,6 +651,12 @@ const ShopLedger = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <ReverseTransactionDialog
+        open={!!reverseEntry}
+        target={reverseEntry ? { label: `${KIND_LABEL[reverseEntry.kind]} — ${reverseEntry.meta}`, amount: reverseEntry.debit || reverseEntry.credit, date: reverseEntry.date } : null}
+        onOpenChange={(o) => !o && setReverseEntry(null)}
+        onConfirm={(reason, notes) => reverseEntry ? performReverse(reverseEntry, reason, notes) : Promise.resolve()}
+      />
     </>
   );
 };
