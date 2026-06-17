@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { supabaseSuperAdmin as supabase } from "@/integrations/supabase/superAdminClient";
+import { useSuperAdminAuth } from "@/hooks/useSuperAdminAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,7 @@ import { toast } from "sonner";
 const SuperAdminLogin = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { isSuperAdmin, loading, refresh } = useAuth();
+  const { isSuperAdmin, loading, refresh } = useSuperAdminAuth();
   const [mode, setMode] = useState<"signin" | "signup">(searchParams.get("setup") === "1" ? "signup" : "signin");
   const [saExists, setSaExists] = useState<boolean | null>(null);
   const [email, setEmail] = useState("");
