@@ -165,3 +165,107 @@ html.lang-ur .thermal-print {
 }
 /* Force-LTR helper for things like dates/numbers tables when needed */
 .force-ltr { direction: ltr; unicode-bidi: isolate; }
+
+/* ============================================================
+   Super Admin panel — dark theme high-contrast overrides
+   Ensures every text element is clearly readable on dark bg.
+   ============================================================ */
+.super-admin-scope,
+.super-admin-scope p,
+.super-admin-scope span,
+.super-admin-scope div,
+.super-admin-scope li,
+.super-admin-scope label,
+.super-admin-scope dt,
+.super-admin-scope dd,
+.super-admin-scope h1,
+.super-admin-scope h2,
+.super-admin-scope h3,
+.super-admin-scope h4,
+.super-admin-scope h5,
+.super-admin-scope h6,
+.super-admin-scope th,
+.super-admin-scope td,
+.super-admin-scope a {
+  color: #ffffff;
+}
+
+/* shadcn Card forces a dark foreground by default — override it */
+.super-admin-scope [class*="card"],
+.super-admin-scope .text-card-foreground,
+.super-admin-scope .text-foreground {
+  color: #ffffff !important;
+}
+
+/* Secondary / muted text — light gray, never blends in */
+.super-admin-scope .text-muted-foreground,
+.super-admin-scope .text-zinc-400,
+.super-admin-scope .text-zinc-500,
+.super-admin-scope .text-zinc-600,
+.super-admin-scope .text-gray-400,
+.super-admin-scope .text-gray-500,
+.super-admin-scope .text-gray-600,
+.super-admin-scope .text-slate-400,
+.super-admin-scope .text-slate-500,
+.super-admin-scope .opacity-60,
+.super-admin-scope .opacity-70 {
+  color: #e5e7eb !important; /* gray-200 */
+  opacity: 1 !important;
+}
+
+/* Table headers — pure white, slightly bolder background */
+.super-admin-scope thead,
+.super-admin-scope thead tr,
+.super-admin-scope thead th {
+  color: #ffffff !important;
+  font-weight: 600;
+}
+
+/* Table rows — white text */
+.super-admin-scope tbody td {
+  color: #ffffff !important;
+}
+
+/* Keep colored badges / status pills readable but don't whitewash them */
+.super-admin-scope .text-red-400,
+.super-admin-scope .text-red-500,
+.super-admin-scope .text-red-600,
+.super-admin-scope .text-green-400,
+.super-admin-scope .text-green-500,
+.super-admin-scope .text-green-600,
+.super-admin-scope .text-emerald-400,
+.super-admin-scope .text-emerald-500,
+.super-admin-scope .text-yellow-400,
+.super-admin-scope .text-yellow-500,
+.super-admin-scope .text-amber-400,
+.super-admin-scope .text-amber-500,
+.super-admin-scope .text-blue-400,
+.super-admin-scope .text-blue-500,
+.super-admin-scope .text-orange-400,
+.super-admin-scope .text-orange-500,
+.super-admin-scope .text-primary-foreground,
+.super-admin-scope .text-destructive-foreground,
+.super-admin-scope .text-white {
+  color: revert-layer;
+}
+
+/* Buttons keep their own foreground colors */
+.super-admin-scope button {
+  color: inherit;
+}
+.super-admin-scope .bg-red-600,
+.super-admin-scope .bg-red-600 * {
+  color: #ffffff !important;
+}
+
+/* Inputs / selects — readable values and placeholders */
+.super-admin-scope input,
+.super-admin-scope select,
+.super-admin-scope textarea {
+  color: #ffffff !important;
+}
+.super-admin-scope input::placeholder,
+.super-admin-scope textarea::placeholder {
+  color: #9ca3af !important; /* gray-400 */
+  opacity: 1 !important;
+}
