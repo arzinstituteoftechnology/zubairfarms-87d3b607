@@ -46,7 +46,9 @@ Deno.serve(async (req) => {
     const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const authHeader = req.headers.get("Authorization") ?? "";
-    const isCron = req.headers.get("x-cron-secret") === Deno.env.get("CRON_SHARED_SECRET");
+    // Shared secret for the pg_cron daily job. Not user-facing.
+    const CRON_SECRET = Deno.env.get("CRON_SHARED_SECRET") ?? "meatflow-cron-23-59";
+    const isCron = req.headers.get("x-cron-secret") === CRON_SECRET;
     const admin = createClient(url, service);
 
     let userId: string | null = null;
