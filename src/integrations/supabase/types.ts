@@ -1241,6 +1241,8 @@ export type Database = {
         | "manual_payment"
         | "adjustment_increase"
         | "adjustment_decrease"
+        | "recovery"
+        | "reversed_recovery"
       supplier_ledger_type:
         | "opening_balance"
         | "manual_purchase"
@@ -1381,6 +1383,8 @@ export const Constants = {
         "manual_payment",
         "adjustment_increase",
         "adjustment_decrease",
+        "recovery",
+        "reversed_recovery",
       ],
       supplier_ledger_type: [
         "opening_balance",

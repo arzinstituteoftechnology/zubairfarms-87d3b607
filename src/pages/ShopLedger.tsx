@@ -13,7 +13,7 @@ import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
 
 type Row = { id: string; name: string; phone: string | null; opening_balance: number; supplied: number; paid: number; balance: number };
-type LedgerKind = "opening" | "supply" | "manual_supply" | "manual_payment" | "adjustment_increase" | "adjustment_decrease" | "recovery";
+type LedgerKind = "opening" | "supply" | "manual_supply" | "manual_payment" | "adjustment_increase" | "adjustment_decrease" | "recovery" | "reversed_recovery";
 type LedgerEntry = {
   id: string;
   source: "supply" | "ledger";
@@ -37,6 +37,7 @@ const KIND_LABEL: Record<LedgerKind, string> = {
   adjustment_increase: "Adjustment (+)",
   adjustment_decrease: "Adjustment (-)",
   recovery: "Recovery",
+  reversed_recovery: "Reversed Recovery",
 };
 
 type ManualForm = {
@@ -94,7 +95,7 @@ const ShopLedger = () => {
     (le ?? []).forEach((x: any) => {
       const amt = Number(x.amount ?? 0);
       const sid = x.shop_id;
-      if (x.entry_type === "manual_supply" || x.entry_type === "adjustment_increase") adjMap[sid] = (adjMap[sid] ?? 0) + amt;
+      if (x.entry_type === "manual_supply" || x.entry_type === "adjustment_increase" || x.entry_type === "reversed_recovery") adjMap[sid] = (adjMap[sid] ?? 0) + amt;
       else if (x.entry_type === "manual_payment" || x.entry_type === "recovery") payMap[sid] = (payMap[sid] ?? 0) + amt;
       else if (x.entry_type === "adjustment_decrease") adjMap[sid] = (adjMap[sid] ?? 0) - amt;
       // opening_balance lives on shops.opening_balance
@@ -133,13 +134,13 @@ const ShopLedger = () => {
     });
     (le ?? []).forEach((x: any) => {
       const amt = Number(x.amount ?? 0);
-      const isDebit = x.entry_type === "opening_balance" || x.entry_type === "manual_supply" || x.entry_type === "adjustment_increase";
+      const isDebit = x.entry_type === "opening_balance" || x.entry_type === "manual_supply" || x.entry_type === "adjustment_increase" || x.entry_type === "reversed_recovery";
       const kind: LedgerKind = x.entry_type === "opening_balance" ? "opening" : (x.entry_type as LedgerKind);
       list.push({
         id: `le-${x.id}`, source: "ledger", kind, date: x.entry_date,
         debit: isDebit ? amt : 0, credit: isDebit ? 0 : amt,
         meta: x.description || KIND_LABEL[kind],
-        editable: x.entry_type !== "opening_balance" && x.entry_type !== "recovery",
+        editable: x.entry_type !== "opening_balance" && x.entry_type !== "recovery" && x.entry_type !== "reversed_recovery",
         ledgerId: x.id, ledgerType: x.entry_type,
       });
     });
