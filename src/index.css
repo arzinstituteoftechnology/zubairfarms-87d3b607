@@ -258,14 +258,20 @@ html.lang-ur .thermal-print {
   color: #ffffff !important;
 }
 
-/* Inputs / selects — readable values and placeholders */
-.super-admin-scope input,
+/* Inputs / selects / textareas — white background, black text */
+.super-admin-scope input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):not([role="switch"]),
 .super-admin-scope select,
-.super-admin-scope textarea {
-  color: #ffffff !important;
+.super-admin-scope textarea,
+.super-admin-scope [role="combobox"] {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #d1d5db !important;
 }
 .super-admin-scope input::placeholder,
 .super-admin-scope textarea::placeholder {
-  color: #9ca3af !important; /* gray-400 */
+  color: #6b7280 !important; /* gray-500 */
   opacity: 1 !important;
+}
+.super-admin-scope [role="combobox"] * {
+  color: #000000 !important;
 }
