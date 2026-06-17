@@ -13,7 +13,7 @@ import { ShieldCheck } from "lucide-react";
 
 const Auth = () => {
   const navigate = useNavigate();
-  const { session, loading, isSuperAdmin } = useAuth();
+  const { session, loading } = useAuth();
   const { t } = useTranslation();
   const [mode, setMode] = useState<"signin" | "forgot">("signin");
   const [email, setEmail] = useState("");
@@ -21,10 +21,8 @@ const Auth = () => {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!loading && session) {
-      navigate(isSuperAdmin ? "/super-admin" : "/", { replace: true });
-    }
-  }, [session, loading, isSuperAdmin, navigate]);
+    if (!loading && session) navigate("/", { replace: true });
+  }, [session, loading, navigate]);
 
   const onLogin = async (e: React.FormEvent) => {
     e.preventDefault();
