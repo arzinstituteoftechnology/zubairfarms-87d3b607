@@ -240,10 +240,11 @@ const DailyRecovery = () => {
             </div>
             <div>
               <Label>Collected By</Label>
-              <select className="border rounded-md h-10 px-2 w-full bg-background" value={form.collected_by} onChange={(e) => setForm({ ...form, collected_by: e.target.value })}>
-                <option value="">— current user —</option>
-                {profiles.map((p) => <option key={p.id} value={p.id}>{p.full_name || p.id.slice(0, 8)}</option>)}
-              </select>
+              <Input
+                value={form.collected_by}
+                onChange={(e) => setForm({ ...form, collected_by: e.target.value })}
+                placeholder="e.g. Zeeshan, Driver Ahmed, Salesman Bilal"
+              />
             </div>
             <div><Label>Reference Notes</Label><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Reference / remarks" /></div>
           </div>
