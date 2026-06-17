@@ -55,6 +55,105 @@ export type Database = {
           },
         ]
       }
+      backup_history: {
+        Row: {
+          backup_type: string
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          drive_status: string | null
+          email_status: string | null
+          error_message: string | null
+          file_size: number | null
+          health: Json | null
+          id: string
+          status: string
+          storage_path: string | null
+          table_counts: Json | null
+        }
+        Insert: {
+          backup_type: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          drive_status?: string | null
+          email_status?: string | null
+          error_message?: string | null
+          file_size?: number | null
+          health?: Json | null
+          id?: string
+          status?: string
+          storage_path?: string | null
+          table_counts?: Json | null
+        }
+        Update: {
+          backup_type?: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          drive_status?: string | null
+          email_status?: string | null
+          error_message?: string | null
+          file_size?: number | null
+          health?: Json | null
+          id?: string
+          status?: string
+          storage_path?: string | null
+          table_counts?: Json | null
+        }
+        Relationships: []
+      }
+      backup_settings: {
+        Row: {
+          drive_enabled: boolean
+          drive_folder_id: string | null
+          drive_last_status: string | null
+          drive_last_upload_at: string | null
+          email_enabled: boolean
+          id: number
+          primary_email: string | null
+          retain_daily: number
+          retain_manual: number
+          retain_monthly: number
+          schedule_cron: string
+          secondary_email: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          drive_enabled?: boolean
+          drive_folder_id?: string | null
+          drive_last_status?: string | null
+          drive_last_upload_at?: string | null
+          email_enabled?: boolean
+          id?: number
+          primary_email?: string | null
+          retain_daily?: number
+          retain_manual?: number
+          retain_monthly?: number
+          schedule_cron?: string
+          secondary_email?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          drive_enabled?: boolean
+          drive_folder_id?: string | null
+          drive_last_status?: string | null
+          drive_last_upload_at?: string | null
+          email_enabled?: boolean
+          id?: number
+          primary_email?: string | null
+          retain_daily?: number
+          retain_manual?: number
+          retain_monthly?: number
+          schedule_cron?: string
+          secondary_email?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       customer_payments: {
         Row: {
           amount: number
