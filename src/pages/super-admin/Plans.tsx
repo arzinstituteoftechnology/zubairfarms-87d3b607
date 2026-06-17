@@ -80,8 +80,8 @@ const Plans = () => {
         </Dialog>
       </div>
       <Card className="bg-zinc-900 border-zinc-800 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-800/50 text-zinc-400 text-left">
+        <table className="w-full text-sm text-zinc-100">
+          <thead className="bg-zinc-800/50 text-zinc-100 text-left">
             <tr><th className="p-3">Name</th><th className="p-3">Cycle</th><th className="p-3">Price</th><th className="p-3">Days</th><th className="p-3">Active</th><th className="p-3 text-right">Actions</th></tr>
           </thead>
           <tbody>

@@ -264,17 +264,17 @@ const Backups = () => {
           <Table>
             <TableHeader>
               <TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableHead className="text-zinc-400">When</TableHead>
-                <TableHead className="text-zinc-400">Type</TableHead>
-                <TableHead className="text-zinc-400">Status</TableHead>
-                <TableHead className="text-zinc-400">Size</TableHead>
-                <TableHead className="text-zinc-400">Records</TableHead>
-                <TableHead className="text-zinc-400 text-right">Actions</TableHead>
+                <TableHead className="text-zinc-100">When</TableHead>
+                <TableHead className="text-zinc-100">Type</TableHead>
+                <TableHead className="text-zinc-100">Status</TableHead>
+                <TableHead className="text-zinc-100">Size</TableHead>
+                <TableHead className="text-zinc-100">Records</TableHead>
+                <TableHead className="text-zinc-100 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="text-center text-zinc-500 py-8">No backups yet</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center text-zinc-300 py-8">No backups yet</TableCell></TableRow>
               )}
               {rows.map((r) => (
                 <TableRow key={r.id} className="border-zinc-800 hover:bg-zinc-800/40">

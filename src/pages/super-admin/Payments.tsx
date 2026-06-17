@@ -21,8 +21,8 @@ const Payments = () => {
     <div className="space-y-4 text-zinc-100">
       <h1 className="text-2xl font-bold">Payments</h1>
       <Card className="bg-zinc-900 border-zinc-800 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-800/50 text-zinc-400 text-left">
+        <table className="w-full text-sm text-zinc-100">
+          <thead className="bg-zinc-800/50 text-zinc-100 text-left">
             <tr><th className="p-3">Invoice</th><th className="p-3">Client</th><th className="p-3">Plan</th><th className="p-3">Amount</th><th className="p-3">Paid</th><th className="p-3">Expiry</th><th className="p-3">Status</th></tr>
           </thead>
           <tbody>
@@ -32,8 +32,8 @@ const Payments = () => {
                 <td className="p-3">{r.tenants?.company_name ?? "—"}</td>
                 <td className="p-3">{r.plan_name}</td>
                 <td className="p-3">${Number(r.amount).toFixed(2)}</td>
-                <td className="p-3 text-zinc-400">{r.payment_date}</td>
-                <td className="p-3 text-zinc-400">{r.expiry_date ?? "—"}</td>
+                <td className="p-3 text-zinc-300">{r.payment_date}</td>
+                <td className="p-3 text-zinc-300">{r.expiry_date ?? "—"}</td>
                 <td className="p-3">
                   <Select value={r.status} onValueChange={(v) => setStatus(r.id, v)}>
                     <SelectTrigger className="h-7 w-28 text-xs"><SelectValue/></SelectTrigger>
@@ -45,7 +45,7 @@ const Payments = () => {
                 </td>
               </tr>
             ))}
-            {!rows.length && <tr><td colSpan={7} className="p-6 text-center text-zinc-500">No payments recorded yet.</td></tr>}
+            {!rows.length && <tr><td colSpan={7} className="p-6 text-center text-zinc-300">No payments recorded yet.</td></tr>}
           </tbody>
         </table>
       </Card>
