@@ -13,7 +13,6 @@ import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
 
 type Shop = { id: string; name: string };
-type Profile = { id: string; full_name: string | null };
 type Recovery = {
   id: string;
   shop_id: string;
@@ -51,7 +50,6 @@ const emptyForm = (): Form => ({
 const DailyRecovery = () => {
   const { user, tenant } = useAuth();
   const [shops, setShops] = useState<Shop[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [rows, setRows] = useState<Recovery[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -62,23 +60,20 @@ const DailyRecovery = () => {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: sh }, { data: pr }, { data: rc }] = await Promise.all([
+    const [{ data: sh }, { data: rc }] = await Promise.all([
       supabase.from("shops").select("id, name").order("name"),
-      supabase.from("profiles").select("id, full_name"),
       supabase.from("shop_recoveries").select("*").order("recovery_date", { ascending: false }).order("created_at", { ascending: false }),
     ]);
     setShops((sh ?? []) as Shop[]);
-    setProfiles((pr ?? []) as Profile[]);
     setRows((rc ?? []) as Recovery[]);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
 
   const shopName = (id: string) => shops.find((s) => s.id === id)?.name ?? "—";
-  const userName = (id: string | null) => (id ? profiles.find((p) => p.id === id)?.full_name || "—" : "—");
 
   const openNew = () => {
-    setForm({ ...emptyForm(), collected_by: user?.id ?? "" });
+    setForm(emptyForm());
     setOpen(true);
   };
   const openEdit = (r: Recovery) => {
@@ -105,7 +100,7 @@ const DailyRecovery = () => {
       amount: amt,
       payment_method: form.payment_method,
       notes: form.notes || null,
-      collected_by: form.collected_by || user?.id || null,
+      collected_by: form.collected_by || null,
     };
     if (form.id) {
       const { error } = await supabase.from("shop_recoveries").update(payload).eq("id", form.id);
@@ -207,7 +202,7 @@ const DailyRecovery = () => {
                   <TableCell className="font-medium">{shopName(r.shop_id)}</TableCell>
                   <TableCell className="text-end force-ltr">{fmtMoney(Number(r.amount))}</TableCell>
                   <TableCell>{METHOD_LABEL[r.payment_method]}</TableCell>
-                  <TableCell>{userName(r.collected_by)}</TableCell>
+                  <TableCell>{r.collected_by || "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{r.notes || "—"}</TableCell>
                   <TableCell className="text-end no-print">
                     <div className="flex justify-end gap-1">
@@ -245,10 +240,11 @@ const DailyRecovery = () => {
             </div>
             <div>
               <Label>Collected By</Label>
-              <select className="border rounded-md h-10 px-2 w-full bg-background" value={form.collected_by} onChange={(e) => setForm({ ...form, collected_by: e.target.value })}>
-                <option value="">— current user —</option>
-                {profiles.map((p) => <option key={p.id} value={p.id}>{p.full_name || p.id.slice(0, 8)}</option>)}
-              </select>
+              <Input
+                value={form.collected_by}
+                onChange={(e) => setForm({ ...form, collected_by: e.target.value })}
+                placeholder="e.g. Zeeshan, Driver Ahmed, Salesman Bilal"
+              />
             </div>
             <div><Label>Reference Notes</Label><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Reference / remarks" /></div>
           </div>
