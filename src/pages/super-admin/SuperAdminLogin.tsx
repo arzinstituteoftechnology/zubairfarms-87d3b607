@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -11,28 +11,17 @@ import { toast } from "sonner";
 
 const SuperAdminLogin = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isSuperAdmin, loading, refresh } = useAuth();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "signup">(searchParams.get("setup") === "1" ? "signup" : "signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [bootstrapAvailable, setBootstrapAvailable] = useState(false);
 
   useEffect(() => {
     if (!loading && isSuperAdmin) navigate("/super-admin", { replace: true });
   }, [loading, isSuperAdmin, navigate]);
-
-  useEffect(() => {
-    // Check if any super admin exists; if not, allow signup as bootstrap.
-    (async () => {
-      const { data } = await supabase.from("subscription_plans").select("id").limit(1); // warm
-      // We can't read user_roles without auth. We use a small heuristic: try bootstrap RPC after login attempt.
-      // For UI gating, show signup option if there are no tenants AND no logged-in super admin.
-      const { count } = await supabase.from("tenants").select("id", { count: "exact", head: true });
-      setBootstrapAvailable((count ?? 0) === 0);
-    })();
-  }, []);
 
   const onSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,15 +106,14 @@ const SuperAdminLogin = () => {
                 <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="bg-zinc-800 border-zinc-700" />
               </div>
               <Button type="submit" variant="destructive" className="w-full" disabled={busy}>{busy ? "…" : "Sign In"}</Button>
-              <button
+              <Button
                 type="button"
-                className="text-xs text-red-400 hover:text-red-200 underline w-full text-center pt-3"
+                variant="outline"
+                className="w-full border-red-700 bg-zinc-900 text-red-200 hover:bg-red-950 hover:text-red-100"
                 onClick={() => setMode("signup")}
               >
-                {bootstrapAvailable
-                  ? "No super admin yet — bootstrap the first one"
-                  : "Create the first Super Admin account"}
-              </button>
+                Create the first Super Admin account
+              </Button>
             </form>
           ) : (
             <form onSubmit={onSignUp} className="space-y-3">
