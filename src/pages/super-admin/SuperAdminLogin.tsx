@@ -117,11 +117,15 @@ const SuperAdminLogin = () => {
                 <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="bg-zinc-800 border-zinc-700" />
               </div>
               <Button type="submit" variant="destructive" className="w-full" disabled={busy}>{busy ? "…" : "Sign In"}</Button>
-              {bootstrapAvailable && (
-                <button type="button" className="text-xs text-zinc-400 hover:text-zinc-100 w-full text-center pt-2" onClick={() => setMode("signup")}>
-                  No super admin yet — bootstrap the first one
-                </button>
-              )}
+              <button
+                type="button"
+                className="text-xs text-red-400 hover:text-red-200 underline w-full text-center pt-3"
+                onClick={() => setMode("signup")}
+              >
+                {bootstrapAvailable
+                  ? "No super admin yet — bootstrap the first one"
+                  : "Create the first Super Admin account"}
+              </button>
             </form>
           ) : (
             <form onSubmit={onSignUp} className="space-y-3">
