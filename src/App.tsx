@@ -36,6 +36,7 @@ import SAUsers from "./pages/super-admin/Users";
 import SALogs from "./pages/super-admin/ActivityLogs";
 import SASettings from "./pages/super-admin/SystemSettings";
 import SABackups from "./pages/super-admin/Backups";
+import SABackupEmail from "./pages/super-admin/BackupEmailSettings";
 
 const queryClient = new QueryClient();
 
@@ -61,6 +62,7 @@ const App = () => (
               <Route path="logs" element={<SALogs />} />
               <Route path="settings" element={<SASettings />} />
               <Route path="backups" element={<SABackups />} />
+              <Route path="backup-email" element={<SABackupEmail />} />
             </Route>
             <Route element={<AppLayout />}>
               <Route path="/" element={<Dashboard />} />
