@@ -146,7 +146,9 @@ const Dashboard = () => {
         <KpiCard icon={Boxes} label={isToday ? t("dashboard.current_stock") : t("dashboard.stock_on")} value={fmtKg(kpi.stockKg)} tone={kpi.stockKg < 0 ? "danger" : "default"} sub={selectedDate} />
         <KpiCard icon={TrendingUp} label={isToday ? t("dashboard.todays_profit") : t("dashboard.profit_on")} value={fmtMoney(kpi.profit)} tone={kpi.profit >= 0 ? "success" : "danger"} sub={t("dashboard.revenue_minus_cost")} />
         <KpiCard icon={Wallet} label={t("dashboard.payable_to_farms")} value={fmtMoney(kpi.payableToFarms)} sub={t("dashboard.total_udhaar")} tone="danger" />
-        <KpiCard icon={Users} label={t("dashboard.receivable")} value={fmtMoney(kpi.receivableFromCustomers)} sub={t("dashboard.customer_dues")} tone="danger" />
+        {customersEnabled && (
+          <KpiCard icon={Users} label={t("dashboard.receivable")} value={fmtMoney(kpi.receivableFromCustomers)} sub={t("dashboard.customer_dues")} tone="danger" />
+        )}
         <KpiCard icon={Beef} label={t("dashboard.total_purchase_value")} value={fmtMoney(kpi.purchaseAmt)} sub={selectedDate} />
         <KpiCard icon={Truck} label={t("dashboard.total_supply_value")} value={fmtMoney(kpi.supplyAmt)} sub={selectedDate} />
         <KpiCard icon={HandCoins} label="Today's Recovery" value={fmtMoney(kpi.recoveryToday)} sub={selectedDate} tone="success" />
