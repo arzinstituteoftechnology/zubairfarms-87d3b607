@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { fmtKg, fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
+import { printReport } from "@/lib/printReport";
 
 type D = {
   id: string; truck_id: string | null; farm_id: string | null; destination: string | null;
@@ -37,6 +38,7 @@ const Deliveries = () => {
   const [editing, setEditing] = useState<D | null>(null); const [del, setDel] = useState<D | null>(null);
   const [printRow, setPrintRow] = useState<D | null>(null);
   const { selectedDate, setSelectedDate } = useLedgerDate();
+  const ledgerToday = format(new Date(), "yyyy-MM-dd");
 
   const load = async (date = selectedDate) => {
     setLoading(true);
@@ -123,6 +125,34 @@ const Deliveries = () => {
           )},
         ]}
       />
+      <div className="flex items-end gap-2 -mt-2">
+        <div>
+          <Label className="text-xs uppercase tracking-wider text-muted-foreground">{t("common.date")}</Label>
+          <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value || ledgerToday)} className="force-ltr w-[180px]" />
+        </div>
+        <Button variant="outline" disabled={selectedDate === ledgerToday} onClick={() => setSelectedDate(ledgerToday)}>{t("dashboard.today_btn")}</Button>
+        <Button variant="outline" onClick={() => printReport<D>({
+          businessName: tenant?.company_name,
+          title: "Deliveries Report",
+          dateLabel: selectedDate,
+          columns: [
+            { label: "Truck", value: (r) => r.trucks?.number ?? "—" },
+            { label: "Driver", value: (r) => r.trucks?.driver_name ?? "—" },
+            { label: "Farm", value: (r) => r.farms?.name ?? "—" },
+            { label: "Destination", value: (r) => r.destination ?? "—" },
+            { label: "Chickens", value: (r) => r.chickens_count, align: "right" },
+            { label: "Weight (kg)", value: (r) => fmtKg(r.total_weight_kg), align: "right" },
+            { label: "Expenses", value: (r) => fmtMoney(Number(r.fuel_expense) + Number(r.labour_expense) + Number(r.other_expense)), align: "right" },
+          ],
+          rows,
+          totals: [
+            { label: "Total Chickens", value: String(rows.reduce((s, r) => s + Number(r.chickens_count || 0), 0)) },
+            { label: "Total Weight", value: fmtKg(rows.reduce((s, r) => s + Number(r.total_weight_kg || 0), 0)) },
+            { label: "Total Expenses", value: fmtMoney(rows.reduce((s, r) => s + Number(r.fuel_expense || 0) + Number(r.labour_expense || 0) + Number(r.other_expense || 0), 0)) },
+          ],
+          footer: `Printed by ${user?.email ?? ""}`,
+        })}><Printer className="h-4 w-4" /> {t("common.print") || "Print"}</Button>
+      </div>
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setEditing(null); setForm(empty(selectedDate)); } }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle>{editing ? t("deliveries.edit") : t("deliveries.add")}</DialogTitle></DialogHeader>
