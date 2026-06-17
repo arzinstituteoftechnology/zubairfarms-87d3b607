@@ -202,7 +202,7 @@ const DailyRecovery = () => {
                   <TableCell className="font-medium">{shopName(r.shop_id)}</TableCell>
                   <TableCell className="text-end force-ltr">{fmtMoney(Number(r.amount))}</TableCell>
                   <TableCell>{METHOD_LABEL[r.payment_method]}</TableCell>
-                  <TableCell>{userName(r.collected_by)}</TableCell>
+                  <TableCell>{r.collected_by || "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{r.notes || "—"}</TableCell>
                   <TableCell className="text-end no-print">
                     <div className="flex justify-end gap-1">
