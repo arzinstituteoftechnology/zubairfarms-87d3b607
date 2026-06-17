@@ -61,14 +61,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", userId);
     const list = (roles ?? []).map((r) => r.role as Role);
     const superAdmin = list.includes("super_admin");
-    setIsSuperAdmin(superAdmin);
-    setRole(superAdmin ? "super_admin" : list.includes("admin") ? "admin" : list[0] ?? null);
-
     if (superAdmin) {
+      // Super Admin accounts must NOT hold a tenant session.
+      // Force sign-out from the tenant client; the user can still use
+      // the separate /super-admin/login session.
+      await supabase.auth.signOut();
+      setIsSuperAdmin(false);
       setTenant(null);
       setSubscription(null);
       return;
     }
+    setIsSuperAdmin(false);
+    setRole(list.includes("admin") ? "admin" : list[0] ?? null);
 
     const { data: tu } = await supabase.from("tenant_users").select("tenant_id, tenants(id, company_name, status)").eq("user_id", userId).maybeSingle();
     const t = (tu as any)?.tenants ?? null;
