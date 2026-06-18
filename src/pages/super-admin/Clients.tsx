@@ -326,6 +326,33 @@ const Clients = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!purgeOpen} onOpenChange={(o) => !o && setPurgeOpen(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Permanently Purge — {purgeOpen?.tenant.company_name}</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="rounded border border-red-500/50 bg-red-500/10 p-3 text-red-200">
+              <p className="font-semibold mb-1">This is irreversible.</p>
+              <ul className="list-disc pl-5 text-xs space-y-0.5">
+                <li>All business data for this tenant is deleted.</li>
+                <li>The tenant record is deleted.</li>
+                <li>Auth users linked only to this tenant are deleted.</li>
+              </ul>
+              <p className="text-xs mt-2"><b>Protected:</b> Super Admin accounts and any user linked to another client are NEVER deleted.</p>
+            </div>
+            <div>
+              <Label>Type <span className="font-mono">PURGE</span> to confirm</Label>
+              <Input value={purgeOpen?.confirm ?? ""} onChange={(e) => purgeOpen && setPurgeOpen({ ...purgeOpen, confirm: e.target.value })} placeholder="PURGE"/>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPurgeOpen(null)} disabled={purgeOpen?.busy}>Cancel</Button>
+            <Button variant="destructive" onClick={runPurge} disabled={!purgeOpen || purgeOpen.confirm !== "PURGE" || purgeOpen.busy}>
+              {purgeOpen?.busy ? "Purging…" : "Permanently purge"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
