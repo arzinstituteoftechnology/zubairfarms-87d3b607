@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { supabaseSuperAdmin as supabase } from "@/integrations/supabase/superAdminClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Building2, CheckCircle2, AlertOctagon, PauseCircle, DollarSign, TrendingUp, Tractor, Users, Database } from "lucide-react";
 

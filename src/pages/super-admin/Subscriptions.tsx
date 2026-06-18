@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabaseSuperAdmin as supabase } from "@/integrations/supabase/superAdminClient";
 import { Card } from "@/components/ui/card";
 
 const Subscriptions = () => {
