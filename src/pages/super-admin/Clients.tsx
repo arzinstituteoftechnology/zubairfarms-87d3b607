@@ -6,15 +6,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pause, Play, Trash2, KeyRound, CreditCard, Stethoscope, RefreshCw, Eraser, Download } from "lucide-react";
+import { Plus, Pause, Play, Trash2, KeyRound, CreditCard, Stethoscope, RefreshCw, Eraser, Download, Archive, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
-interface Tenant { id: string; company_name: string; owner_name: string; email: string; mobile: string | null; country: string | null; city: string | null; status: string; created_at: string }
+interface Tenant { id: string; company_name: string; owner_name: string; email: string; mobile: string | null; country: string | null; city: string | null; status: string; created_at: string; deleted_at: string | null }
 interface Plan { id: string; name: string; duration_days: number; price: number; billing_cycle: string }
 
 const Clients = () => {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
@@ -25,6 +26,7 @@ const Clients = () => {
   const [extendOpen, setExtendOpen] = useState<{ tenant: Tenant; plan_id: string; amount: string } | null>(null);
   const [diagOpen, setDiagOpen] = useState<{ tenant: Tenant; report: any | null; loading: boolean } | null>(null);
   const [resetOpen, setResetOpen] = useState<{ tenant: Tenant; mode: "business" | "full"; confirm: string; busy: boolean } | null>(null);
+  const [purgeOpen, setPurgeOpen] = useState<{ tenant: Tenant; confirm: string; busy: boolean } | null>(null);
 
   const load = async () => {
     const { data } = await supabase.from("tenants").select("*").order("created_at", { ascending: false });
@@ -63,10 +65,29 @@ const Clients = () => {
     toast.success("Updated"); load();
   };
   const remove = async (t: Tenant) => {
-    if (!confirm(`Delete ${t.company_name}? This removes the tenant, all its data, and all its users.`)) return;
+    if (!confirm(`Archive ${t.company_name}?\n\nThe client will be hidden and suspended, but ALL data, users, subscriptions and payments are preserved. You can restore at any time.`)) return;
     const { error } = await supabase.functions.invoke("admin-tenant-action", { body: { action: "delete_tenant", tenant_id: t.id } });
     if (error) return toast.error(error.message);
-    toast.success("Deleted"); load();
+    toast.success("Client archived"); load();
+  };
+  const restore = async (t: Tenant) => {
+    const { error } = await supabase.functions.invoke("admin-tenant-action", { body: { action: "restore_tenant", tenant_id: t.id } });
+    if (error) return toast.error(error.message);
+    toast.success("Client restored"); load();
+  };
+  const runPurge = async () => {
+    if (!purgeOpen) return;
+    if (purgeOpen.confirm !== "PURGE") return toast.error("Type PURGE to confirm");
+    setPurgeOpen({ ...purgeOpen, busy: true });
+    const { data, error } = await supabase.functions.invoke("admin-tenant-action", {
+      body: { action: "purge_tenant", tenant_id: purgeOpen.tenant.id, confirm: "PURGE" },
+    });
+    if (error || (data as any)?.error) {
+      setPurgeOpen({ ...purgeOpen, busy: false });
+      return toast.error((data as any)?.error ?? error?.message ?? "Purge failed");
+    }
+    toast.success(`Purged. Removed ${(data as any)?.removed_auth_users ?? 0} auth user(s); protected ${(data as any)?.protected_auth_users ?? 0}.`);
+    setPurgeOpen(null); load();
   };
 
   const downloadBackup = async (t: Tenant) => {
@@ -154,6 +175,9 @@ const Clients = () => {
       <div className="flex items-center justify-between">
         <div><h1 className="text-2xl font-bold">Clients</h1><p className="text-zinc-400 text-sm">All tenant accounts</p></div>
         <div className="flex items-center gap-2">
+        <Button variant="outline" onClick={() => setShowArchived(s => !s)}>
+          <Archive className="h-4 w-4"/> {showArchived ? "Show active" : "Show archived"}
+        </Button>
         <Button variant="outline" onClick={syncAuth}><RefreshCw className="h-4 w-4"/> Sync auth users</Button>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button><Plus className="h-4 w-4"/> New Client</Button></DialogTrigger>
@@ -189,21 +213,34 @@ const Clients = () => {
             <tr><th className="p-3">Company</th><th className="p-3">Owner</th><th className="p-3">Email</th><th className="p-3">Location</th><th className="p-3">Status</th><th className="p-3 text-right">Actions</th></tr>
           </thead>
           <tbody>
-            {tenants.map(t => (
-              <tr key={t.id} className="border-t border-zinc-800">
+            {tenants.filter(t => showArchived ? !!t.deleted_at : !t.deleted_at).map(t => (
+              <tr key={t.id} className={`border-t border-zinc-800 ${t.deleted_at ? "opacity-60" : ""}`}>
                 <td className="p-3 font-medium">{t.company_name}</td>
                 <td className="p-3">{t.owner_name}</td>
                 <td className="p-3 text-zinc-300">{t.email}</td>
                 <td className="p-3 text-zinc-300">{[t.city, t.country].filter(Boolean).join(", ") || "—"}</td>
-                <td className="p-3"><span className={`px-2 py-0.5 rounded text-xs ${t.status === "active" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>{t.status}</span></td>
+                <td className="p-3">
+                  {t.deleted_at
+                    ? <span className="px-2 py-0.5 rounded text-xs bg-zinc-500/20 text-zinc-300">archived</span>
+                    : <span className={`px-2 py-0.5 rounded text-xs ${t.status === "active" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>{t.status}</span>}
+                </td>
                 <td className="p-3 text-right space-x-1">
-                  <Button size="sm" variant="ghost" title="Extend / Pay" onClick={() => setExtendOpen({ tenant: t, plan_id: "", amount: "" })}><CreditCard className="h-4 w-4"/></Button>
-                  <Button size="sm" variant="ghost" title="Backup data" onClick={() => downloadBackup(t)}><Download className="h-4 w-4"/></Button>
-                  <Button size="sm" variant="ghost" title="Reset client data" onClick={() => setResetOpen({ tenant: t, mode: "business", confirm: "", busy: false })}><Eraser className="h-4 w-4 text-amber-400"/></Button>
-                  <Button size="sm" variant="ghost" title="Diagnose login" onClick={() => diagnose(t)}><Stethoscope className="h-4 w-4"/></Button>
-                  <Button size="sm" variant="ghost" title="Reset Password" onClick={() => setPwUser({ tenant: t, password: "" })}><KeyRound className="h-4 w-4"/></Button>
-                  <Button size="sm" variant="ghost" title={t.status === "active" ? "Suspend" : "Activate"} onClick={() => suspend(t)}>{t.status === "active" ? <Pause className="h-4 w-4"/> : <Play className="h-4 w-4"/>}</Button>
-                  <Button size="sm" variant="ghost" title="Delete" onClick={() => remove(t)}><Trash2 className="h-4 w-4 text-red-400"/></Button>
+                  {t.deleted_at ? (
+                    <>
+                      <Button size="sm" variant="ghost" title="Restore" onClick={() => restore(t)}><RotateCcw className="h-4 w-4 text-green-400"/></Button>
+                      <Button size="sm" variant="ghost" title="Permanently purge" onClick={() => setPurgeOpen({ tenant: t, confirm: "", busy: false })}><Trash2 className="h-4 w-4 text-red-500"/></Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button size="sm" variant="ghost" title="Extend / Pay" onClick={() => setExtendOpen({ tenant: t, plan_id: "", amount: "" })}><CreditCard className="h-4 w-4"/></Button>
+                      <Button size="sm" variant="ghost" title="Backup data" onClick={() => downloadBackup(t)}><Download className="h-4 w-4"/></Button>
+                      <Button size="sm" variant="ghost" title="Reset client data" onClick={() => setResetOpen({ tenant: t, mode: "business", confirm: "", busy: false })}><Eraser className="h-4 w-4 text-amber-400"/></Button>
+                      <Button size="sm" variant="ghost" title="Diagnose login" onClick={() => diagnose(t)}><Stethoscope className="h-4 w-4"/></Button>
+                      <Button size="sm" variant="ghost" title="Reset Password" onClick={() => setPwUser({ tenant: t, password: "" })}><KeyRound className="h-4 w-4"/></Button>
+                      <Button size="sm" variant="ghost" title={t.status === "active" ? "Suspend" : "Activate"} onClick={() => suspend(t)}>{t.status === "active" ? <Pause className="h-4 w-4"/> : <Play className="h-4 w-4"/>}</Button>
+                      <Button size="sm" variant="ghost" title="Archive" onClick={() => remove(t)}><Archive className="h-4 w-4 text-red-400"/></Button>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}
@@ -285,6 +322,33 @@ const Clients = () => {
             <Button variant="outline" onClick={() => setResetOpen(null)} disabled={resetOpen?.busy}>Cancel</Button>
             <Button variant="destructive" onClick={runReset} disabled={!resetOpen || resetOpen.confirm !== "RESET" || resetOpen.busy}>
               {resetOpen?.busy ? "Resetting…" : "Reset client data"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!purgeOpen} onOpenChange={(o) => !o && setPurgeOpen(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Permanently Purge — {purgeOpen?.tenant.company_name}</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="rounded border border-red-500/50 bg-red-500/10 p-3 text-red-200">
+              <p className="font-semibold mb-1">This is irreversible.</p>
+              <ul className="list-disc pl-5 text-xs space-y-0.5">
+                <li>All business data for this tenant is deleted.</li>
+                <li>The tenant record is deleted.</li>
+                <li>Auth users linked only to this tenant are deleted.</li>
+              </ul>
+              <p className="text-xs mt-2"><b>Protected:</b> Super Admin accounts and any user linked to another client are NEVER deleted.</p>
+            </div>
+            <div>
+              <Label>Type <span className="font-mono">PURGE</span> to confirm</Label>
+              <Input value={purgeOpen?.confirm ?? ""} onChange={(e) => purgeOpen && setPurgeOpen({ ...purgeOpen, confirm: e.target.value })} placeholder="PURGE"/>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPurgeOpen(null)} disabled={purgeOpen?.busy}>Cancel</Button>
+            <Button variant="destructive" onClick={runPurge} disabled={!purgeOpen || purgeOpen.confirm !== "PURGE" || purgeOpen.busy}>
+              {purgeOpen?.busy ? "Purging…" : "Permanently purge"}
             </Button>
           </DialogFooter>
         </DialogContent>

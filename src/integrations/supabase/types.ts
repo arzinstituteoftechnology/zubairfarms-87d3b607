@@ -1348,6 +1348,7 @@ export type Database = {
           company_name: string
           country: string | null
           created_at: string
+          deleted_at: string | null
           email: string
           farm_name: string | null
           id: string
@@ -1361,6 +1362,7 @@ export type Database = {
           company_name: string
           country?: string | null
           created_at?: string
+          deleted_at?: string | null
           email: string
           farm_name?: string | null
           id?: string
@@ -1374,6 +1376,7 @@ export type Database = {
           company_name?: string
           country?: string | null
           created_at?: string
+          deleted_at?: string | null
           email?: string
           farm_name?: string | null
           id?: string
