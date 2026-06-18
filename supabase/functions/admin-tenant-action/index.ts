@@ -9,6 +9,8 @@ const corsHeaders = {
 type Action =
   | { action: "reset_password"; user_id: string; new_password: string }
   | { action: "delete_tenant"; tenant_id: string }
+  | { action: "restore_tenant"; tenant_id: string }
+  | { action: "purge_tenant"; tenant_id: string; confirm: string }
   | { action: "suspend_tenant"; tenant_id: string }
   | { action: "activate_tenant"; tenant_id: string }
   | { action: "sync_auth_users" }
@@ -41,10 +43,90 @@ Deno.serve(async (req) => {
     } else if (body.action === "activate_tenant") {
       await admin.from("tenants").update({ status: "active" }).eq("id", body.tenant_id);
     } else if (body.action === "delete_tenant") {
+      // SOFT DELETE ONLY. Never touches auth.users, user_roles, subscriptions,
+      // plans, payments or any business data. Reversible via restore_tenant.
+      const { error } = await admin
+        .from("tenants")
+        .update({ deleted_at: new Date().toISOString(), status: "suspended" })
+        .eq("id", body.tenant_id);
+      if (error) throw new Error(error.message);
+      await admin.from("activity_logs").insert({
+        actor_user_id: user.id,
+        tenant_id: body.tenant_id,
+        action: "tenant_archived",
+        entity: "tenant",
+        entity_id: body.tenant_id,
+        metadata: { soft_delete: true },
+      });
+    } else if (body.action === "restore_tenant") {
+      const { error } = await admin
+        .from("tenants")
+        .update({ deleted_at: null, status: "active" })
+        .eq("id", body.tenant_id);
+      if (error) throw new Error(error.message);
+      await admin.from("activity_logs").insert({
+        actor_user_id: user.id, tenant_id: body.tenant_id,
+        action: "tenant_restored", entity: "tenant", entity_id: body.tenant_id, metadata: {},
+      });
+    } else if (body.action === "purge_tenant") {
+      // DESTRUCTIVE — requires explicit "PURGE" confirm + tenant must already be archived.
+      if (body.confirm !== "PURGE") return new Response(JSON.stringify({ error: "Type PURGE to confirm" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const { data: t } = await admin.from("tenants").select("id, deleted_at, company_name").eq("id", body.tenant_id).maybeSingle();
+      if (!t) return new Response(JSON.stringify({ error: "Tenant not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (!t.deleted_at) return new Response(JSON.stringify({ error: "Archive the client first, then purge." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+      // 1. Find users linked to this tenant.
       const { data: tu } = await admin.from("tenant_users").select("user_id").eq("tenant_id", body.tenant_id);
+      const userIds = (tu ?? []).map((r) => r.user_id);
+
+      // 2. Build a protected-user set: anyone with super_admin role, or anyone linked to another tenant.
+      const { data: superRows } = await admin.from("user_roles").select("user_id").eq("role", "super_admin");
+      const superIds = new Set((superRows ?? []).map((r) => r.user_id));
+      const { data: otherLinks } = userIds.length
+        ? await admin.from("tenant_users").select("user_id, tenant_id").in("user_id", userIds).neq("tenant_id", body.tenant_id)
+        : { data: [] as any[] };
+      const otherTenantIds = new Set((otherLinks ?? []).map((r) => r.user_id));
+
+      // 3. Delete business data scoped strictly to THIS tenant_id.
+      const businessTables = [
+        "pos_sale_items","pos_sales","customer_payments","farm_payments","payments",
+        "deliveries","supplies","purchases","expenses","customers","shops","farms","trucks",
+        "activity_logs","subscriptions","settings","shop_recoveries","shop_ledger_entries","supplier_ledger_entries",
+      ];
+      const deleted: Record<string, number> = {};
+      for (const tbl of businessTables) {
+        const { count } = await admin.from(tbl).delete({ count: "exact" }).eq("tenant_id", body.tenant_id);
+        deleted[tbl] = count ?? 0;
+      }
+
+      // 4. Drop tenant_users links for this tenant only.
+      await admin.from("tenant_users").delete().eq("tenant_id", body.tenant_id);
+
+      // 5. Delete the tenant row.
       await admin.from("tenants").delete().eq("id", body.tenant_id);
-      for (const row of tu ?? []) {
-        await admin.auth.admin.deleteUser(row.user_id).catch(() => {});
+
+      // 6. Delete auth users — ONLY if not super_admin AND not linked to any other tenant.
+      const removedAuth: string[] = [];
+      const protectedAuth: string[] = [];
+      for (const uid of userIds) {
+        if (superIds.has(uid) || otherTenantIds.has(uid)) {
+          protectedAuth.push(uid);
+          continue;
+        }
+        await admin.auth.admin.deleteUser(uid).catch(() => {});
+        removedAuth.push(uid);
+      }
+
+      await admin.from("activity_logs").insert({
+        actor_user_id: user.id, tenant_id: null,
+        action: "tenant_purged", entity: "tenant", entity_id: body.tenant_id,
+        metadata: { deleted, removed_auth_users: removedAuth, protected_auth_users: protectedAuth, company_name: t.company_name },
+      }).then(() => {}, () => {});
+
+      return new Response(JSON.stringify({ ok: true, deleted, removed_auth_users: removedAuth.length, protected_auth_users: protectedAuth.length }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    } else if (body.action === "_legacy_delete_tenant_disabled") {
+      // Hard-delete path is permanently disabled — see incident report 2026-06-18.
+      return new Response(JSON.stringify({ error: "Hard delete disabled. Use delete_tenant (archive) then purge_tenant." }), { status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
     } else if (body.action === "diagnose_login") {
       const email = body.email.trim().toLowerCase();
