@@ -130,7 +130,7 @@ const SuperAdminLogin = () => {
               </div>
               <div className="space-y-1.5">
                 <Label>Password</Label>
-                <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="bg-zinc-800 border-zinc-700" />
+                <PasswordInput required value={password} onChange={(e) => setPassword(e.target.value)} className="bg-zinc-800 border-zinc-700" />
               </div>
               <Button type="submit" variant="destructive" className="w-full" disabled={busy}>{busy ? "…" : "Sign In"}</Button>
               {saExists === false && (
@@ -156,7 +156,7 @@ const SuperAdminLogin = () => {
               </div>
               <div className="space-y-1.5">
                 <Label>Password</Label>
-                <Input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} className="bg-zinc-800 border-zinc-700" />
+                <PasswordInput required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} className="bg-zinc-800 border-zinc-700" />
               </div>
               <Button type="submit" variant="destructive" className="w-full" disabled={busy}>{busy ? "…" : "Create Super Admin"}</Button>
               <button type="button" className="text-xs text-zinc-400 hover:text-zinc-100 w-full text-center" onClick={() => setMode("signin")}>

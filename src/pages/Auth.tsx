@@ -80,7 +80,7 @@ const Auth = () => {
             </div>
             <div className="space-y-1.5">
               <Label>{t("auth.password")}</Label>
-              <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+              <PasswordInput required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
             </div>
             <Button type="submit" className="w-full" disabled={busy}>{busy ? "…" : t("auth.sign_in")}</Button>
             <button type="button" className="text-xs text-muted-foreground hover:text-foreground w-full text-center" onClick={() => setMode("forgot")}>
