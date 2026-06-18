@@ -175,6 +175,9 @@ const Clients = () => {
       <div className="flex items-center justify-between">
         <div><h1 className="text-2xl font-bold">Clients</h1><p className="text-zinc-400 text-sm">All tenant accounts</p></div>
         <div className="flex items-center gap-2">
+        <Button variant="outline" onClick={() => setShowArchived(s => !s)}>
+          <Archive className="h-4 w-4"/> {showArchived ? "Show active" : "Show archived"}
+        </Button>
         <Button variant="outline" onClick={syncAuth}><RefreshCw className="h-4 w-4"/> Sync auth users</Button>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button><Plus className="h-4 w-4"/> New Client</Button></DialogTrigger>
