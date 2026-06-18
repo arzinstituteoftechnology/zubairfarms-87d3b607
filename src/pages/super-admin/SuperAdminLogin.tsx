@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ShieldAlert, Eye, EyeOff } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
+import { toast } from "sonner";
 import { PasswordInput } from "@/components/PasswordInput";
 
 const SuperAdminLogin = () => {
