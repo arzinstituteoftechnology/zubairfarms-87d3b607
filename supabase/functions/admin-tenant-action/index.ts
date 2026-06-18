@@ -127,7 +127,6 @@ Deno.serve(async (req) => {
     } else if (body.action === "_legacy_delete_tenant_disabled") {
       // Hard-delete path is permanently disabled — see incident report 2026-06-18.
       return new Response(JSON.stringify({ error: "Hard delete disabled. Use delete_tenant (archive) then purge_tenant." }), { status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
     } else if (body.action === "diagnose_login") {
       const email = body.email.trim().toLowerCase();
       const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
