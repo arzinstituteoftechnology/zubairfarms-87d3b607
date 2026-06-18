@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/PasswordInput";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
@@ -64,11 +65,11 @@ const ResetPassword = () => {
             <form onSubmit={onSubmit} className="space-y-3">
               <div className="space-y-1.5">
                 <Label>{t("auth.new_password")}</Label>
-                <Input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+                <PasswordInput required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label>{t("auth.confirm_password")}</Label>
-                <Input type="password" required minLength={6} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+                <PasswordInput required minLength={6} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
               </div>
               <Button type="submit" className="w-full" disabled={busy}>{t("auth.update_password")}</Button>
             </form>

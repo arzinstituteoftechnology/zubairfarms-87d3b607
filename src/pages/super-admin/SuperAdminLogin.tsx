@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
+import { PasswordInput } from "@/components/PasswordInput";
 
 const SuperAdminLogin = () => {
   const navigate = useNavigate();
@@ -129,7 +130,7 @@ const SuperAdminLogin = () => {
               </div>
               <div className="space-y-1.5">
                 <Label>Password</Label>
-                <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="bg-zinc-800 border-zinc-700" />
+                <PasswordInput required value={password} onChange={(e) => setPassword(e.target.value)} className="bg-zinc-800 border-zinc-700" />
               </div>
               <Button type="submit" variant="destructive" className="w-full" disabled={busy}>{busy ? "…" : "Sign In"}</Button>
               {saExists === false && (
@@ -155,7 +156,7 @@ const SuperAdminLogin = () => {
               </div>
               <div className="space-y-1.5">
                 <Label>Password</Label>
-                <Input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} className="bg-zinc-800 border-zinc-700" />
+                <PasswordInput required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} className="bg-zinc-800 border-zinc-700" />
               </div>
               <Button type="submit" variant="destructive" className="w-full" disabled={busy}>{busy ? "…" : "Create Super Admin"}</Button>
               <button type="button" className="text-xs text-zinc-400 hover:text-zinc-100 w-full text-center" onClick={() => setMode("signin")}>
