@@ -241,7 +241,7 @@ async function resetTenant(
     ? [...BUSINESS_TABLES, ...OPTIONAL_BUSINESS_TABLES, "settings"]
     : [...BUSINESS_TABLES, ...OPTIONAL_BUSINESS_TABLES];
   const deleted_counts: Record<string, number> = {};
-  const errors: Record<string, string> = {};
+  const errors: Record<string, any> = {};
   let total = 0;
 
   const isMissingTable = (error: any) => {
@@ -258,8 +258,32 @@ async function resetTenant(
   const rememberError = (table: string, scope: string, error: any, optional = false) => {
     if (optional && isMissingTable(error)) return;
     const message = error?.message ?? String(error);
-    console.error(`[reset] ${table} (${scope}): ${message}`);
-    errors[`${table}.${scope}`] = message;
+    const code = error?.code ?? null;
+    const details = error?.details ?? null;
+    const hint = error?.hint ?? null;
+    // Try to surface the violated constraint / referencing table when Postgres reports one.
+    const constraintMatch =
+      typeof message === "string"
+        ? message.match(/constraint "([^"]+)"/i) ?? message.match(/violates [a-z ]*constraint "([^"]+)"/i)
+        : null;
+    const referencingMatch =
+      typeof details === "string" ? details.match(/from table "([^"]+)"/i) : null;
+    const payload = {
+      scope,
+      message,
+      code,
+      details,
+      hint,
+      constraint: constraintMatch?.[1] ?? null,
+      referencing_table: referencingMatch?.[1] ?? null,
+    };
+    console.error(`[reset] ${table} (${scope}) [${code ?? "?"}]: ${message}`, {
+      details,
+      hint,
+      constraint: payload.constraint,
+      referencing_table: payload.referencing_table,
+    });
+    errors[`${table}.${scope}`] = payload;
     deleted_counts[table] = deleted_counts[table] ?? 0;
   };
 
