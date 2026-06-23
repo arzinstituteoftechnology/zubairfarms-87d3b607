@@ -241,7 +241,7 @@ async function resetTenant(
     ? [...BUSINESS_TABLES, ...OPTIONAL_BUSINESS_TABLES, "settings"]
     : [...BUSINESS_TABLES, ...OPTIONAL_BUSINESS_TABLES];
   const deleted_counts: Record<string, number> = {};
-  const errors: Record<string, string> = {};
+  const errors: Record<string, any> = {};
   let total = 0;
 
   const isMissingTable = (error: any) => {
