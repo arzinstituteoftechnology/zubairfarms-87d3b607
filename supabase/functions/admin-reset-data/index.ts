@@ -18,6 +18,9 @@ const BUSINESS_TABLES = [
   "supplies",
   "purchases",
   "expenses",
+  "shop_recoveries",
+  "shop_ledger_entries",
+  "supplier_ledger_entries",
   "customers",
   "shops",
   "farms",
@@ -30,7 +33,7 @@ const BUSINESS_TABLES = [
 //  profiles, system_settings, settings, auth.users)
 
 type Body =
-  | { action: "business_reset"; confirm: string; tenant_id?: string | null }
+  | { action: "business_reset"; confirm: string; tenant_id: string }
   | { action: "full_client_reset"; confirm: string; tenant_id: string }
   | { action: "factory_reset"; confirm: string }
   | { action: "backup"; tenant_id?: string | null }
@@ -72,72 +75,15 @@ Deno.serve(async (req) => {
     // ---------- BUSINESS RESET ----------
     if (body.action === "business_reset") {
       if (!isConfirmed(body.confirm)) return json({ error: "Type RESET to confirm" }, 400);
-
-      // Take a safety backup first (business tables only).
-      const backup = await buildBackup(admin, body.tenant_id ?? null, /*includeTenancy*/ false);
-
-      const counts: Record<string, number> = {};
-      for (const table of BUSINESS_TABLES) {
-        const q = admin.from(table).delete();
-        const filtered = body.tenant_id ? q.eq("tenant_id", body.tenant_id) : q.not("id", "is", null);
-        const { error, count } = await filtered.select("*", { count: "exact", head: true });
-        if (error) {
-          // Table may not exist — skip silently
-          counts[table] = -1;
-          continue;
-        }
-        counts[table] = count ?? 0;
-      }
-
-      await admin.from("activity_logs").insert({
-        actor_user_id: user.id,
-        tenant_id: body.tenant_id ?? null,
-        action: "business_reset",
-        entity: "tenant",
-        entity_id: body.tenant_id ?? null,
-        metadata: { deleted_counts: counts },
-      });
-
-      return json({
-        ok: true,
-        mode: "business_reset",
-        tenant_id: body.tenant_id ?? null,
-        deleted_counts: counts,
-        backup,
-        message: "Business data cleared. Super admin, tenants, users and subscriptions were preserved.",
-      });
+      if (!body.tenant_id) return json({ error: "tenant_id is required — global resets are not allowed" }, 400);
+      return await resetTenant(admin, user, body.tenant_id, /*includeSettings*/ false, "business_reset");
     }
 
     // ---------- FULL CLIENT RESET (per-tenant: wipe business + settings, keep org/owner/subscription) ----------
     if (body.action === "full_client_reset") {
       if (!isConfirmed(body.confirm)) return json({ error: "Type RESET to confirm" }, 400);
       if (!body.tenant_id) return json({ error: "tenant_id required" }, 400);
-
-      const backup = await buildBackup(admin, body.tenant_id, /*includeTenancy*/ false);
-      const counts: Record<string, number> = {};
-      const tables = [...BUSINESS_TABLES, "settings"];
-      for (const table of tables) {
-        const { error, count } = await admin.from(table).delete({ count: "exact" }).eq("tenant_id", body.tenant_id);
-        counts[table] = error ? -1 : (count ?? 0);
-      }
-
-      await admin.from("activity_logs").insert({
-        actor_user_id: user.id,
-        tenant_id: body.tenant_id,
-        action: "full_client_reset",
-        entity: "tenant",
-        entity_id: body.tenant_id,
-        metadata: { deleted_counts: counts },
-      });
-
-      return json({
-        ok: true,
-        mode: "full_client_reset",
-        tenant_id: body.tenant_id,
-        deleted_counts: counts,
-        backup,
-        message: "Full client reset complete. Owner account, organization and subscription preserved.",
-      });
+      return await resetTenant(admin, user, body.tenant_id, /*includeSettings*/ true, "full_client_reset");
     }
 
     // ---------- FACTORY RESET (super admin only, wipes everything except super admins) ----------
