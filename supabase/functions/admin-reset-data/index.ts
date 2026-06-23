@@ -265,7 +265,7 @@ async function resetTenant(
   const deleteWhereEq = async (table: string, column: string, value: string, optional = false) => {
     const { count, error: countError } = await admin
       .from(table)
-      .select("id", { count: "exact", head: true })
+      .select("*", { count: "exact", head: true })
       .eq(column, value);
     if (countError) {
       rememberError(table, `${column}_count`, countError, optional);
@@ -284,7 +284,7 @@ async function resetTenant(
     if (!values.length) return;
     const { count, error: countError } = await admin
       .from(table)
-      .select("id", { count: "exact", head: true })
+      .select("*", { count: "exact", head: true })
       .in(column, values);
     if (countError) {
       rememberError(table, `${column}_count`, countError, optional);
