@@ -121,15 +121,16 @@ const Clients = () => {
       .filter(([, n]) => (n as number) > 0)
       .map(([t, n]) => `${t}: ${n}`)
       .join(", ");
-    toast.success(
-      `All tenant business data erased successfully. ${total} row(s) deleted${breakdown ? ` — ${breakdown}` : ""}.`,
-      { duration: 8000 },
-    );
     console.table(counts);
     if (Object.keys(errs).length) {
       console.error("[reset] table errors:", errs);
-      toast.error(`Some tables reported errors: ${Object.keys(errs).join(", ")}. See console.`, { duration: 10000 });
+      setResetOpen({ ...resetOpen, busy: false });
+      return toast.error(`Reset incomplete: ${Object.keys(errs).join(", ")} failed. Check console logs.`, { duration: 10000 });
     }
+    toast.success(
+      "All tenant business data erased successfully.",
+      { description: `${total} row(s) deleted${breakdown ? ` — ${breakdown}` : ""}.`, duration: 8000 },
+    );
     setResetOpen(null);
     await load();
   };
@@ -324,6 +325,7 @@ const Clients = () => {
               <ul className="list-disc pl-5 text-xs space-y-0.5">
                 <li>Purchases, supplies, expenses, deliveries, sales, payments, recoveries</li>
                 <li>Customers, suppliers, shops, farms, trucks</li>
+                <li>Inventory/products plus dashboard and reports cache when those tables exist</li>
                 {resetOpen?.mode === "full" && <li>Tenant settings</li>}
               </ul>
               <p className="text-xs mt-2"><b>Preserved:</b> owner account, email/password, subscription, organization{resetOpen?.mode === "business" ? ", settings" : ""}. Other clients are not affected.</p>
