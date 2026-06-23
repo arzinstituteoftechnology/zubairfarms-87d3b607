@@ -116,15 +116,20 @@ const Clients = () => {
     }
     const counts = ((data as any)?.deleted_counts ?? {}) as Record<string, number>;
     const total = (data as any)?.total_rows_deleted ?? Object.values(counts).reduce((s, n) => s + (n || 0), 0);
+    const errs = ((data as any)?.errors ?? {}) as Record<string, string>;
     const breakdown = Object.entries(counts)
       .filter(([, n]) => (n as number) > 0)
       .map(([t, n]) => `${t}: ${n}`)
       .join(", ");
     toast.success(
-      `Tenant data reset completed successfully. ${total} row(s) deleted${breakdown ? ` — ${breakdown}` : ""}.`,
+      `All tenant business data erased successfully. ${total} row(s) deleted${breakdown ? ` — ${breakdown}` : ""}.`,
       { duration: 8000 },
     );
     console.table(counts);
+    if (Object.keys(errs).length) {
+      console.error("[reset] table errors:", errs);
+      toast.error(`Some tables reported errors: ${Object.keys(errs).join(", ")}. See console.`, { duration: 10000 });
+    }
     setResetOpen(null);
     await load();
   };
