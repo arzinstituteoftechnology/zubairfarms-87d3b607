@@ -192,6 +192,15 @@ async function resetTenant(
   // Safety backup (this tenant only, business tables only).
   const backup = await buildBackup(admin, tenantId, /*includeTenancy*/ false);
 
+  // Collect this tenant's shop_ids / farm_ids up-front so we can also sweep
+  // any orphan child rows (rows whose tenant_id is NULL but whose shop_id/farm_id
+  // belongs to this tenant). Without this sweep, RESTRICT foreign keys on
+  // supplies.shop_id and purchases.farm_id can block shops/farms deletion.
+  const { data: shopRows } = await admin.from("shops").select("id").eq("tenant_id", tenantId);
+  const { data: farmRows } = await admin.from("farms").select("id").eq("tenant_id", tenantId);
+  const shopIds = (shopRows ?? []).map((r: any) => r.id);
+  const farmIds = (farmRows ?? []).map((r: any) => r.id);
+
   const tables = includeSettings ? [...BUSINESS_TABLES, "settings"] : [...BUSINESS_TABLES];
   const deleted_counts: Record<string, number> = {};
   const errors: Record<string, string> = {};
@@ -204,14 +213,31 @@ async function resetTenant(
       .delete({ count: "exact" })
       .eq("tenant_id", tenantId);
     if (error) {
-      // Missing column / table — record but don't abort the rest.
+      console.error(`[reset] ${table} (tenant_id): ${error.message}`);
       errors[table] = error.message;
       deleted_counts[table] = 0;
-      continue;
+    } else {
+      deleted_counts[table] = count ?? 0;
+      total += count ?? 0;
     }
-    deleted_counts[table] = count ?? 0;
-    total += count ?? 0;
+
+    // Orphan sweep: catch rows that reference this tenant's shop/farm but
+    // somehow lost their own tenant_id. Strictly limited to this tenant's IDs.
+    if (shopIds.length && SHOP_CHILD_TABLES.has(table)) {
+      const { error: e2, count: c2 } = await admin
+        .from(table).delete({ count: "exact" }).in("shop_id", shopIds);
+      if (e2) console.error(`[reset] ${table} (shop_id sweep): ${e2.message}`);
+      else if (c2) { deleted_counts[table] = (deleted_counts[table] ?? 0) + c2; total += c2; }
+    }
+    if (farmIds.length && FARM_CHILD_TABLES.has(table)) {
+      const { error: e3, count: c3 } = await admin
+        .from(table).delete({ count: "exact" }).in("farm_id", farmIds);
+      if (e3) console.error(`[reset] ${table} (farm_id sweep): ${e3.message}`);
+      else if (c3) { deleted_counts[table] = (deleted_counts[table] ?? 0) + c3; total += c3; }
+    }
   }
+
+  console.log(`[reset] tenant=${tenantId} mode=${mode} total=${total}`, deleted_counts, errors);
 
   // Detailed audit log — tenant-scoped, never affects other tenants.
   await admin.from("activity_logs").insert({
