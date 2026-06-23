@@ -175,3 +175,74 @@ function json(body: unknown, status = 200) {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+
+async function resetTenant(
+  admin: any,
+  actor: { id: string; email?: string | null },
+  tenantId: string,
+  includeSettings: boolean,
+  mode: "business_reset" | "full_client_reset",
+) {
+  // Verify tenant exists — never operate on a missing/foreign tenant.
+  const { data: tenant, error: tErr } = await admin
+    .from("tenants").select("id, company_name, email").eq("id", tenantId).maybeSingle();
+  if (tErr) return json({ error: tErr.message }, 500);
+  if (!tenant) return json({ error: "Tenant not found" }, 404);
+
+  // Safety backup (this tenant only, business tables only).
+  const backup = await buildBackup(admin, tenantId, /*includeTenancy*/ false);
+
+  const tables = includeSettings ? [...BUSINESS_TABLES, "settings"] : [...BUSINESS_TABLES];
+  const deleted_counts: Record<string, number> = {};
+  const errors: Record<string, string> = {};
+  let total = 0;
+
+  for (const table of tables) {
+    // EVERY delete is strictly scoped to this tenant_id. No global wipes possible.
+    const { error, count } = await admin
+      .from(table)
+      .delete({ count: "exact" })
+      .eq("tenant_id", tenantId);
+    if (error) {
+      // Missing column / table — record but don't abort the rest.
+      errors[table] = error.message;
+      deleted_counts[table] = 0;
+      continue;
+    }
+    deleted_counts[table] = count ?? 0;
+    total += count ?? 0;
+  }
+
+  // Detailed audit log — tenant-scoped, never affects other tenants.
+  await admin.from("activity_logs").insert({
+    actor_user_id: actor.id,
+    tenant_id: tenantId,
+    action: mode,
+    entity: "tenant",
+    entity_id: tenantId,
+    metadata: {
+      mode,
+      tenant_id: tenantId,
+      tenant_name: tenant.company_name,
+      tenant_email: tenant.email,
+      actor_user_id: actor.id,
+      actor_email: actor.email ?? null,
+      reset_at: new Date().toISOString(),
+      deleted_counts,
+      total_rows_deleted: total,
+      errors: Object.keys(errors).length ? errors : undefined,
+    },
+  }).then(() => {}, () => {});
+
+  return json({
+    ok: true,
+    mode,
+    tenant_id: tenantId,
+    tenant_name: tenant.company_name,
+    deleted_counts,
+    total_rows_deleted: total,
+    errors: Object.keys(errors).length ? errors : undefined,
+    backup,
+    message: `Tenant data reset completed successfully. ${total} record(s) removed across ${Object.keys(deleted_counts).length} table(s). Owner account, subscription, plan and organization profile preserved.`,
+  });
+}
