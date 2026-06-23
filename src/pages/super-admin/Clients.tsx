@@ -114,9 +114,19 @@ const Clients = () => {
       setResetOpen({ ...resetOpen, busy: false });
       return toast.error((data as any)?.error ?? error?.message ?? "Reset failed");
     }
-    toast.success(resetOpen.mode === "full" ? "Full client reset complete" : "Business data reset complete");
+    const counts = ((data as any)?.deleted_counts ?? {}) as Record<string, number>;
+    const total = (data as any)?.total_rows_deleted ?? Object.values(counts).reduce((s, n) => s + (n || 0), 0);
+    const breakdown = Object.entries(counts)
+      .filter(([, n]) => (n as number) > 0)
+      .map(([t, n]) => `${t}: ${n}`)
+      .join(", ");
+    toast.success(
+      `Tenant data reset completed successfully. ${total} row(s) deleted${breakdown ? ` — ${breakdown}` : ""}.`,
+      { duration: 8000 },
+    );
+    console.table(counts);
     setResetOpen(null);
-    load();
+    await load();
   };
 
   const diagnose = async (t: Tenant) => {
