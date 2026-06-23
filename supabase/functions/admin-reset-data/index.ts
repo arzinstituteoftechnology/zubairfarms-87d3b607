@@ -28,6 +28,15 @@ const BUSINESS_TABLES = [
   "activity_logs",
 ];
 
+// Tables whose rows can also be reached via shop_id / farm_id of this tenant.
+// Used for the orphan sweep so RESTRICT FKs on shops/farms can't block deletion.
+const SHOP_CHILD_TABLES = new Set([
+  "supplies", "deliveries", "shop_recoveries", "shop_ledger_entries",
+]);
+const FARM_CHILD_TABLES = new Set([
+  "purchases", "farm_payments", "expenses", "deliveries", "supplier_ledger_entries",
+]);
+
 // Tables that are PROTECTED in a business reset — they survive.
 // (tenants, tenant_users, subscriptions, subscription_plans, user_roles,
 //  profiles, system_settings, settings, auth.users)
