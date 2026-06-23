@@ -28,6 +28,18 @@ const BUSINESS_TABLES = [
   "activity_logs",
 ];
 
+// Optional/cache tables used by some deployments. They are skipped when absent.
+const OPTIONAL_BUSINESS_TABLES = [
+  "products",
+  "inventory",
+  "daily_recovery",
+  "dashboard_cached_stats",
+  "dashboard_cache",
+  "reports_cached_data",
+  "reports_cache",
+  "notifications",
+];
+
 // Tables whose rows can also be reached via shop_id / farm_id of this tenant.
 // Used for the orphan sweep so RESTRICT FKs on shops/farms can't block deletion.
 const SHOP_CHILD_TABLES = new Set([
@@ -35,6 +47,12 @@ const SHOP_CHILD_TABLES = new Set([
 ]);
 const FARM_CHILD_TABLES = new Set([
   "purchases", "farm_payments", "expenses", "deliveries", "supplier_ledger_entries",
+]);
+const CUSTOMER_CHILD_TABLES = new Set([
+  "pos_sales", "customer_payments",
+]);
+const TRUCK_CHILD_TABLES = new Set([
+  "deliveries",
 ]);
 
 // Tables that are PROTECTED in a business reset — they survive.
