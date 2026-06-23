@@ -28,6 +28,18 @@ const BUSINESS_TABLES = [
   "activity_logs",
 ];
 
+// Optional/cache tables used by some deployments. They are skipped when absent.
+const OPTIONAL_BUSINESS_TABLES = [
+  "products",
+  "inventory",
+  "daily_recovery",
+  "dashboard_cached_stats",
+  "dashboard_cache",
+  "reports_cached_data",
+  "reports_cache",
+  "notifications",
+];
+
 // Tables whose rows can also be reached via shop_id / farm_id of this tenant.
 // Used for the orphan sweep so RESTRICT FKs on shops/farms can't block deletion.
 const SHOP_CHILD_TABLES = new Set([
@@ -35,6 +47,12 @@ const SHOP_CHILD_TABLES = new Set([
 ]);
 const FARM_CHILD_TABLES = new Set([
   "purchases", "farm_payments", "expenses", "deliveries", "supplier_ledger_entries",
+]);
+const CUSTOMER_CHILD_TABLES = new Set([
+  "pos_sales", "customer_payments",
+]);
+const TRUCK_CHILD_TABLES = new Set([
+  "deliveries",
 ]);
 
 // Tables that are PROTECTED in a business reset — they survive.
@@ -163,13 +181,14 @@ Deno.serve(async (req) => {
 
 async function buildBackup(admin: any, tenantId: string | null, includeTenancy: boolean) {
   const out: Record<string, any[]> = {};
+  const resetTables = [...BUSINESS_TABLES, ...OPTIONAL_BUSINESS_TABLES];
   const tables = includeTenancy
-    ? [...BUSINESS_TABLES, "tenants", "tenant_users", "subscriptions", "subscription_plans", "user_roles", "profiles", "system_settings", "settings"]
-    : BUSINESS_TABLES;
+    ? [...resetTables, "tenants", "tenant_users", "subscriptions", "subscription_plans", "user_roles", "profiles", "system_settings", "settings"]
+    : resetTables;
   for (const t of tables) {
     try {
       const q = admin.from(t).select("*");
-      const { data } = tenantId && BUSINESS_TABLES.includes(t)
+      const { data } = tenantId && resetTables.includes(t)
         ? await q.eq("tenant_id", tenantId)
         : await q;
       if (data) out[t] = data;
@@ -207,42 +226,102 @@ async function resetTenant(
   // supplies.shop_id and purchases.farm_id can block shops/farms deletion.
   const { data: shopRows } = await admin.from("shops").select("id").eq("tenant_id", tenantId);
   const { data: farmRows } = await admin.from("farms").select("id").eq("tenant_id", tenantId);
+  const { data: customerRows } = await admin.from("customers").select("id").eq("tenant_id", tenantId);
+  const { data: truckRows } = await admin.from("trucks").select("id").eq("tenant_id", tenantId);
+  const { data: purchaseRows } = await admin.from("purchases").select("id").eq("tenant_id", tenantId);
+  const { data: posSaleRows } = await admin.from("pos_sales").select("id").eq("tenant_id", tenantId);
   const shopIds = (shopRows ?? []).map((r: any) => r.id);
   const farmIds = (farmRows ?? []).map((r: any) => r.id);
+  const customerIds = (customerRows ?? []).map((r: any) => r.id);
+  const truckIds = (truckRows ?? []).map((r: any) => r.id);
+  const purchaseIds = (purchaseRows ?? []).map((r: any) => r.id);
+  const posSaleIds = (posSaleRows ?? []).map((r: any) => r.id);
 
-  const tables = includeSettings ? [...BUSINESS_TABLES, "settings"] : [...BUSINESS_TABLES];
+  const tables = includeSettings
+    ? [...BUSINESS_TABLES, ...OPTIONAL_BUSINESS_TABLES, "settings"]
+    : [...BUSINESS_TABLES, ...OPTIONAL_BUSINESS_TABLES];
   const deleted_counts: Record<string, number> = {};
   const errors: Record<string, string> = {};
   let total = 0;
 
-  for (const table of tables) {
-    // EVERY delete is strictly scoped to this tenant_id. No global wipes possible.
-    const { error, count } = await admin
+  const isMissingTable = (error: any) => {
+    const msg = String(error?.message ?? "").toLowerCase();
+    return error?.code === "42P01" || msg.includes("could not find the table") || msg.includes("does not exist");
+  };
+
+  const addDeleted = (table: string, count: number | null | undefined) => {
+    const n = Math.max(0, Number(count ?? 0));
+    deleted_counts[table] = (deleted_counts[table] ?? 0) + n;
+    total += n;
+  };
+
+  const rememberError = (table: string, scope: string, error: any, optional = false) => {
+    if (optional && isMissingTable(error)) return;
+    const message = error?.message ?? String(error);
+    console.error(`[reset] ${table} (${scope}): ${message}`);
+    errors[`${table}.${scope}`] = message;
+    deleted_counts[table] = deleted_counts[table] ?? 0;
+  };
+
+  const deleteWhereEq = async (table: string, column: string, value: string, optional = false) => {
+    const { count, error: countError } = await admin
       .from(table)
-      .delete({ count: "exact" })
-      .eq("tenant_id", tenantId);
-    if (error) {
-      console.error(`[reset] ${table} (tenant_id): ${error.message}`);
-      errors[table] = error.message;
-      deleted_counts[table] = 0;
-    } else {
-      deleted_counts[table] = count ?? 0;
-      total += count ?? 0;
+      .select("*", { count: "exact", head: true })
+      .eq(column, value);
+    if (countError) {
+      rememberError(table, `${column}_count`, countError, optional);
+      return;
     }
+    if (!count) {
+      deleted_counts[table] = deleted_counts[table] ?? 0;
+      return;
+    }
+    const { error } = await admin.from(table).delete().eq(column, value);
+    if (error) rememberError(table, column, error, optional);
+    else addDeleted(table, count);
+  };
+
+  const deleteWhereIn = async (table: string, column: string, values: string[], optional = false) => {
+    if (!values.length) return;
+    const { count, error: countError } = await admin
+      .from(table)
+      .select("*", { count: "exact", head: true })
+      .in(column, values);
+    if (countError) {
+      rememberError(table, `${column}_count`, countError, optional);
+      return;
+    }
+    if (!count) return;
+    const { error } = await admin.from(table).delete().in(column, values);
+    if (error) rememberError(table, `${column}_sweep`, error, optional);
+    else addDeleted(table, count);
+  };
+
+  for (const table of tables) {
+    const optional = OPTIONAL_BUSINESS_TABLES.includes(table);
+
+    // EVERY delete is strictly scoped to this tenant_id first. No global wipes possible.
+    await deleteWhereEq(table, "tenant_id", tenantId, optional);
 
     // Orphan sweep: catch rows that reference this tenant's shop/farm but
     // somehow lost their own tenant_id. Strictly limited to this tenant's IDs.
+    if (posSaleIds.length && table === "pos_sale_items") {
+      await deleteWhereIn(table, "sale_id", posSaleIds);
+    }
+    if (purchaseIds.length && table === "supplies") {
+      await deleteWhereIn(table, "purchase_id", purchaseIds);
+    }
+    if (customerIds.length && CUSTOMER_CHILD_TABLES.has(table)) {
+      await deleteWhereIn(table, "customer_id", customerIds);
+    }
+    if (truckIds.length && TRUCK_CHILD_TABLES.has(table)) {
+      await deleteWhereIn(table, "truck_id", truckIds);
+    }
     if (shopIds.length && SHOP_CHILD_TABLES.has(table)) {
-      const { error: e2, count: c2 } = await admin
-        .from(table).delete({ count: "exact" }).in("shop_id", shopIds);
-      if (e2) console.error(`[reset] ${table} (shop_id sweep): ${e2.message}`);
-      else if (c2) { deleted_counts[table] = (deleted_counts[table] ?? 0) + c2; total += c2; }
+      await deleteWhereIn(table, "shop_id", shopIds);
     }
     if (farmIds.length && FARM_CHILD_TABLES.has(table)) {
-      const { error: e3, count: c3 } = await admin
-        .from(table).delete({ count: "exact" }).in("farm_id", farmIds);
-      if (e3) console.error(`[reset] ${table} (farm_id sweep): ${e3.message}`);
-      else if (c3) { deleted_counts[table] = (deleted_counts[table] ?? 0) + c3; total += c3; }
+      await deleteWhereIn(table, "farm_id", farmIds);
     }
   }
 
