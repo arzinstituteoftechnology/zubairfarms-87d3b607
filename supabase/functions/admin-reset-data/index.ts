@@ -181,13 +181,14 @@ Deno.serve(async (req) => {
 
 async function buildBackup(admin: any, tenantId: string | null, includeTenancy: boolean) {
   const out: Record<string, any[]> = {};
+  const resetTables = [...BUSINESS_TABLES, ...OPTIONAL_BUSINESS_TABLES];
   const tables = includeTenancy
-    ? [...BUSINESS_TABLES, "tenants", "tenant_users", "subscriptions", "subscription_plans", "user_roles", "profiles", "system_settings", "settings"]
-    : BUSINESS_TABLES;
+    ? [...resetTables, "tenants", "tenant_users", "subscriptions", "subscription_plans", "user_roles", "profiles", "system_settings", "settings"]
+    : resetTables;
   for (const t of tables) {
     try {
       const q = admin.from(t).select("*");
-      const { data } = tenantId && BUSINESS_TABLES.includes(t)
+      const { data } = tenantId && resetTables.includes(t)
         ? await q.eq("tenant_id", tenantId)
         : await q;
       if (data) out[t] = data;
