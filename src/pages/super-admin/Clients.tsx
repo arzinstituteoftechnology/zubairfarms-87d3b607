@@ -197,38 +197,7 @@ const Clients = () => {
     toast.success("Backup downloaded");
   };
 
-  const runReset = async () => {
-    if (!resetOpen) return;
-    if (resetOpen.confirm !== "RESET") return toast.error("Type RESET to confirm");
-    setResetOpen({ ...resetOpen, busy: true });
-    const action = resetOpen.mode === "full" ? "full_client_reset" : "business_reset";
-    const { data, error } = await supabase.functions.invoke("admin-reset-data", {
-      body: { action, tenant_id: resetOpen.tenant.id, confirm: "RESET" },
-    });
-    if (error || (data as any)?.error) {
-      setResetOpen({ ...resetOpen, busy: false });
-      return toast.error((data as any)?.error ?? error?.message ?? "Reset failed");
-    }
-    const counts = ((data as any)?.deleted_counts ?? {}) as Record<string, number>;
-    const total = (data as any)?.total_rows_deleted ?? Object.values(counts).reduce((s, n) => s + (n || 0), 0);
-    const errs = ((data as any)?.errors ?? {}) as Record<string, string>;
-    const breakdown = Object.entries(counts)
-      .filter(([, n]) => (n as number) > 0)
-      .map(([t, n]) => `${t}: ${n}`)
-      .join(", ");
-    console.table(counts);
-    if (Object.keys(errs).length) {
-      console.error("[reset] table errors:", errs);
-      setResetOpen({ ...resetOpen, busy: false });
-      return toast.error(`Reset incomplete: ${Object.keys(errs).join(", ")} failed. Check console logs.`, { duration: 10000 });
-    }
-    toast.success(
-      "All tenant business data erased successfully.",
-      { description: `${total} row(s) deleted${breakdown ? ` — ${breakdown}` : ""}.`, duration: 8000 },
-    );
-    setResetOpen(null);
-    await load();
-  };
+  // (runReset removed — replaced by runManage above.)
 
   const diagnose = async (t: Tenant) => {
     setDiagOpen({ tenant: t, report: null, loading: true });
