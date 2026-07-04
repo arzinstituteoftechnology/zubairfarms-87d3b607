@@ -155,6 +155,7 @@ const DailyRecovery = () => {
   const totals = useMemo(() => {
     const t = { total: 0, cash: 0, bank: 0, jazzcash: 0, easypaisa: 0 } as Record<string, number>;
     filtered.forEach((r) => {
+      if (r.reversed_at) return;
       t.total += Number(r.amount);
       t[r.payment_method] += Number(r.amount);
     });
