@@ -6,9 +6,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Tables that hold business records — safe to wipe on a "business reset".
-// Order matters: children before parents to respect foreign keys.
-const BUSINESS_TABLES = [
+// ---- Table groupings ---------------------------------------------------------
+// Transactional / daily-business records. Children before parents.
+const TRANSACTION_TABLES = [
   "pos_sale_items",
   "pos_sales",
   "customer_payments",
@@ -21,17 +21,23 @@ const BUSINESS_TABLES = [
   "shop_recoveries",
   "shop_ledger_entries",
   "supplier_ledger_entries",
+];
+
+// Master / setup data — kept on Business Reset, wiped on Factory Reset.
+const MASTER_TABLES = [
   "customers",
   "shops",
   "farms",
   "trucks",
-  "activity_logs",
 ];
 
-// Optional/cache tables used by some deployments. They are skipped when absent.
-const OPTIONAL_BUSINESS_TABLES = [
-  "products",
+// Logs are wiped in every reset mode.
+const LOG_TABLES = ["activity_logs"];
+
+// Optional/cache tables used by some deployments. Missing tables are skipped.
+const OPTIONAL_TRANSACTION_TABLES = [
   "inventory",
+  "stock_movements",
   "daily_recovery",
   "dashboard_cached_stats",
   "dashboard_cache",
@@ -39,6 +45,11 @@ const OPTIONAL_BUSINESS_TABLES = [
   "reports_cache",
   "notifications",
 ];
+const OPTIONAL_MASTER_TABLES = ["products"];
+
+// Legacy union used by backup routine.
+const BUSINESS_TABLES = [...TRANSACTION_TABLES, ...MASTER_TABLES, ...LOG_TABLES];
+const OPTIONAL_BUSINESS_TABLES = [...OPTIONAL_TRANSACTION_TABLES, ...OPTIONAL_MASTER_TABLES];
 
 // Tables whose rows can also be reached via shop_id / farm_id of this tenant.
 // Used for the orphan sweep so RESTRICT FKs on shops/farms can't block deletion.
@@ -61,14 +72,22 @@ const TRUCK_CHILD_TABLES = new Set([
 
 type Body =
   | { action: "business_reset"; confirm: string; tenant_id: string }
+  | { action: "factory_reset"; confirm: string; tenant_id: string }
+  | { action: "delete_client"; confirm: string; tenant_id: string }
+  // Legacy aliases kept for backward compat.
   | { action: "full_client_reset"; confirm: string; tenant_id: string }
-  | { action: "factory_reset"; confirm: string }
   | { action: "backup"; tenant_id?: string | null }
   | { action: "restore"; backup: Record<string, any[]>; confirm: string };
 
-const CONFIRM_PHRASE = "I understand this will permanently delete data";
-const SHORT_CONFIRM = "RESET";
-const isConfirmed = (s: string) => s === CONFIRM_PHRASE || s === SHORT_CONFIRM;
+const CONFIRM_PHRASES: Record<string, string[]> = {
+  business_reset: ["BUSINESS RESET", "RESET", "I understand this will permanently delete data"],
+  factory_reset: ["FACTORY RESET", "RESET", "I understand this will permanently delete data"],
+  full_client_reset: ["FACTORY RESET", "RESET"],
+  delete_client: ["DELETE CLIENT"],
+  restore: ["RESET", "I understand this will permanently delete data"],
+};
+const isConfirmed = (action: string, s: string) =>
+  (CONFIRM_PHRASES[action] ?? []).includes(s);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -99,67 +118,31 @@ Deno.serve(async (req) => {
       return json({ ok: true, backup, generated_at: new Date().toISOString() });
     }
 
-    // ---------- BUSINESS RESET ----------
+    // ---------- BUSINESS RESET (per-tenant, keeps master data + settings) ----------
     if (body.action === "business_reset") {
-      if (!isConfirmed(body.confirm)) return json({ error: "Type RESET to confirm" }, 400);
-      if (!body.tenant_id) return json({ error: "tenant_id is required — global resets are not allowed" }, 400);
-      return await resetTenant(admin, user, body.tenant_id, /*includeSettings*/ false, "business_reset");
+      if (!isConfirmed("business_reset", body.confirm)) return json({ error: 'Type "BUSINESS RESET" to confirm' }, 400);
+      if (!body.tenant_id) return json({ error: "tenant_id is required" }, 400);
+      return await resetTenant(admin, user, body.tenant_id, "business_reset");
     }
 
-    // ---------- FULL CLIENT RESET (per-tenant: wipe business + settings, keep org/owner/subscription) ----------
-    if (body.action === "full_client_reset") {
-      if (!isConfirmed(body.confirm)) return json({ error: "Type RESET to confirm" }, 400);
-      if (!body.tenant_id) return json({ error: "tenant_id required" }, 400);
-      return await resetTenant(admin, user, body.tenant_id, /*includeSettings*/ true, "full_client_reset");
+    // ---------- FACTORY RESET (per-tenant, wipes master + transactions + settings) ----------
+    if (body.action === "factory_reset" || body.action === "full_client_reset") {
+      const key = body.action;
+      if (!isConfirmed(key, body.confirm)) return json({ error: 'Type "FACTORY RESET" to confirm' }, 400);
+      if (!body.tenant_id) return json({ error: "tenant_id is required" }, 400);
+      return await resetTenant(admin, user, body.tenant_id, "factory_reset");
     }
 
-    // ---------- FACTORY RESET (super admin only, wipes everything except super admins) ----------
-    if (body.action === "factory_reset") {
-      if (!isConfirmed(body.confirm)) return json({ error: "Type RESET to confirm" }, 400);
-
-      const backup = await buildBackup(admin, null, /*includeTenancy*/ true);
-
-      // 1. business tables
-      for (const table of BUSINESS_TABLES) {
-        await admin.from(table).delete().not("id", "is", null);
-      }
-      // 2. tenant-scoped tables
-      await admin.from("subscriptions").delete().not("id", "is", null);
-      await admin.from("tenant_users").delete().not("tenant_id", "is", null);
-      await admin.from("tenants").delete().not("id", "is", null);
-
-      // 3. auth users — delete everyone EXCEPT current super admins
-      const { data: superRows } = await admin.from("user_roles").select("user_id").eq("role", "super_admin");
-      const protectedIds = new Set((superRows ?? []).map((r) => r.user_id));
-      let page = 1;
-      const deleted: string[] = [];
-      while (true) {
-        const { data: list, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
-        if (error || !list?.users?.length) break;
-        for (const u of list.users) {
-          if (protectedIds.has(u.id)) continue;
-          await admin.auth.admin.deleteUser(u.id).catch(() => {});
-          deleted.push(u.id);
-        }
-        if (list.users.length < 200) break;
-        page += 1;
-      }
-      // 4. orphan user_roles
-      await admin.from("user_roles").delete().not("user_id", "in", `(${[...protectedIds].map((id) => `"${id}"`).join(",") || "''"})`);
-
-      return json({
-        ok: true,
-        mode: "factory_reset",
-        deleted_auth_users: deleted.length,
-        preserved_super_admins: [...protectedIds],
-        backup,
-        message: "Factory reset complete. Super admin accounts were preserved.",
-      });
+    // ---------- DELETE CLIENT (permanent purge) ----------
+    if (body.action === "delete_client") {
+      if (!isConfirmed("delete_client", body.confirm)) return json({ error: 'Type "DELETE CLIENT" to confirm' }, 400);
+      if (!body.tenant_id) return json({ error: "tenant_id is required" }, 400);
+      return await deleteClient(admin, user, body.tenant_id);
     }
 
     // ---------- RESTORE ----------
     if (body.action === "restore") {
-      if (!isConfirmed(body.confirm)) return json({ error: "Type RESET to confirm" }, 400);
+      if (!isConfirmed("restore", body.confirm)) return json({ error: "Type RESET to confirm" }, 400);
       const results: Record<string, { inserted: number; error?: string }> = {};
       // Insert in reverse dependency order: parents first.
       const restoreOrder = [...BUSINESS_TABLES].reverse();
