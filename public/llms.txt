@@ -1,0 +1,12 @@
+# Zubair MeatFlow
+
+> Zubair MeatFlow is a poultry and meat supply management ERP for distributors — farms, shops, POS, ledgers, deliveries, and recovery tracking, with English and Urdu support.
+
+## Pages
+
+- [Sign in](/auth): Authorized sign-in page for tenants of Zubair MeatFlow.
+- [Trust & Security](/trust): Overview of security, privacy, and platform controls.
+
+## Optional
+
+- [Home](/): Authenticated dashboard (requires sign-in).
