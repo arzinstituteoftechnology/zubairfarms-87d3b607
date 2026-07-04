@@ -227,9 +227,17 @@ const ShopLedger = () => {
   };
 
   const filteredEntries = useMemo(() => {
-    let running = 0;
+    // Seed running balance from the shop's opening balance when there is no
+    // explicit opening_balance ledger entry. Reversed originals and reversal
+    // audit rows must NOT move the running balance.
+    const hasOpeningEntry = entries.some(
+      (e) => e.kind === "opening" && !e.reversed && !e.isReversal
+    );
+    let running = hasOpeningEntry ? 0 : Number(ledger?.opening_balance ?? 0);
     const withBalance = entries.map((e) => {
-      running += e.debit - e.credit;
+      if (!e.reversed && !e.isReversal) {
+        running += e.debit - e.credit;
+      }
       return { ...e, running };
     });
     let filtered = withBalance;
@@ -237,19 +245,20 @@ const ShopLedger = () => {
     if (rangeFrom) filtered = filtered.filter(e => e.date >= rangeFrom);
     if (rangeTo) filtered = filtered.filter(e => e.date <= rangeTo);
     return [...filtered].reverse();
-  }, [entries, ledgerFilterDate, rangeFrom, rangeTo]);
+  }, [entries, ledgerFilterDate, rangeFrom, rangeTo, ledger?.opening_balance]);
 
   // Summary derived directly from the currently loaded ledger entries.
   // Reversed originals and reversal audit rows are excluded so the cards
   // always match the ledger table exactly (Paid = 0 when all payments reversed).
   const summary = useMemo(() => {
-    let opening = 0;
+    let opening = Number(ledger?.opening_balance ?? 0);
+    let openingFromEntry = false;
     let supplied = 0;
     let paid = 0;
     let adj = 0;
     for (const e of entries) {
       if (e.reversed || e.isReversal) continue;
-      if (e.kind === "opening") { opening = e.debit; continue; }
+      if (e.kind === "opening") { opening = e.debit; openingFromEntry = true; continue; }
       if (e.kind === "adjustment_increase") { adj += e.debit; continue; }
       if (e.kind === "adjustment_decrease") { adj -= e.credit; continue; }
       // Debits (supplies / manual supplies) build receivable.
@@ -257,8 +266,9 @@ const ShopLedger = () => {
       // Credits (payments / recoveries) reduce receivable.
       if (e.credit > 0) paid += e.credit;
     }
+    void openingFromEntry;
     return { opening, supplied, paid, balance: opening + supplied - paid + adj };
-  }, [entries]);
+  }, [entries, ledger?.opening_balance]);
 
   const addPayment = async () => {
     if (!ledger || !payAmt) return;
