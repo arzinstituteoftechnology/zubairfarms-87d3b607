@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { useModuleFlags } from "@/hooks/useModuleFlags";
+import { SeoHead } from "@/components/SeoHead";
 
 interface KPI {
   purchaseKg: number; purchaseAmt: number;
