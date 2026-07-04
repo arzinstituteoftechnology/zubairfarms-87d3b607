@@ -166,36 +166,35 @@ const Clients = () => {
       console.error("[reset_password] super admin session invalid:", authError);
       return toast.error("Super Admin session expired. Please sign in again.");
     }
-    const { data, error } = await supabase.functions.invoke("admin-tenant-action", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      body: {
-        action: "reset_password",
-        tenant_id: pwUser.tenant.id,
-        tenant_email: pwUser.tenant.email,
-        new_password: pwUser.password,
-      },
-    });
-    let backendError: string | null = (data as any)?.error ?? null;
-    if (!backendError && error) {
-      const ctx: any = (error as any).context;
-      if (ctx && typeof ctx.json === "function") {
-        try { const j = await ctx.json(); backendError = j?.error ?? null; } catch { /* ignore */ }
-      }
-      if (!backendError && ctx && typeof ctx.text === "function") {
-        try { backendError = await ctx.text(); } catch { /* ignore */ }
-      }
-      if (!backendError) backendError = error.message;
-    }
-    if (backendError) {
-      console.error("[reset_password] failed:", {
-        tenant_id: pwUser.tenant.id,
-        tenant_email: pwUser.tenant.email,
-        response: data,
-        error,
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-tenant-action`;
+    let data: any = null;
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({
+          action: "reset_password",
+          tenant_id: pwUser.tenant.id,
+          tenant_email: pwUser.tenant.email,
+          new_password: pwUser.password,
+        }),
       });
-      return toast.error(backendError);
+      const text = await resp.text();
+      try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; }
+      if (!resp.ok || data?.success === false || data?.error) {
+        const msg = data?.error || `Request failed (${resp.status})`;
+        console.error("[reset_password] failed:", { status: resp.status, body: data, tenant_id: pwUser.tenant.id, tenant_email: pwUser.tenant.email });
+        return toast.error(msg);
+      }
+    } catch (e) {
+      console.error("[reset_password] network error:", e);
+      return toast.error(e instanceof Error ? e.message : "Network error");
     }
-    toast.success((data as any)?.message ?? "Password updated successfully");
+    toast.success(data?.message ?? "Password updated successfully");
     setPwUser(null);
   };
   const extend = async () => {
