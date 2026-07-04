@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { AlertTriangle, Database, Download, RotateCcw, Upload } from "lucide-react";
+import { Download, Upload } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { refreshModuleFlags } from "@/hooks/useModuleFlags";
 
@@ -44,10 +44,7 @@ const SystemSettings = () => {
     URL.revokeObjectURL(url);
   };
 
-  const callReset = async (action: "backup" | "business_reset" | "factory_reset") => {
-    if (action !== "backup" && confirmPhrase !== REQUIRED) {
-      return toast.error(`Type exactly: ${REQUIRED}`);
-    }
+  const callReset = async (action: "backup") => {
     setBusy(action);
     try {
       const { data, error } = await supabase.functions.invoke("admin-reset-data", {
@@ -107,39 +104,19 @@ const SystemSettings = () => {
         </CardContent>
       </Card>
 
-      <Card className="bg-zinc-900 border-amber-800/60 max-w-2xl">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-amber-400">
-            <AlertTriangle className="h-5 w-5" /> Data Reset & Backup
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm">
-          <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3 text-zinc-300">
-            <p className="mb-2 font-medium text-zinc-100">Two reset modes</p>
-            <ul className="list-disc pl-5 space-y-1 text-zinc-400">
-              <li><b className="text-zinc-200">Business Data Reset</b> — clears farms, shops, customers, purchases, supplies, expenses, deliveries, POS sales, payments, trucks and activity logs. <span className="text-emerald-400">Keeps super admin, tenants, tenant users, subscriptions, plans, roles and system settings.</span></li>
-              <li><b className="text-zinc-200">Full Factory Reset</b> — wipes everything above <i>plus</i> tenants, tenant users, subscriptions and non-super-admin auth users. Super admin accounts always survive.</li>
-            </ul>
-          </div>
-
-          <div>
-            <Label className="text-zinc-200">Type to confirm</Label>
-            <Input
-              value={confirmPhrase}
-              onChange={(e) => setConfirmPhrase(e.target.value)}
-              placeholder={REQUIRED}
-              className="bg-zinc-950 border-zinc-700"
-            />
-            <p className="mt-1 text-xs text-zinc-500">Required for any destructive action below.</p>
-          </div>
-
+      <Card className="bg-zinc-900 border-zinc-800 max-w-2xl">
+        <CardHeader><CardTitle>Global Backup & Restore</CardTitle></CardHeader>
+        <CardContent className="space-y-4 text-sm text-zinc-300">
+          <p className="text-xs text-zinc-400">
+            Per-client reset actions (Business Reset, Factory Reset, Delete Client) now live on the
+            <b className="text-zinc-200"> Clients</b> page — each with its own confirmation flow and auto-backup.
+          </p>
           <div className="grid gap-2 sm:grid-cols-2">
             <Button variant="outline" disabled={busy !== null}
               onClick={() => callReset("backup")}
               className="border-zinc-700 hover:bg-zinc-800">
-              <Download className="h-4 w-4" /> Download Backup (JSON)
+              <Download className="h-4 w-4" /> Download Global Backup (JSON)
             </Button>
-
             <label className="inline-flex">
               <input type="file" accept="application/json" className="hidden"
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) handleRestore(f); e.currentTarget.value = ""; }} />
@@ -147,20 +124,12 @@ const SystemSettings = () => {
                 <Upload className="h-4 w-4" /> Restore From Backup
               </span>
             </label>
-
-            <Button variant="outline" disabled={busy !== null || confirmPhrase !== REQUIRED}
-              onClick={() => callReset("business_reset")}
-              className="border-amber-700 text-amber-300 hover:bg-amber-950">
-              <RotateCcw className="h-4 w-4" /> Business Data Reset
-            </Button>
-
-            <Button variant="destructive" disabled={busy !== null || confirmPhrase !== REQUIRED}
-              onClick={() => {
-                if (!window.confirm("Factory reset deletes tenants, subscriptions and all non-super-admin users. Continue?")) return;
-                callReset("factory_reset");
-              }}>
-              <Database className="h-4 w-4" /> Full Factory Reset
-            </Button>
+          </div>
+          <div>
+            <Label className="text-zinc-200">Type to confirm restore</Label>
+            <Input value={confirmPhrase} onChange={(e) => setConfirmPhrase(e.target.value)}
+              placeholder={REQUIRED} className="bg-zinc-950 border-zinc-700" />
+            <p className="mt-1 text-xs text-zinc-500">Only required for Restore.</p>
           </div>
           {busy && <p className="text-xs text-zinc-400">Working… ({busy})</p>}
         </CardContent>
