@@ -167,6 +167,21 @@ const ShopLedger = () => {
   };
   useEffect(() => { load(); }, []);
 
+  // Keep the opened ledger dialog's summary in sync with the freshly recalculated
+  // row totals after any Add/Edit/Delete/Reverse operation.
+  useEffect(() => {
+    if (!ledger) return;
+    const fresh = rows.find((r) => r.id === ledger.id);
+    if (fresh && (
+      fresh.opening_balance !== ledger.opening_balance ||
+      fresh.supplied !== ledger.supplied ||
+      fresh.paid !== ledger.paid ||
+      fresh.balance !== ledger.balance
+    )) {
+      setLedger(fresh);
+    }
+  }, [rows, ledger]);
+
   const openLedger = async (r: Row) => {
     setLedger(r);
     setLedgerFilterDate("");
