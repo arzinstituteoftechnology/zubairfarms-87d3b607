@@ -113,7 +113,7 @@ const AppLayout = () => {
         <header className="md:hidden h-14 border-b flex items-center px-4 gap-3 bg-card">
           <Sheet>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon"><Menu className="h-5 w-5" /></Button>
+              <Button variant="ghost" size="icon" aria-label="Open menu"><Menu className="h-5 w-5" /></Button>
             </SheetTrigger>
             <SheetContent side="left" className="p-0 w-64">
               <SidebarContent role={role} onSignOut={handleSignOut} customersEnabled={customers_module_enabled} />
