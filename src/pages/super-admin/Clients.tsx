@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabaseSuperAdmin as supabase } from "@/integrations/supabase/superAdminClient";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pause, Play, Trash2, KeyRound, CreditCard, Stethoscope, RefreshCw, Eraser, Download, Archive, RotateCcw } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Plus, Pause, Play, Trash2, KeyRound, CreditCard, Stethoscope, RefreshCw, Eraser, Download, Archive, RotateCcw, AlertTriangle, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 
 interface Tenant { id: string; company_name: string; owner_name: string; email: string; mobile: string | null; country: string | null; city: string | null; status: string; created_at: string; deleted_at: string | null }
@@ -25,8 +26,22 @@ const Clients = () => {
   const [pwUser, setPwUser] = useState<{ tenant: Tenant; password: string } | null>(null);
   const [extendOpen, setExtendOpen] = useState<{ tenant: Tenant; plan_id: string; amount: string } | null>(null);
   const [diagOpen, setDiagOpen] = useState<{ tenant: Tenant; report: any | null; loading: boolean } | null>(null);
-  const [resetOpen, setResetOpen] = useState<{ tenant: Tenant; mode: "business" | "full"; confirm: string; busy: boolean } | null>(null);
-  const [purgeOpen, setPurgeOpen] = useState<{ tenant: Tenant; confirm: string; busy: boolean } | null>(null);
+  // Unified destructive-action manager: one dialog, three modes.
+  type ResetMode = "business_reset" | "factory_reset" | "delete_client";
+  type Stage = "warn" | "confirm" | "running" | "done";
+  const [manage, setManage] = useState<
+    | {
+        tenant: Tenant;
+        mode: ResetMode;
+        stage: Stage;
+        confirm: string;
+        progress: number;
+        currentStep: string;
+        result?: any;
+      }
+    | null
+  >(null);
+  const stepTimer = useRef<number | null>(null);
 
   const load = async () => {
     const { data } = await supabase.from("tenants").select("*").order("created_at", { ascending: false });
@@ -75,19 +90,99 @@ const Clients = () => {
     if (error) return toast.error(error.message);
     toast.success("Client restored"); load();
   };
-  const runPurge = async () => {
-    if (!purgeOpen) return;
-    if (purgeOpen.confirm !== "PURGE") return toast.error("Type PURGE to confirm");
-    setPurgeOpen({ ...purgeOpen, busy: true });
-    const { data, error } = await supabase.functions.invoke("admin-tenant-action", {
-      body: { action: "purge_tenant", tenant_id: purgeOpen.tenant.id, confirm: "PURGE" },
+  // Per-mode metadata used by the unified dialog.
+  const modeConfig: Record<ResetMode, {
+    label: string;
+    phrase: string;
+    tone: "amber" | "red" | "crimson";
+    intro: string;
+    deletes: string[];
+    keeps: string[];
+    successMsg: string;
+    steps: string[];
+  }> = {
+    business_reset: {
+      label: "Reset Business Data",
+      phrase: "BUSINESS RESET",
+      tone: "amber",
+      intro: "Clears all daily accounting records. Master data (farms, shops, suppliers, trucks) stays intact so the client can start fresh accounting without recreating setup data.",
+      deletes: ["Purchases", "Supplies", "Shop & Supplier Ledger", "Daily Recovery", "Expenses", "Deliveries", "Inventory & Stock Movements", "Reports / Dashboard cache", "Activity Logs"],
+      keeps: ["Owner account & password", "Subscription", "Organization settings", "Farms, Shops, Suppliers, Trucks, Customers, Products"],
+      successMsg: "Business Data Reset Successfully",
+      steps: ["Preparing safety backup…", "Deleting Ledger…", "Deleting Recoveries…", "Deleting Purchases & Supplies…", "Deleting Expenses & Deliveries…", "Cleaning Inventory…", "Clearing Reports & Dashboard cache…", "Purging Activity Logs…", "Finalising…"],
+    },
+    factory_reset: {
+      label: "Factory Reset",
+      phrase: "FACTORY RESET",
+      tone: "red",
+      intro: "Wipes the entire tenant back to a brand-new state. Owner login, subscription and organization profile survive; everything else is gone.",
+      deletes: ["All business data", "Inventory & Products", "Shops, Suppliers, Farms, Trucks, Customers", "Dashboard & Reports", "Tenant settings", "Activity Logs"],
+      keeps: ["Owner login (email + password)", "Subscription", "Tenant record & organization profile"],
+      successMsg: "Factory Reset Completed Successfully",
+      steps: ["Building safety backup…", "Deleting transactions…", "Deleting master data…", "Removing tenant settings…", "Clearing caches…", "Purging Activity Logs…", "Finalising…"],
+    },
+    delete_client: {
+      label: "Delete Client Permanently",
+      phrase: "DELETE CLIENT",
+      tone: "crimson",
+      intro: "Permanently removes the entire tenant, including auth users, subscription and every record. A safety backup is generated first — if the backup fails, the delete is cancelled.",
+      deletes: ["Auth user(s) linked only to this tenant", "Tenant record & subscription", "All business data, settings, reports, logs, files & backups"],
+      keeps: ["Super admin accounts", "Users linked to other tenants"],
+      successMsg: "Client Deleted Successfully",
+      steps: ["Building auto-backup…", "Deleting business data…", "Deleting master data & settings…", "Deleting subscription & payments…", "Deleting tenant users…", "Deleting tenant record…", "Removing auth users…", "Writing audit log…"],
+    },
+  };
+
+  const openManage = (tenant: Tenant, mode: ResetMode) =>
+    setManage({ tenant, mode, stage: "warn", confirm: "", progress: 0, currentStep: "" });
+
+  const closeManage = () => {
+    if (stepTimer.current) { window.clearInterval(stepTimer.current); stepTimer.current = null; }
+    setManage(null);
+  };
+
+  const startProgressAnimation = (steps: string[]) => {
+    let i = 0;
+    setManage((m) => m ? { ...m, currentStep: steps[0], progress: 5 } : m);
+    stepTimer.current = window.setInterval(() => {
+      i = Math.min(i + 1, steps.length - 1);
+      const pct = Math.min(90, Math.round(((i + 1) / steps.length) * 90));
+      setManage((m) => m ? { ...m, currentStep: steps[i], progress: pct } : m);
+    }, 700);
+  };
+
+  const runManage = async () => {
+    if (!manage) return;
+    const cfg = modeConfig[manage.mode];
+    if (manage.confirm.trim() !== cfg.phrase) return toast.error(`Type "${cfg.phrase}" exactly to confirm`);
+    setManage({ ...manage, stage: "running", progress: 5, currentStep: cfg.steps[0] });
+    startProgressAnimation(cfg.steps);
+    const started = Date.now();
+    const { data, error } = await supabase.functions.invoke("admin-reset-data", {
+      body: { action: manage.mode, tenant_id: manage.tenant.id, confirm: cfg.phrase },
     });
+    if (stepTimer.current) { window.clearInterval(stepTimer.current); stepTimer.current = null; }
     if (error || (data as any)?.error) {
-      setPurgeOpen({ ...purgeOpen, busy: false });
-      return toast.error((data as any)?.error ?? error?.message ?? "Purge failed");
+      const errs = (data as any)?.errors ?? {};
+      const detail = Object.entries(errs).map(([k, v]: any) => {
+        const [table, scope] = k.split(".");
+        return `• ${table} (${scope}) — ${v?.code ?? "ERR"}: ${v?.message}${v?.constraint ? ` [constraint ${v.constraint}]` : ""}`;
+      }).join("\n");
+      console.error("[reset]", { action: manage.mode, error, data });
+      setManage({ ...manage, stage: "confirm" });
+      return toast.error(
+        (data as any)?.error ?? error?.message ?? "Operation failed",
+        { description: detail || undefined, duration: 12000 },
+      );
     }
-    toast.success(`Purged. Removed ${(data as any)?.removed_auth_users ?? 0} auth user(s); protected ${(data as any)?.protected_auth_users ?? 0}.`);
-    setPurgeOpen(null); load();
+    const total = (data as any)?.total_rows_deleted ?? 0;
+    const ms = (data as any)?.duration_ms ?? (Date.now() - started);
+    setManage({ ...manage, stage: "done", progress: 100, currentStep: "Finished.", result: data });
+    toast.success(cfg.successMsg, {
+      description: `${total} record(s) removed in ${(ms / 1000).toFixed(1)}s.`,
+      duration: 6000,
+    });
+    await load();
   };
 
   const downloadBackup = async (t: Tenant) => {
