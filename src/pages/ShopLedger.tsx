@@ -114,38 +114,50 @@ const ShopLedger = () => {
     setRows([]);
     const [{ data: shops }, { data: su }, { data: le }] = await Promise.all([
       supabase.from("shops").select("id, name, phone, opening_balance").order("name"),
-      supabase.from("supplies").select("shop_id, total_amount"),
-      supabase.from("shop_ledger_entries").select("shop_id, entry_type, amount"),
+      supabase.from("supplies").select("shop_id, total_amount, reversed_at"),
+      supabase.from("shop_ledger_entries").select("shop_id, entry_type, amount, reversed_at"),
     ]);
-    const supMap: Record<string, number> = {}, payMap: Record<string, number> = {}, adjMap: Record<string, number> = {};
+    // Compute summaries from ACTIVE (non-reversed) entries only.
+    // - Skip any row whose reversed_at IS NOT NULL (the original that was later reversed).
+    // - Skip reversal entries themselves (entry_type LIKE 'reversed_%'); they exist only
+    //   to preserve the audit trail and offset the original, which we've already excluded.
+    const supMap: Record<string, number> = {};
+    const payMap: Record<string, number> = {};
+    const adjMap: Record<string, number> = {};
+    const openingOverride: Record<string, number> = {};
+    const openingReversed: Record<string, boolean> = {};
+
     (su ?? []).forEach((x: any) => {
-      // Original supplies always count; reversal is posted as ledger 'reversed_supply' credit
+      if (x.reversed_at) return;
       supMap[x.shop_id] = (supMap[x.shop_id] ?? 0) + Number(x.total_amount ?? 0);
     });
     (le ?? []).forEach((x: any) => {
-      const amt = Number(x.amount ?? 0);
       const sid = x.shop_id;
+      const amt = Number(x.amount ?? 0);
+      // Track opening reversal even if we skip the entry below.
+      if (x.entry_type === "opening_balance" && x.reversed_at) {
+        openingReversed[sid] = true;
+      }
+      if (x.reversed_at) return;
+      if (String(x.entry_type).startsWith("reversed_")) return;
       switch (x.entry_type) {
+        case "opening_balance":
+          openingOverride[sid] = amt; break;
         case "manual_supply":
+          supMap[sid] = (supMap[sid] ?? 0) + amt; break;
         case "adjustment_increase":
-        case "reversed_recovery":
-        case "reversed_manual_payment":
           adjMap[sid] = (adjMap[sid] ?? 0) + amt; break;
+        case "adjustment_decrease":
+          adjMap[sid] = (adjMap[sid] ?? 0) - amt; break;
         case "manual_payment":
         case "recovery":
-        case "reversed_supply":
-        case "reversed_manual_supply":
-        case "reversed_adjustment_increase":
-        case "reversed_opening_balance":
           payMap[sid] = (payMap[sid] ?? 0) + amt; break;
-        case "adjustment_decrease":
-        case "reversed_adjustment_decrease":
-          adjMap[sid] = (adjMap[sid] ?? 0) + (x.entry_type === "adjustment_decrease" ? -amt : amt); break;
-        // opening_balance lives on shops.opening_balance — don't double count
       }
     });
     setRows((shops ?? []).map((s: any) => {
-      const opening = Number(s.opening_balance ?? 0);
+      const opening = openingOverride[s.id] !== undefined
+        ? openingOverride[s.id]
+        : (openingReversed[s.id] ? 0 : Number(s.opening_balance ?? 0));
       const supplied = supMap[s.id] ?? 0;
       const paid = payMap[s.id] ?? 0;
       const adj = adjMap[s.id] ?? 0;
@@ -154,6 +166,21 @@ const ShopLedger = () => {
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
+
+  // Keep the opened ledger dialog's summary in sync with the freshly recalculated
+  // row totals after any Add/Edit/Delete/Reverse operation.
+  useEffect(() => {
+    if (!ledger) return;
+    const fresh = rows.find((r) => r.id === ledger.id);
+    if (fresh && (
+      fresh.opening_balance !== ledger.opening_balance ||
+      fresh.supplied !== ledger.supplied ||
+      fresh.paid !== ledger.paid ||
+      fresh.balance !== ledger.balance
+    )) {
+      setLedger(fresh);
+    }
+  }, [rows, ledger]);
 
   const openLedger = async (r: Row) => {
     setLedger(r);
