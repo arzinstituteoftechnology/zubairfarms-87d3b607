@@ -72,7 +72,7 @@ const DailyRecovery = () => {
   const load = async () => {
     setLoading(true);
     const [{ data: sh }, { data: rc }] = await Promise.all([
-      supabase.from("shops").select("id, name").order("name"),
+      supabase.from("shops").select("id, name").is("deleted_at", null).order("name"),
       supabase.from("shop_recoveries").select("*").order("recovery_date", { ascending: false }).order("created_at", { ascending: false }),
     ]);
     setShops((sh ?? []) as Shop[]);

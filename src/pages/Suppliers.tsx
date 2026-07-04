@@ -117,7 +117,7 @@ const Suppliers = () => {
     setRows([]);
     // Aggregate the full lifetime balance from purchases, payments, and the manual ledger
     const [{ data: farms }, { data: pu }, { data: pa }, { data: le }] = await Promise.all([
-      supabase.from("farms").select("id, name, phone, opening_balance").order("name"),
+      supabase.from("farms").select("id, name, phone, opening_balance").is("deleted_at", null).order("name"),
       supabase.from("purchases").select("farm_id, total_amount, paid_amount"),
       supabase.from("farm_payments").select("farm_id, amount"),
       supabase.from("supplier_ledger_entries").select("supplier_id, entry_type, amount"),

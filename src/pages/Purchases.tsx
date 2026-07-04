@@ -64,7 +64,7 @@ const Purchases = () => {
   const farmsQuery = useQuery({
     queryKey: ["farms", "purchase-options"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("farms").select("id, name").order("name");
+      const { data, error } = await supabase.from("farms").select("id, name").is("deleted_at", null).order("name");
       if (error) throw error;
       return (data as { id: string; name: string }[]) ?? [];
     },

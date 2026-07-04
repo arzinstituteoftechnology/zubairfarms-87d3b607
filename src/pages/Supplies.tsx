@@ -58,7 +58,7 @@ const Supplies = () => {
   const shopsQuery = useQuery({
     queryKey: ["shops", "supply-options"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("shops").select("id, name").order("name");
+      const { data, error } = await supabase.from("shops").select("id, name").is("deleted_at", null).order("name");
       if (error) throw error;
       return (data as { id: string; name: string }[]) ?? [];
     },
