@@ -239,6 +239,27 @@ const ShopLedger = () => {
     return [...filtered].reverse();
   }, [entries, ledgerFilterDate, rangeFrom, rangeTo]);
 
+  // Summary derived directly from the currently loaded ledger entries.
+  // Reversed originals and reversal audit rows are excluded so the cards
+  // always match the ledger table exactly (Paid = 0 when all payments reversed).
+  const summary = useMemo(() => {
+    let opening = 0;
+    let supplied = 0;
+    let paid = 0;
+    let adj = 0;
+    for (const e of entries) {
+      if (e.reversed || e.isReversal) continue;
+      if (e.kind === "opening") { opening = e.debit; continue; }
+      if (e.kind === "adjustment_increase") { adj += e.debit; continue; }
+      if (e.kind === "adjustment_decrease") { adj -= e.credit; continue; }
+      // Debits (supplies / manual supplies) build receivable.
+      if (e.debit > 0) supplied += e.debit;
+      // Credits (payments / recoveries) reduce receivable.
+      if (e.credit > 0) paid += e.credit;
+    }
+    return { opening, supplied, paid, balance: opening + supplied - paid + adj };
+  }, [entries]);
+
   const addPayment = async () => {
     if (!ledger || !payAmt) return;
     if (!tenant?.id) return toast.error("Account is not linked to an active client.");
