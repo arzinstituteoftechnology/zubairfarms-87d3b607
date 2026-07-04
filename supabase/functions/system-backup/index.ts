@@ -287,7 +287,14 @@ async function handleRestore(admin: any, body: any, userId: string | null) {
     if (error || !row?.storage_path) return json({ error: "Backup not found" }, 404);
     const { data: file, error: dErr } = await admin.storage.from("system-backups").download(row.storage_path);
     if (dErr) return json({ error: dErr.message }, 500);
-    payload = JSON.parse(await file.text());
+    let text: string;
+    if (row.storage_path.endsWith(".gz")) {
+      const ds = file.stream().pipeThrough(new DecompressionStream("gzip"));
+      text = await new Response(ds).text();
+    } else {
+      text = await file.text();
+    }
+    payload = JSON.parse(text);
   } else if (body.backup) {
     payload = body.backup;
   } else {
