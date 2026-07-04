@@ -158,6 +158,11 @@ const Clients = () => {
   const resetPassword = async () => {
     if (!pwUser) return;
     if (!pwUser.password || pwUser.password.length < 6) return toast.error("Password must be at least 6 characters");
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) {
+      console.error("[reset_password] super admin session invalid:", authError);
+      return toast.error("Super Admin session expired. Please sign in again.");
+    }
     const { data, error } = await supabase.functions.invoke("admin-tenant-action", {
       body: {
         action: "reset_password",
