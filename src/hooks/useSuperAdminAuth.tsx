@@ -30,10 +30,16 @@ export const SuperAdminAuthProvider = ({ children }: { children: ReactNode }) =>
       setIsSuperAdmin(false);
       return;
     }
+    const { data: freshUser, error: freshUserError } = await supabaseSuperAdmin.auth.getUser();
+    if (freshUserError || !freshUser.user) {
+      setIsSuperAdmin(false);
+      await supabaseSuperAdmin.auth.signOut();
+      return;
+    }
     const { data, error } = await supabaseSuperAdmin
       .from("user_roles")
       .select("role")
-      .eq("user_id", s.user.id);
+      .eq("user_id", freshUser.user.id);
     if (error) {
       setIsSuperAdmin(false);
       return;
