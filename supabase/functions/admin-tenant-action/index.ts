@@ -36,8 +36,31 @@ Deno.serve(async (req) => {
     const body: Action = await req.json();
 
     if (body.action === "reset_password") {
-      const { error } = await admin.auth.admin.updateUserById(body.user_id, { password: body.new_password });
-      if (error) throw new Error(error.message);
+      const userId = (body.user_id ?? "").trim();
+      const newPassword = body.new_password ?? "";
+      console.log("reset_password requested", { actor: user.id, actor_email: user.email, target_user_id: userId, password_len: newPassword.length });
+      if (!userId) {
+        return new Response(JSON.stringify({ success: false, error: "Target user_id is required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (!newPassword || newPassword.length < 6) {
+        return new Response(JSON.stringify({ success: false, error: "Password must be at least 6 characters" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const { data: existing, error: getErr } = await admin.auth.admin.getUserById(userId);
+      if (getErr || !existing?.user) {
+        console.error("reset_password: target user not found", { userId, error: getErr?.message });
+        return new Response(JSON.stringify({ success: false, error: `Target auth user not found: ${getErr?.message ?? "unknown"}` }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const { data: upd, error: updErr } = await admin.auth.admin.updateUserById(userId, { password: newPassword });
+      if (updErr) {
+        console.error("reset_password: updateUserById failed", { userId, message: updErr.message, status: (updErr as any).status });
+        return new Response(JSON.stringify({ success: false, error: updErr.message }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      console.log("reset_password: success", { userId, email: upd?.user?.email });
+      await admin.from("activity_logs").insert({
+        actor_user_id: user.id, action: "tenant_password_reset", entity: "auth.users", entity_id: userId,
+        metadata: { target_email: upd?.user?.email ?? existing.user.email },
+      }).then(() => {}, () => {});
+      return new Response(JSON.stringify({ success: true, message: "Password updated successfully" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     } else if (body.action === "suspend_tenant") {
       await admin.from("tenants").update({ status: "suspended" }).eq("id", body.tenant_id);
     } else if (body.action === "activate_tenant") {
