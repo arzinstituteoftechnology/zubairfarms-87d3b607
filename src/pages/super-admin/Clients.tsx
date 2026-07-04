@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Pause, Play, Trash2, KeyRound, CreditCard, Stethoscope, RefreshCw, Eraser, Download, Archive, RotateCcw, AlertTriangle, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 
@@ -37,6 +38,8 @@ const Clients = () => {
         confirm: string;
         progress: number;
         currentStep: string;
+        createBackup: boolean;
+        backupInfo?: { backup_id: string; backup_name: string; size: number } | null;
         result?: any;
       }
     | null
@@ -134,7 +137,7 @@ const Clients = () => {
   };
 
   const openManage = (tenant: Tenant, mode: ResetMode) =>
-    setManage({ tenant, mode, stage: "warn", confirm: "", progress: 0, currentStep: "" });
+    setManage({ tenant, mode, stage: "warn", confirm: "", progress: 0, currentStep: "", createBackup: true, backupInfo: null });
 
   const closeManage = () => {
     if (stepTimer.current) { window.clearInterval(stepTimer.current); stepTimer.current = null; }
@@ -155,9 +158,48 @@ const Clients = () => {
     if (!manage) return;
     const cfg = modeConfig[manage.mode];
     if (manage.confirm.trim() !== cfg.phrase) return toast.error(`Type "${cfg.phrase}" exactly to confirm`);
-    setManage({ ...manage, stage: "running", progress: 5, currentStep: cfg.steps[0] });
-    startProgressAnimation(cfg.steps);
     const started = Date.now();
+
+    // ---------- Step 1 & 2: Create + Verify pre-reset backup (if enabled) ----------
+    let backupInfo: { backup_id: string; backup_name: string; size: number } | null = null;
+    if (manage.createBackup) {
+      setManage({ ...manage, stage: "running", progress: 5, currentStep: "Creating Backup…", backupInfo: null });
+      const { data: bkp, error: bkpErr } = await supabase.functions.invoke("system-backup", {
+        body: { action: "create", backup_type: "pre_reset", tenant_id: manage.tenant.id },
+      });
+      if (bkpErr || (bkp as any)?.error || !(bkp as any)?.backup_id) {
+        setManage({ ...manage, stage: "confirm" });
+        return toast.error("Backup creation failed — reset cancelled", {
+          description: (bkp as any)?.error ?? bkpErr?.message ?? "Unknown error",
+          duration: 10000,
+        });
+      }
+      setManage({ ...manage, stage: "running", progress: 25, currentStep: "Compressing Database…", backupInfo: null });
+      // Verify integrity before proceeding
+      setManage((m) => m ? { ...m, progress: 40, currentStep: "Verifying Backup Integrity…" } : m);
+      const { data: ver, error: verErr } = await supabase.functions.invoke("system-backup", {
+        body: { action: "verify", backup_id: (bkp as any).backup_id },
+      });
+      if (verErr || !(ver as any)?.ok) {
+        setManage({ ...manage, stage: "confirm" });
+        return toast.error("Backup verification failed — reset cancelled", {
+          description: (ver as any)?.error ?? verErr?.message ?? "Integrity check failed",
+          duration: 10000,
+        });
+      }
+      backupInfo = {
+        backup_id: (bkp as any).backup_id,
+        backup_name: (bkp as any).backup_name ?? "backup",
+        size: (bkp as any).size ?? 0,
+      };
+      toast.success("Backup Verified", { description: backupInfo.backup_name, duration: 4000 });
+      setManage((m) => m ? { ...m, progress: 55, currentStep: "Backup Verified — Executing Reset…", backupInfo } : m);
+    } else {
+      setManage({ ...manage, stage: "running", progress: 5, currentStep: cfg.steps[0], backupInfo: null });
+    }
+
+    // ---------- Step 3: Execute reset ----------
+    startProgressAnimation(cfg.steps);
     const { data, error } = await supabase.functions.invoke("admin-reset-data", {
       body: { action: manage.mode, tenant_id: manage.tenant.id, confirm: cfg.phrase },
     });
@@ -177,7 +219,7 @@ const Clients = () => {
     }
     const total = (data as any)?.total_rows_deleted ?? 0;
     const ms = (data as any)?.duration_ms ?? (Date.now() - started);
-    setManage({ ...manage, stage: "done", progress: 100, currentStep: "Finished.", result: data });
+    setManage({ ...manage, stage: "done", progress: 100, currentStep: "Reset Completed.", backupInfo, result: data });
     toast.success(cfg.successMsg, {
       description: `${total} record(s) removed in ${(ms / 1000).toFixed(1)}s.`,
       duration: 6000,
