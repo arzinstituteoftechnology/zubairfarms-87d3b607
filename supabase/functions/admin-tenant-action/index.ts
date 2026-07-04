@@ -92,6 +92,33 @@ Deno.serve(async (req) => {
       const tenantId = (body.tenant_id ?? "").trim();
       const tenantEmail = (body.tenant_email ?? "").trim().toLowerCase();
       const newPassword = body.new_password ?? "";
+      let emailMatchedUser: { id: string; email?: string | null } | null = null;
+      const findAuthUserByEmail = async () => {
+        if (!tenantEmail) return null;
+        const { data: list, error: listError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        console.log("reset_password auth user email lookup", { request_id: requestId, tenant_email: tenantEmail, list_error: listError?.message ?? null, total_users_checked: list?.users?.length ?? 0 });
+        if (listError) throw new Error(`Auth user lookup failed: ${listError.message}`);
+        return list.users.find((u) => u.email?.toLowerCase() === tenantEmail) ?? null;
+      };
+      const ensureTenantLink = async (targetUserId: string) => {
+        if (!tenantId) return;
+        const { data: otherLink, error: otherLinkError } = await admin
+          .from("tenant_users")
+          .select("tenant_id")
+          .eq("user_id", targetUserId)
+          .neq("tenant_id", tenantId)
+          .maybeSingle();
+        if (otherLinkError) throw new Error(`Tenant user conflict check failed: ${otherLinkError.message}`);
+        if (otherLink?.tenant_id) throw new Error("Matched auth user is already linked to another tenant. Password was not changed.");
+
+        const { error: deleteOldLinkError } = await admin.from("tenant_users").delete().eq("tenant_id", tenantId);
+        if (deleteOldLinkError) throw new Error(`Old tenant link cleanup failed: ${deleteOldLinkError.message}`);
+        const { error: insertLinkError } = await admin
+          .from("tenant_users")
+          .insert({ tenant_id: tenantId, user_id: targetUserId, tenant_role: "admin" });
+        if (insertLinkError) throw new Error(`Tenant user relink failed: ${insertLinkError.message}`);
+        console.log("reset_password tenant link repaired", { request_id: requestId, tenant_id: tenantId, target_user_id: targetUserId });
+      };
       console.log("reset_password requested", { request_id: requestId, actor_user_id: user.id, actor_email: user.email ?? null, tenant_id: tenantId || null, tenant_email: tenantEmail || null, target_user_id: userId || null, password_len: newPassword.length });
       if (!newPassword || newPassword.length < 6) {
         return json({ success: false, error: "Password must be at least 6 characters", request_id: requestId }, 400);
@@ -117,25 +144,45 @@ Deno.serve(async (req) => {
       }
 
       if (!userId && tenantEmail) {
-        const { data: list, error: listError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-        console.log("reset_password auth user email lookup", { request_id: requestId, tenant_email: tenantEmail, list_error: listError?.message ?? null, total_users_checked: list?.users?.length ?? 0 });
-        if (listError) {
-          console.error("reset_password listUsers failed", { request_id: requestId, error: listError });
-          return json({ success: false, error: `Auth user lookup failed: ${listError.message}`, request_id: requestId }, 400);
+        try {
+          emailMatchedUser = await findAuthUserByEmail();
+          if (emailMatchedUser) {
+            userId = emailMatchedUser.id;
+            await ensureTenantLink(userId);
+          }
+        } catch (lookupError) {
+          const message = lookupError instanceof Error ? lookupError.message : String(lookupError);
+          console.error("reset_password email lookup/link repair failed", { request_id: requestId, tenant_id: tenantId || null, tenant_email: tenantEmail || null, error: message });
+          return json({ success: false, error: message, request_id: requestId }, 400);
         }
-        const matched = list.users.find((u) => u.email?.toLowerCase() === tenantEmail);
-        if (matched) userId = matched.id;
       }
 
       if (!userId) {
         console.error("reset_password no target user", { request_id: requestId, tenant_id: tenantId || null, tenant_email: tenantEmail || null });
         return json({ success: false, error: "No linked auth user found for this tenant. Run Sync Auth Users first.", request_id: requestId }, 404);
       }
-      const { data: existing, error: getErr } = await admin.auth.admin.getUserById(userId);
+      let { data: existing, error: getErr } = await admin.auth.admin.getUserById(userId);
       console.log("reset_password getUserById response", { request_id: requestId, target_user_id: userId, found: !!existing?.user, target_email: existing?.user?.email ?? null, error: getErr ? { message: getErr.message, status: (getErr as any).status ?? null, code: (getErr as any).code ?? null } : null });
       if (getErr || !existing?.user) {
-        console.error("reset_password: target user not found", { request_id: requestId, target_user_id: userId, error: getErr });
-        return json({ success: false, error: `Target auth user not found: ${getErr?.message ?? "unknown"}`, request_id: requestId }, 404);
+        try {
+          emailMatchedUser = emailMatchedUser ?? await findAuthUserByEmail();
+          if (emailMatchedUser && emailMatchedUser.id !== userId) {
+            console.warn("reset_password stale tenant user link detected", { request_id: requestId, stale_user_id: userId, repaired_user_id: emailMatchedUser.id, tenant_id: tenantId || null, tenant_email: tenantEmail || null });
+            await ensureTenantLink(emailMatchedUser.id);
+            userId = emailMatchedUser.id;
+            const retry = await admin.auth.admin.getUserById(userId);
+            existing = retry.data;
+            getErr = retry.error;
+          }
+        } catch (repairError) {
+          const message = repairError instanceof Error ? repairError.message : String(repairError);
+          console.error("reset_password stale link repair failed", { request_id: requestId, target_user_id: userId, tenant_id: tenantId || null, error: message });
+          return json({ success: false, error: message, request_id: requestId }, 400);
+        }
+        if (getErr || !existing?.user) {
+          console.error("reset_password: target user not found", { request_id: requestId, target_user_id: userId, error: getErr });
+          return json({ success: false, error: `Target auth user not found: ${getErr?.message ?? "unknown"}`, request_id: requestId }, 404);
+        }
       }
       const { data: upd, error: updErr } = await admin.auth.admin.updateUserById(userId, { password: newPassword });
       console.log("reset_password updateUserById response", { request_id: requestId, target_user_id: userId, target_email: upd?.user?.email ?? existing.user.email ?? null, success: !updErr, error: updErr ? { message: updErr.message, status: (updErr as any).status ?? null, code: (updErr as any).code ?? null } : null });
