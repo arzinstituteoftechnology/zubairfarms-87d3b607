@@ -239,6 +239,27 @@ const ShopLedger = () => {
     return [...filtered].reverse();
   }, [entries, ledgerFilterDate, rangeFrom, rangeTo]);
 
+  // Summary derived directly from the currently loaded ledger entries.
+  // Reversed originals and reversal audit rows are excluded so the cards
+  // always match the ledger table exactly (Paid = 0 when all payments reversed).
+  const summary = useMemo(() => {
+    let opening = 0;
+    let supplied = 0;
+    let paid = 0;
+    let adj = 0;
+    for (const e of entries) {
+      if (e.reversed || e.isReversal) continue;
+      if (e.kind === "opening") { opening = e.debit; continue; }
+      if (e.kind === "adjustment_increase") { adj += e.debit; continue; }
+      if (e.kind === "adjustment_decrease") { adj -= e.credit; continue; }
+      // Debits (supplies / manual supplies) build receivable.
+      if (e.debit > 0) supplied += e.debit;
+      // Credits (payments / recoveries) reduce receivable.
+      if (e.credit > 0) paid += e.credit;
+    }
+    return { opening, supplied, paid, balance: opening + supplied - paid + adj };
+  }, [entries]);
+
   const addPayment = async () => {
     if (!ledger || !payAmt) return;
     if (!tenant?.id) return toast.error("Account is not linked to an active client.");
@@ -477,10 +498,10 @@ const ShopLedger = () => {
                 ],
                 rows: filteredEntries as any,
                 totals: [
-                  { label: "Opening", value: fmtMoney(ledger.opening_balance) },
-                  { label: "Total Supplied", value: fmtMoney(filteredEntries.reduce((s, e) => s + Number(e.debit || 0), 0)) },
-                  { label: "Total Paid", value: fmtMoney(filteredEntries.reduce((s, e) => s + Number(e.credit || 0), 0)) },
-                  { label: "Current Balance", value: fmtMoney(ledger.balance) },
+                  { label: "Opening", value: fmtMoney(summary.opening || ledger.opening_balance) },
+                  { label: "Total Supplied", value: fmtMoney(filteredEntries.filter(e => !e.reversed && !e.isReversal).reduce((s, e) => s + Number(e.debit || 0), 0)) },
+                  { label: "Total Paid", value: fmtMoney(filteredEntries.filter(e => !e.reversed && !e.isReversal).reduce((s, e) => s + Number(e.credit || 0), 0)) },
+                  { label: "Current Balance", value: fmtMoney(summary.balance) },
                 ],
                 footer: `Printed by ${user?.email ?? ""}`,
               })}>
@@ -501,10 +522,10 @@ const ShopLedger = () => {
                 )}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Opening</div><div className="font-semibold">{fmtMoney(ledger.opening_balance)}</div></div>
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Supplied</div><div className="font-semibold">{fmtMoney(ledger.supplied)}</div></div>
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Paid</div><div className="font-semibold">{fmtMoney(ledger.paid)}</div></div>
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Current Balance</div><div className="font-semibold text-destructive">{fmtMoney(ledger.balance)}</div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">Opening</div><div className="font-semibold">{fmtMoney(summary.opening || ledger.opening_balance)}</div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">Supplied</div><div className="font-semibold">{fmtMoney(summary.supplied)}</div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">Paid</div><div className="font-semibold">{fmtMoney(summary.paid)}</div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">Current Balance</div><div className="font-semibold text-destructive">{fmtMoney(summary.balance)}</div></div>
               </div>
               <div className="flex flex-wrap gap-2 no-print">
                 <Button size="sm" variant="outline" onClick={() => openManual("manual_supply")}><Plus className="h-4 w-4" /> Previous Supply</Button>
