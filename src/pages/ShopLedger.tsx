@@ -522,10 +522,10 @@ const ShopLedger = () => {
                 )}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Opening</div><div className="font-semibold">{fmtMoney(ledger.opening_balance)}</div></div>
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Supplied</div><div className="font-semibold">{fmtMoney(ledger.supplied)}</div></div>
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Paid</div><div className="font-semibold">{fmtMoney(ledger.paid)}</div></div>
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Current Balance</div><div className="font-semibold text-destructive">{fmtMoney(ledger.balance)}</div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">Opening</div><div className="font-semibold">{fmtMoney(summary.opening || ledger.opening_balance)}</div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">Supplied</div><div className="font-semibold">{fmtMoney(summary.supplied)}</div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">Paid</div><div className="font-semibold">{fmtMoney(summary.paid)}</div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">Current Balance</div><div className="font-semibold text-destructive">{fmtMoney(summary.balance)}</div></div>
               </div>
               <div className="flex flex-wrap gap-2 no-print">
                 <Button size="sm" variant="outline" onClick={() => openManual("manual_supply")}><Plus className="h-4 w-4" /> Previous Supply</Button>
