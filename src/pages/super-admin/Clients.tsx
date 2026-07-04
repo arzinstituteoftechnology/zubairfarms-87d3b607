@@ -158,11 +158,22 @@ const Clients = () => {
   const resetPassword = async () => {
     if (!pwUser) return;
     if (!pwUser.password || pwUser.password.length < 6) return toast.error("Password must be at least 6 characters");
-    const { data: tu, error: tuErr } = await supabase.from("tenant_users").select("user_id").eq("tenant_id", pwUser.tenant.id).limit(1).maybeSingle();
-    if (tuErr) return toast.error(`Lookup failed: ${tuErr.message}`);
-    if (!tu?.user_id) return toast.error("No linked user found for this tenant. Run 'Sync Auth Users' first.");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) return toast.error("Super Admin session expired. Please sign in again.");
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) {
+      console.error("[reset_password] super admin session invalid:", authError);
+      return toast.error("Super Admin session expired. Please sign in again.");
+    }
     const { data, error } = await supabase.functions.invoke("admin-tenant-action", {
-      body: { action: "reset_password", user_id: tu.user_id, new_password: pwUser.password },
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: {
+        action: "reset_password",
+        tenant_id: pwUser.tenant.id,
+        tenant_email: pwUser.tenant.email,
+        new_password: pwUser.password,
+      },
     });
     let backendError: string | null = (data as any)?.error ?? null;
     if (!backendError && error) {
@@ -175,7 +186,15 @@ const Clients = () => {
       }
       if (!backendError) backendError = error.message;
     }
-    if (backendError) { console.error("[reset_password] failed:", backendError, data, error); return toast.error(backendError); }
+    if (backendError) {
+      console.error("[reset_password] failed:", {
+        tenant_id: pwUser.tenant.id,
+        tenant_email: pwUser.tenant.email,
+        response: data,
+        error,
+      });
+      return toast.error(backendError);
+    }
     toast.success((data as any)?.message ?? "Password updated successfully");
     setPwUser(null);
   };

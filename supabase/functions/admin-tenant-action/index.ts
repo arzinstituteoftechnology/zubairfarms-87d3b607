@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 type Action =
-  | { action: "reset_password"; user_id: string; new_password: string }
+  | { action: "reset_password"; user_id?: string; tenant_id?: string; tenant_email?: string; new_password: string }
   | { action: "delete_tenant"; tenant_id: string }
   | { action: "restore_tenant"; tenant_id: string }
   | { action: "purge_tenant"; tenant_id: string; confirm: string }
@@ -19,48 +19,184 @@ type Action =
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  const json = (obj: unknown, status = 200) =>
+    new Response(JSON.stringify(obj), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+  const requestId = crypto.randomUUID();
+
+  const sanitizePayload = (payload: unknown) => {
+    if (!payload || typeof payload !== "object") return payload;
+    const copy = { ...(payload as Record<string, unknown>) };
+    if (typeof copy.new_password === "string") {
+      copy.new_password = `[redacted:${copy.new_password.length}]`;
+    }
+    return copy;
+  };
+
   try {
-    const url = Deno.env.get("SUPABASE_URL")!;
-    const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
-    const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const url = Deno.env.get("SUPABASE_URL");
+    const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+    const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!url || !anon || !service) {
+      console.error("admin-tenant-action missing environment", {
+        request_id: requestId,
+        has_url: !!url,
+        has_anon_key: !!anon,
+        has_service_role_key: !!service,
+      });
+      return json({ success: false, error: "Server configuration error: password reset service credentials are missing.", request_id: requestId }, 500);
+    }
+
+    let body: Action;
+    try {
+      body = await req.json();
+    } catch (parseError) {
+      console.error("admin-tenant-action invalid JSON", { request_id: requestId, error: parseError instanceof Error ? parseError.message : String(parseError) });
+      return json({ success: false, error: "Invalid request payload", request_id: requestId }, 400);
+    }
+
+    console.log("admin-tenant-action request", {
+      request_id: requestId,
+      action: body.action,
+      payload: sanitizePayload(body),
+    });
 
     const authHeader = req.headers.get("Authorization") ?? "";
     const userClient = createClient(url, anon, { global: { headers: { Authorization: authHeader } } });
-    const { data: { user } } = await userClient.auth.getUser();
-    if (!user) return new Response(JSON.stringify({ error: "Not authenticated" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    if (!user) {
+      console.error("admin-tenant-action auth failed", {
+        request_id: requestId,
+        action: body.action,
+        auth_error: authError?.message ?? "No authenticated user",
+        auth_status: (authError as any)?.status ?? null,
+      });
+      return json({ success: false, error: "Super Admin session expired or invalid. Please sign in again.", details: authError?.message ?? "No authenticated user", request_id: requestId }, 401);
+    }
 
     const admin = createClient(url, service);
-    const { data: roleRow } = await admin.from("user_roles").select("role").eq("user_id", user.id).eq("role", "super_admin").maybeSingle();
-    if (!roleRow) return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-    const body: Action = await req.json();
+    console.log("admin-tenant-action authenticated actor", { request_id: requestId, actor_user_id: user.id, actor_email: user.email ?? null });
+    const { data: roleRow, error: roleError } = await admin.from("user_roles").select("role").eq("user_id", user.id).eq("role", "super_admin").maybeSingle();
+    if (roleError) {
+      console.error("admin-tenant-action role lookup failed", { request_id: requestId, actor_user_id: user.id, error: roleError });
+      return json({ success: false, error: `Super Admin role lookup failed: ${roleError.message}`, request_id: requestId }, 500);
+    }
+    if (!roleRow) {
+      console.error("admin-tenant-action forbidden", { request_id: requestId, actor_user_id: user.id, actor_email: user.email ?? null });
+      return json({ success: false, error: "Forbidden — super admin only", request_id: requestId }, 403);
+    }
 
     if (body.action === "reset_password") {
-      const userId = (body.user_id ?? "").trim();
+      let userId = (body.user_id ?? "").trim();
+      const tenantId = (body.tenant_id ?? "").trim();
+      const tenantEmail = (body.tenant_email ?? "").trim().toLowerCase();
       const newPassword = body.new_password ?? "";
-      console.log("reset_password requested", { actor: user.id, actor_email: user.email, target_user_id: userId, password_len: newPassword.length });
-      if (!userId) {
-        return new Response(JSON.stringify({ success: false, error: "Target user_id is required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
+      let emailMatchedUser: { id: string; email?: string | null } | null = null;
+      const findAuthUserByEmail = async () => {
+        if (!tenantEmail) return null;
+        const { data: list, error: listError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        console.log("reset_password auth user email lookup", { request_id: requestId, tenant_email: tenantEmail, list_error: listError?.message ?? null, total_users_checked: list?.users?.length ?? 0 });
+        if (listError) throw new Error(`Auth user lookup failed: ${listError.message}`);
+        return list.users.find((u) => u.email?.toLowerCase() === tenantEmail) ?? null;
+      };
+      const ensureTenantLink = async (targetUserId: string) => {
+        if (!tenantId) return;
+        const { data: otherLink, error: otherLinkError } = await admin
+          .from("tenant_users")
+          .select("tenant_id")
+          .eq("user_id", targetUserId)
+          .neq("tenant_id", tenantId)
+          .maybeSingle();
+        if (otherLinkError) throw new Error(`Tenant user conflict check failed: ${otherLinkError.message}`);
+        if (otherLink?.tenant_id) throw new Error("Matched auth user is already linked to another tenant. Password was not changed.");
+
+        const { error: deleteOldLinkError } = await admin.from("tenant_users").delete().eq("tenant_id", tenantId);
+        if (deleteOldLinkError) throw new Error(`Old tenant link cleanup failed: ${deleteOldLinkError.message}`);
+        const { error: insertLinkError } = await admin
+          .from("tenant_users")
+          .insert({ tenant_id: tenantId, user_id: targetUserId, tenant_role: "admin" });
+        if (insertLinkError) throw new Error(`Tenant user relink failed: ${insertLinkError.message}`);
+        console.log("reset_password tenant link repaired", { request_id: requestId, tenant_id: tenantId, target_user_id: targetUserId });
+      };
+      console.log("reset_password requested", { request_id: requestId, actor_user_id: user.id, actor_email: user.email ?? null, tenant_id: tenantId || null, tenant_email: tenantEmail || null, target_user_id: userId || null, password_len: newPassword.length });
       if (!newPassword || newPassword.length < 6) {
-        return new Response(JSON.stringify({ success: false, error: "Password must be at least 6 characters" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return json({ success: false, error: "Password must be at least 6 characters", request_id: requestId }, 400);
       }
-      const { data: existing, error: getErr } = await admin.auth.admin.getUserById(userId);
+
+      if (tenantId) {
+        const { data: link, error: linkError } = await admin
+          .from("tenant_users")
+          .select("user_id")
+          .eq("tenant_id", tenantId)
+          .maybeSingle();
+        if (linkError) {
+          console.error("reset_password tenant link lookup failed", { request_id: requestId, tenant_id: tenantId, error: linkError });
+          return json({ success: false, error: `Tenant user lookup failed: ${linkError.message}`, request_id: requestId }, 400);
+        }
+        if (link?.user_id) {
+          if (userId && userId !== link.user_id) {
+            console.error("reset_password target mismatch", { request_id: requestId, tenant_id: tenantId, requested_user_id: userId, linked_user_id: link.user_id });
+            return json({ success: false, error: "Target user does not match the selected tenant.", request_id: requestId }, 400);
+          }
+          userId = link.user_id;
+        }
+      }
+
+      if (!userId && tenantEmail) {
+        try {
+          emailMatchedUser = await findAuthUserByEmail();
+          if (emailMatchedUser) {
+            userId = emailMatchedUser.id;
+            await ensureTenantLink(userId);
+          }
+        } catch (lookupError) {
+          const message = lookupError instanceof Error ? lookupError.message : String(lookupError);
+          console.error("reset_password email lookup/link repair failed", { request_id: requestId, tenant_id: tenantId || null, tenant_email: tenantEmail || null, error: message });
+          return json({ success: false, error: message, request_id: requestId }, 400);
+        }
+      }
+
+      if (!userId) {
+        console.error("reset_password no target user", { request_id: requestId, tenant_id: tenantId || null, tenant_email: tenantEmail || null });
+        return json({ success: false, error: "No linked auth user found for this tenant. Run Sync Auth Users first.", request_id: requestId }, 404);
+      }
+      let { data: existing, error: getErr } = await admin.auth.admin.getUserById(userId);
+      console.log("reset_password getUserById response", { request_id: requestId, target_user_id: userId, found: !!existing?.user, target_email: existing?.user?.email ?? null, error: getErr ? { message: getErr.message, status: (getErr as any).status ?? null, code: (getErr as any).code ?? null } : null });
       if (getErr || !existing?.user) {
-        console.error("reset_password: target user not found", { userId, error: getErr?.message });
-        return new Response(JSON.stringify({ success: false, error: `Target auth user not found: ${getErr?.message ?? "unknown"}` }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        try {
+          emailMatchedUser = emailMatchedUser ?? await findAuthUserByEmail();
+          if (emailMatchedUser && emailMatchedUser.id !== userId) {
+            console.warn("reset_password stale tenant user link detected", { request_id: requestId, stale_user_id: userId, repaired_user_id: emailMatchedUser.id, tenant_id: tenantId || null, tenant_email: tenantEmail || null });
+            await ensureTenantLink(emailMatchedUser.id);
+            userId = emailMatchedUser.id;
+            const retry = await admin.auth.admin.getUserById(userId);
+            existing = retry.data;
+            getErr = retry.error;
+          }
+        } catch (repairError) {
+          const message = repairError instanceof Error ? repairError.message : String(repairError);
+          console.error("reset_password stale link repair failed", { request_id: requestId, target_user_id: userId, tenant_id: tenantId || null, error: message });
+          return json({ success: false, error: message, request_id: requestId }, 400);
+        }
+        if (getErr || !existing?.user) {
+          console.error("reset_password: target user not found", { request_id: requestId, target_user_id: userId, error: getErr });
+          return json({ success: false, error: `Target auth user not found: ${getErr?.message ?? "unknown"}`, request_id: requestId }, 404);
+        }
       }
       const { data: upd, error: updErr } = await admin.auth.admin.updateUserById(userId, { password: newPassword });
+      console.log("reset_password updateUserById response", { request_id: requestId, target_user_id: userId, target_email: upd?.user?.email ?? existing.user.email ?? null, success: !updErr, error: updErr ? { message: updErr.message, status: (updErr as any).status ?? null, code: (updErr as any).code ?? null } : null });
       if (updErr) {
-        console.error("reset_password: updateUserById failed", { userId, message: updErr.message, status: (updErr as any).status });
-        return new Response(JSON.stringify({ success: false, error: updErr.message }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        console.error("reset_password: updateUserById failed", { request_id: requestId, target_user_id: userId, error: updErr });
+        return json({ success: false, error: updErr.message, request_id: requestId }, 400);
       }
-      console.log("reset_password: success", { userId, email: upd?.user?.email });
+      console.log("reset_password: success", { request_id: requestId, target_user_id: userId, target_email: upd?.user?.email });
       await admin.from("activity_logs").insert({
         actor_user_id: user.id, action: "tenant_password_reset", entity: "auth.users", entity_id: userId,
-        metadata: { target_email: upd?.user?.email ?? existing.user.email },
+        tenant_id: tenantId || null,
+        metadata: { target_email: upd?.user?.email ?? existing.user.email, request_id: requestId },
       }).then(() => {}, () => {});
-      return new Response(JSON.stringify({ success: true, message: "Password updated successfully" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return json({ success: true, message: "Password updated successfully", request_id: requestId });
     } else if (body.action === "suspend_tenant") {
       await admin.from("tenants").update({ status: "suspended" }).eq("id", body.tenant_id);
     } else if (body.action === "activate_tenant") {
@@ -93,10 +229,10 @@ Deno.serve(async (req) => {
       });
     } else if (body.action === "purge_tenant") {
       // DESTRUCTIVE — requires explicit "PURGE" confirm + tenant must already be archived.
-      if (body.confirm !== "PURGE") return new Response(JSON.stringify({ error: "Type PURGE to confirm" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (body.confirm !== "PURGE") return json({ error: "Type PURGE to confirm" }, 400);
       const { data: t } = await admin.from("tenants").select("id, deleted_at, company_name").eq("id", body.tenant_id).maybeSingle();
-      if (!t) return new Response(JSON.stringify({ error: "Tenant not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      if (!t.deleted_at) return new Response(JSON.stringify({ error: "Archive the client first, then purge." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (!t) return json({ error: "Tenant not found" }, 404);
+      if (!t.deleted_at) return json({ error: "Archive the client first, then purge." }, 400);
 
       // 1. Find users linked to this tenant.
       const { data: tu } = await admin.from("tenant_users").select("user_id").eq("tenant_id", body.tenant_id);
@@ -146,10 +282,10 @@ Deno.serve(async (req) => {
         metadata: { deleted, removed_auth_users: removedAuth, protected_auth_users: protectedAuth, company_name: t.company_name },
       }).then(() => {}, () => {});
 
-      return new Response(JSON.stringify({ ok: true, deleted, removed_auth_users: removedAuth.length, protected_auth_users: protectedAuth.length }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return json({ ok: true, deleted, removed_auth_users: removedAuth.length, protected_auth_users: protectedAuth.length });
     } else if (body.action === "_legacy_delete_tenant_disabled") {
       // Hard-delete path is permanently disabled — see incident report 2026-06-18.
-      return new Response(JSON.stringify({ error: "Hard delete disabled. Use delete_tenant (archive) then purge_tenant." }), { status: 410, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return json({ error: "Hard delete disabled. Use delete_tenant (archive) then purge_tenant." }, 410);
     } else if (body.action === "diagnose_login") {
       const email = body.email.trim().toLowerCase();
       const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
@@ -174,7 +310,7 @@ Deno.serve(async (req) => {
           : "Everything is linked. 'Invalid login credentials' from Supabase Auth means the password being typed does not match. Use Reset Password to set a new one.",
       };
       console.log("diagnose_login:", JSON.stringify(report));
-      return new Response(JSON.stringify(report), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return json(report);
     } else if (body.action === "sync_auth_users") {
       // Find tenants whose tenant_users.user_id doesn't exist in auth.users, recreate auth account.
       const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
@@ -214,14 +350,15 @@ Deno.serve(async (req) => {
         repaired.push({ tenant_id: t.id, email, action: "auth_created", user_id: created.user.id, temp_password: tempPassword });
       }
       console.log("sync_auth_users:", JSON.stringify({ ok_count: ok.length, repaired }));
-      return new Response(JSON.stringify({ ok: true, healthy: ok, repaired }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return json({ ok: true, healthy: ok, repaired });
     } else {
-      return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return json({ error: "Unknown action" }, 400);
     }
 
-    return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    console.error("admin-tenant-action fatal", { request_id: requestId, error: msg, stack: e instanceof Error ? e.stack : undefined });
+    return json({ success: false, error: msg, request_id: requestId }, 500);
   }
 });
