@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { useModuleFlags } from "@/hooks/useModuleFlags";
+import { SeoHead } from "@/components/SeoHead";
 
 interface KPI {
   purchaseKg: number; purchaseAmt: number;
@@ -128,6 +129,11 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6">
+      <SeoHead
+        title="Dashboard — Zubair MeatFlow"
+        description="Overview of purchases, supplies, stock, recovery and profit across your MeatFlow operation."
+        path="/"
+      />
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t("dashboard.title")}</h1>
