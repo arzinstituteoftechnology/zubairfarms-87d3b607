@@ -21,6 +21,9 @@ type BackupRow = {
   error_message: string | null;
   created_at: string;
   completed_at: string | null;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  backup_name: string | null;
 };
 
 type Settings = {
@@ -265,6 +268,8 @@ const Backups = () => {
             <TableHeader>
               <TableRow className="border-zinc-800 hover:bg-transparent">
                 <TableHead className="text-zinc-100">When</TableHead>
+                <TableHead className="text-zinc-100">Tenant</TableHead>
+                <TableHead className="text-zinc-100">Backup Name</TableHead>
                 <TableHead className="text-zinc-100">Type</TableHead>
                 <TableHead className="text-zinc-100">Status</TableHead>
                 <TableHead className="text-zinc-100">Size</TableHead>
@@ -274,11 +279,13 @@ const Backups = () => {
             </TableHeader>
             <TableBody>
               {rows.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="text-center text-zinc-300 py-8">No backups yet</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center text-zinc-300 py-8">No backups yet</TableCell></TableRow>
               )}
               {rows.map((r) => (
                 <TableRow key={r.id} className="border-zinc-800 hover:bg-zinc-800/40">
                   <TableCell className="font-mono text-xs">{new Date(r.created_at).toLocaleString()}</TableCell>
+                  <TableCell className="text-xs">{r.tenant_name ?? <span className="text-zinc-500">System-wide</span>}</TableCell>
+                  <TableCell className="font-mono text-[11px] text-zinc-300 truncate max-w-xs" title={r.backup_name ?? ""}>{r.backup_name ?? "—"}</TableCell>
                   <TableCell className="capitalize">{r.backup_type.replace("_", " ")}</TableCell>
                   <TableCell>{statusBadge(r.status)}</TableCell>
                   <TableCell>{formatBytes(r.file_size)}</TableCell>

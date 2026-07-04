@@ -57,6 +57,7 @@ export type Database = {
       }
       backup_history: {
         Row: {
+          backup_name: string | null
           backup_type: string
           completed_at: string | null
           created_at: string
@@ -70,8 +71,11 @@ export type Database = {
           status: string
           storage_path: string | null
           table_counts: Json | null
+          tenant_id: string | null
+          tenant_name: string | null
         }
         Insert: {
+          backup_name?: string | null
           backup_type: string
           completed_at?: string | null
           created_at?: string
@@ -85,8 +89,11 @@ export type Database = {
           status?: string
           storage_path?: string | null
           table_counts?: Json | null
+          tenant_id?: string | null
+          tenant_name?: string | null
         }
         Update: {
+          backup_name?: string | null
           backup_type?: string
           completed_at?: string | null
           created_at?: string
@@ -100,8 +107,18 @@ export type Database = {
           status?: string
           storage_path?: string | null
           table_counts?: Json | null
+          tenant_id?: string | null
+          tenant_name?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "backup_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       backup_settings: {
         Row: {
