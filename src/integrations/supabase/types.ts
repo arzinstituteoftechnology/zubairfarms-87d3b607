@@ -457,6 +457,7 @@ export type Database = {
           contact_person: string | null
           created_at: string
           created_by: string | null
+          deleted_at: string | null
           id: string
           name: string
           notes: string | null
@@ -470,6 +471,7 @@ export type Database = {
           contact_person?: string | null
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
           id?: string
           name: string
           notes?: string | null
@@ -483,6 +485,7 @@ export type Database = {
           contact_person?: string | null
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
           id?: string
           name?: string
           notes?: string | null
@@ -975,6 +978,7 @@ export type Database = {
           contact_person: string | null
           created_at: string
           created_by: string | null
+          deleted_at: string | null
           id: string
           name: string
           notes: string | null
@@ -988,6 +992,7 @@ export type Database = {
           contact_person?: string | null
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
           id?: string
           name: string
           notes?: string | null
@@ -1001,6 +1006,7 @@ export type Database = {
           contact_person?: string | null
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
           id?: string
           name?: string
           notes?: string | null
