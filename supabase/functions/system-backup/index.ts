@@ -25,7 +25,8 @@ const SYSTEM_TABLES = [
 const ALL_TABLES = [...BUSINESS_TABLES, ...SYSTEM_TABLES];
 
 type Action =
-  | { action: "create"; backup_type?: "daily" | "manual" | "monthly" | "emergency" | "pre_restore" }
+  | { action: "create"; backup_type?: "daily" | "manual" | "monthly" | "emergency" | "pre_restore" | "pre_reset"; tenant_id?: string | null }
+  | { action: "verify"; backup_id: string }
   | { action: "restore"; backup_id?: string; backup?: Record<string, any[]>; preserve_super_admin?: boolean }
   | { action: "cleanup" }
   | { action: "download"; backup_id: string };
@@ -66,7 +67,10 @@ Deno.serve(async (req) => {
     const body = (await req.json().catch(() => ({}))) as Action;
 
     if (body.action === "create") {
-      return await handleCreate(admin, body.backup_type ?? "manual", userId);
+      return await handleCreate(admin, body.backup_type ?? "manual", userId, body.tenant_id ?? null);
+    }
+    if (body.action === "verify") {
+      return await handleVerify(admin, body.backup_id);
     }
     if (body.action === "cleanup") {
       return await handleCleanup(admin);
@@ -83,13 +87,33 @@ Deno.serve(async (req) => {
   }
 });
 
-async function snapshot(admin: any) {
+async function snapshot(admin: any, tenantId: string | null = null) {
   const out: Record<string, any[]> = {};
   const counts: Record<string, number> = {};
   const errors: Record<string, string> = {};
-  for (const t of ALL_TABLES) {
+  // When tenant-scoped: skip subscription_plans (global), scope all others by tenant_id or membership.
+  const tables = tenantId
+    ? ALL_TABLES.filter((t) => t !== "subscription_plans")
+    : ALL_TABLES;
+  // Members of this tenant (for user_roles + profiles which live in auth land).
+  let tenantUserIds: string[] = [];
+  if (tenantId) {
+    const { data: tu } = await admin.from("tenant_users").select("user_id").eq("tenant_id", tenantId);
+    tenantUserIds = (tu ?? []).map((r: any) => r.user_id);
+  }
+  for (const t of tables) {
     try {
-      const { data, error } = await admin.from(t).select("*");
+      let q = admin.from(t).select("*");
+      if (tenantId) {
+        if (t === "tenants") q = q.eq("id", tenantId);
+        else if (t === "user_roles" || t === "profiles") {
+          if (!tenantUserIds.length) { out[t] = []; counts[t] = 0; continue; }
+          q = q.in(t === "profiles" ? "id" : "user_id", tenantUserIds);
+        } else {
+          q = q.eq("tenant_id", tenantId);
+        }
+      }
+      const { data, error } = await q;
       if (error) { errors[t] = error.message; continue; }
       out[t] = data ?? [];
       counts[t] = (data ?? []).length;
@@ -100,50 +124,72 @@ async function snapshot(admin: any) {
   return { snapshot: out, counts, errors };
 }
 
-async function handleCreate(admin: any, backup_type: string, userId: string | null) {
+async function handleCreate(admin: any, backup_type: string, userId: string | null, tenantId: string | null = null) {
+  // Look up tenant name for scoped backups so the file has a friendly name.
+  let tenantName: string | null = null;
+  if (tenantId) {
+    const { data: tRow } = await admin.from("tenants").select("company_name").eq("id", tenantId).maybeSingle();
+    tenantName = tRow?.company_name ?? null;
+  }
   // 1. Insert pending row
   const { data: row, error: insErr } = await admin.from("backup_history")
-    .insert({ backup_type, status: "pending", created_by: userId })
+    .insert({ backup_type, status: "pending", created_by: userId, tenant_id: tenantId, tenant_name: tenantName })
     .select("*").single();
   if (insErr) return json({ error: insErr.message }, 500);
 
   try {
-    const { snapshot: snap, counts, errors } = await snapshot(admin);
+    const { snapshot: snap, counts, errors } = await snapshot(admin, tenantId);
 
     const payload = {
       generated_at: new Date().toISOString(),
       backup_type,
+      tenant_id: tenantId,
+      tenant_name: tenantName,
       app: "MeatFlow ERP",
       version: 1,
       counts,
       data: snap,
     };
     const body = JSON.stringify(payload);
-    const blob = new Blob([body], { type: "application/json" });
+    // Gzip-compress so backups stay small on storage / downloads.
+    const gz = new Blob([body]).stream().pipeThrough(new CompressionStream("gzip"));
+    const gzBuf = await new Response(gz).arrayBuffer();
+    const blob = new Blob([gzBuf], { type: "application/gzip" });
 
     const now = new Date();
     const yyyy = now.getUTCFullYear();
     const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
     const dd = String(now.getUTCDate()).padStart(2, "0");
-    const stamp = now.toISOString().replace(/[:.]/g, "-");
-    const path = `${yyyy}/${mm}/${dd}/${backup_type}-${stamp}.json`;
+    const hh = String(now.getUTCHours()).padStart(2, "0");
+    const mi = String(now.getUTCMinutes()).padStart(2, "0");
+    const safeTenant = (tenantName ?? "System").replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 60);
+    const backupName = `${safeTenant}_${yyyy}-${mm}-${dd}_${hh}-${mi}_${backup_type}_Backup.json.gz`;
+    const path = `${yyyy}/${mm}/${dd}/${backupName}`;
 
     const { error: upErr } = await admin.storage.from("system-backups")
-      .upload(path, blob, { contentType: "application/json", upsert: false });
+      .upload(path, blob, { contentType: "application/gzip", upsert: false });
     if (upErr) throw new Error(`Storage upload failed: ${upErr.message}`);
 
     const tableErrCount = Object.keys(errors).length;
+    const totalRecords = Object.values(counts).reduce((a, b) => a + b, 0);
+    // Integrity check — a valid tenant backup must contain the tenant row itself.
+    const integrityOk = tenantId ? (snap["tenants"]?.length === 1) : true;
+    if (!integrityOk) throw new Error("Integrity check failed — tenant row missing from snapshot");
     const health = {
       tables_ok: Object.keys(counts).length,
       tables_failed: tableErrCount,
-      total_records: Object.values(counts).reduce((a, b) => a + b, 0),
+      total_records: totalRecords,
+      integrity_ok: integrityOk,
+      compressed: true,
+      uncompressed_size: body.length,
       errors: tableErrCount ? errors : undefined,
     };
 
     await admin.from("backup_history").update({
       status: tableErrCount ? "warning" : "success",
       storage_path: path,
-      file_size: body.length,
+      file_size: gzBuf.byteLength,
+      backup_name: backupName,
       table_counts: counts,
       health,
       completed_at: new Date().toISOString(),
@@ -152,13 +198,38 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
     // Trigger cleanup async (don't block)
     handleCleanup(admin).catch(() => {});
 
-    return json({ ok: true, backup_id: row.id, path, size: body.length, counts, health });
+    return json({ ok: true, backup_id: row.id, path, backup_name: backupName, size: gzBuf.byteLength, counts, health, tenant_id: tenantId, tenant_name: tenantName });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await admin.from("backup_history").update({
       status: "failed", error_message: msg, completed_at: new Date().toISOString(),
     }).eq("id", row.id);
     return json({ error: msg, backup_id: row.id }, 500);
+  }
+}
+
+// Verify a backup by re-downloading it and confirming it parses and contains the tenant.
+async function handleVerify(admin: any, backup_id: string) {
+  const { data: row, error } = await admin.from("backup_history").select("*").eq("id", backup_id).single();
+  if (error || !row?.storage_path) return json({ ok: false, error: "Backup not found" }, 404);
+  if (row.status === "failed") return json({ ok: false, error: row.error_message ?? "Backup failed" }, 400);
+  const { data: file, error: dErr } = await admin.storage.from("system-backups").download(row.storage_path);
+  if (dErr || !file) return json({ ok: false, error: dErr?.message ?? "Cannot download backup" }, 500);
+  try {
+    let text: string;
+    if (row.storage_path.endsWith(".gz")) {
+      const ds = file.stream().pipeThrough(new DecompressionStream("gzip"));
+      text = await new Response(ds).text();
+    } else {
+      text = await file.text();
+    }
+    const parsed = JSON.parse(text);
+    const tables = Object.keys(parsed.data ?? parsed);
+    if (!tables.length) return json({ ok: false, error: "Backup contains no tables" }, 400);
+    if (row.tenant_id && !(parsed.data?.tenants?.length)) return json({ ok: false, error: "Tenant row missing from backup" }, 400);
+    return json({ ok: true, backup_id, tables: tables.length, file_size: row.file_size });
+  } catch (e) {
+    return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500);
   }
 }
 
