@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
 import { ShieldCheck } from "lucide-react";
+import { SeoHead } from "@/components/SeoHead";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -50,9 +51,15 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted to-background p-4">
+    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted to-background p-4">
+      <SeoHead
+        title="Sign in — Zubair MeatFlow"
+        description="Sign in to Zubair MeatFlow to manage farms, shops, POS sales, ledgers and deliveries."
+        path="/auth"
+      />
+      <h1 className="sr-only">Sign in to Zubair MeatFlow</h1>
       <Card className="w-full max-w-md shadow-xl border-border/60">
-        <div className="flex justify-end px-4 pt-3"><LanguageSwitcher /></div>
+        <div className="flex justify-end px-4 pt-3"><LanguageSwitcher aria-label="Switch language" /></div>
         <CardHeader className="text-center space-y-2">
           <div className="mx-auto h-14 w-14 rounded-2xl bg-primary flex items-center justify-center shadow-md">
             <ShieldCheck className="h-7 w-7 text-primary-foreground" />
@@ -90,7 +97,7 @@ const Auth = () => {
           )}
         </CardContent>
       </Card>
-    </div>
+    </main>
   );
 };
 
