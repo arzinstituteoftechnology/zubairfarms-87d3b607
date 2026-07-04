@@ -54,7 +54,7 @@ const OPTIONAL_BUSINESS_TABLES = [...OPTIONAL_TRANSACTION_TABLES, ...OPTIONAL_MA
 // Tables whose rows can also be reached via shop_id / farm_id of this tenant.
 // Used for the orphan sweep so RESTRICT FKs on shops/farms can't block deletion.
 const SHOP_CHILD_TABLES = new Set([
-  "supplies", "deliveries", "shop_recoveries", "shop_ledger_entries",
+  "supplies", "shop_recoveries", "shop_ledger_entries",
 ]);
 const FARM_CHILD_TABLES = new Set([
   "purchases", "farm_payments", "expenses", "deliveries", "supplier_ledger_entries",
