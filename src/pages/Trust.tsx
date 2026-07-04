@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Shield, Lock, Database, Users, Cookie, FileText, AlertTriangle, Mail } from "lucide-react";
+import { SeoHead } from "@/components/SeoHead";
 
 /**
  * MeatFlow ERP — Trust & Security overview.
@@ -12,6 +13,11 @@ import { Shield, Lock, Database, Users, Cookie, FileText, AlertTriangle, Mail } 
 const Trust = () => {
   return (
     <div className="min-h-screen bg-background">
+      <SeoHead
+        title="Trust & Security — Zubair MeatFlow"
+        description="How MeatFlow ERP protects your data: authentication, tenant isolation, backups, and platform security controls."
+        path="/trust"
+      />
       <header className="border-b">
         <div className="max-w-4xl mx-auto px-6 py-6 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 font-semibold text-lg">
