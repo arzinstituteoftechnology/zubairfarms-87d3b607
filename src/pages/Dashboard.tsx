@@ -129,6 +129,11 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6">
+      <SeoHead
+        title="Dashboard — Zubair MeatFlow"
+        description="Overview of purchases, supplies, stock, recovery and profit across your MeatFlow operation."
+        path="/"
+      />
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t("dashboard.title")}</h1>
