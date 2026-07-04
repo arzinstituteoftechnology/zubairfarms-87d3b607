@@ -498,10 +498,10 @@ const ShopLedger = () => {
                 ],
                 rows: filteredEntries as any,
                 totals: [
-                  { label: "Opening", value: fmtMoney(ledger.opening_balance) },
-                  { label: "Total Supplied", value: fmtMoney(filteredEntries.reduce((s, e) => s + Number(e.debit || 0), 0)) },
-                  { label: "Total Paid", value: fmtMoney(filteredEntries.reduce((s, e) => s + Number(e.credit || 0), 0)) },
-                  { label: "Current Balance", value: fmtMoney(ledger.balance) },
+                  { label: "Opening", value: fmtMoney(summary.opening || ledger.opening_balance) },
+                  { label: "Total Supplied", value: fmtMoney(filteredEntries.filter(e => !e.reversed && !e.isReversal).reduce((s, e) => s + Number(e.debit || 0), 0)) },
+                  { label: "Total Paid", value: fmtMoney(filteredEntries.filter(e => !e.reversed && !e.isReversal).reduce((s, e) => s + Number(e.credit || 0), 0)) },
+                  { label: "Current Balance", value: fmtMoney(summary.balance) },
                 ],
                 footer: `Printed by ${user?.email ?? ""}`,
               })}>
