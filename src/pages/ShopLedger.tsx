@@ -112,10 +112,11 @@ const ShopLedger = () => {
   const load = async () => {
     setLoading(true);
     setRows([]);
-    const [{ data: shops }, { data: su }, { data: le }] = await Promise.all([
+    const [{ data: shops }, { data: su }, { data: le }, { data: rc }] = await Promise.all([
       supabase.from("shops").select("id, name, phone, opening_balance").order("name"),
       supabase.from("supplies").select("shop_id, total_amount, reversed_at"),
-      supabase.from("shop_ledger_entries").select("shop_id, entry_type, amount, reversed_at, reversal_entry_id, original_entry_id"),
+      supabase.from("shop_ledger_entries").select("id, shop_id, entry_type, amount, reversed_at, reversal_entry_id, original_entry_id"),
+      supabase.from("shop_recoveries").select("ledger_entry_id, reversed_at, reversal_ledger_entry_id").not("reversed_at", "is", null),
     ]);
     // Compute summaries from ACTIVE (non-reversed) entries only.
     // - Skip any row whose reversed_at IS NOT NULL (the original that was later reversed).
@@ -126,6 +127,7 @@ const ShopLedger = () => {
     const adjMap: Record<string, number> = {};
     const openingOverride: Record<string, number> = {};
     const openingReversed: Record<string, boolean> = {};
+    const reversedRecoveryLedgerIds = new Set((rc ?? []).map((x: any) => x.ledger_entry_id).filter(Boolean));
 
     (su ?? []).forEach((x: any) => {
       if (x.reversed_at) return;
@@ -139,6 +141,7 @@ const ShopLedger = () => {
         openingReversed[sid] = true;
       }
       if (x.reversed_at || x.reversal_entry_id || x.original_entry_id) return;
+      if (x.entry_type === "recovery" && reversedRecoveryLedgerIds.has(x.id)) return;
       if (String(x.entry_type).startsWith("reversed_")) return;
       switch (x.entry_type) {
         case "opening_balance":
@@ -190,11 +193,13 @@ const ShopLedger = () => {
   };
 
   const refreshLedger = async (r: Row) => {
-    const [{ data: su }, { data: le }] = await Promise.all([
+    const [{ data: su }, { data: le }, { data: rc }] = await Promise.all([
       supabase.from("supplies").select("id, supply_date, total_amount, meat_type, weight_kg, rate_per_kg, notes, reversed_at").eq("shop_id", r.id),
       supabase.from("shop_ledger_entries").select("id, entry_date, entry_type, description, amount, reversed_at, original_entry_id, reversal_entry_id").eq("shop_id", r.id),
+      supabase.from("shop_recoveries").select("ledger_entry_id, reversed_at, reversal_ledger_entry_id").eq("shop_id", r.id).not("reversed_at", "is", null),
     ]);
     const list: LedgerEntry[] = [];
+    const reversedRecoveryLedgerIds = new Set((rc ?? []).map((x: any) => x.ledger_entry_id).filter(Boolean));
     (su ?? []).forEach((x: any) => {
       list.push({
         id: `su-${x.id}`, source: "supply", kind: "supply", date: x.supply_date,
@@ -213,7 +218,7 @@ const ShopLedger = () => {
       // adjustment_decrease & reversed_adjustment_decrease are signed credits already in balance calc
       const kind: LedgerKind = x.entry_type === "opening_balance" ? "opening" : (x.entry_type as LedgerKind);
       const isReversal = String(x.entry_type).startsWith("reversed_") || !!x.original_entry_id;
-      const reversed = !!x.reversed_at || !!x.reversal_entry_id;
+      const reversed = !!x.reversed_at || !!x.reversal_entry_id || (x.entry_type === "recovery" && reversedRecoveryLedgerIds.has(x.id));
       list.push({
         id: `le-${x.id}`, source: "ledger", kind, date: x.entry_date,
         debit: isDebit ? amt : 0, credit: isDebit ? 0 : amt,
