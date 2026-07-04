@@ -480,6 +480,16 @@ const Clients = () => {
 
                   {manage.stage === "confirm" && (
                     <div>
+                      <label className="flex items-center gap-2 mb-3 text-xs cursor-pointer">
+                        <Checkbox
+                          checked={manage.createBackup}
+                          onCheckedChange={(v) => setManage({ ...manage, createBackup: v === true })}
+                        />
+                        <span className="text-zinc-200">
+                          Create Backup Before Reset
+                          <span className="text-zinc-500"> — recommended. Reset is cancelled if the backup or verification fails.</span>
+                        </span>
+                      </label>
                       <Label>Type <span className="font-mono">{cfg.phrase}</span> to confirm</Label>
                       <Input
                         autoFocus
@@ -494,6 +504,11 @@ const Clients = () => {
                     <div className="space-y-2">
                       <Progress value={manage.progress} />
                       <p className="text-xs text-zinc-300">{manage.currentStep}</p>
+                      {manage.backupInfo && (
+                        <p className="text-[11px] text-emerald-300">
+                          Backup: {manage.backupInfo.backup_name} ({Math.max(1, Math.round(manage.backupInfo.size / 1024))} KB)
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -501,6 +516,11 @@ const Clients = () => {
                     <div className="rounded border border-emerald-500/40 bg-emerald-500/10 p-3 text-emerald-200 text-xs space-y-1">
                       <p className="font-semibold">{cfg.successMsg}</p>
                       <p>{manage.result.total_rows_deleted ?? 0} record(s) removed in {((manage.result.duration_ms ?? 0) / 1000).toFixed(1)}s.</p>
+                      {manage.backupInfo && (
+                        <p className="text-emerald-300">
+                          Pre-reset backup saved as <span className="font-mono">{manage.backupInfo.backup_name}</span> — restore from Super Admin → Backups.
+                        </p>
+                      )}
                       {manage.result.removed_auth_users != null && (
                         <p>Auth users removed: {manage.result.removed_auth_users} (protected: {manage.result.protected_auth_users}).</p>
                       )}
