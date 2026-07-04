@@ -46,7 +46,7 @@ const Deliveries = () => {
     const [{ data, error }, t, f] = await Promise.all([
       supabase.from("deliveries").select("*, trucks(number, driver_name), farms(name)").eq("loading_date", date).order("created_at", { ascending: false }),
       supabase.from("trucks").select("id, number, driver_name").order("number"),
-      supabase.from("farms").select("id, name").order("name"),
+      supabase.from("farms").select("id, name").is("deleted_at", null).order("name"),
     ]);
     if (error) toast.error(error.message); else setRows((data as any) ?? []);
     setTrucks(t.data ?? []); setFarms(f.data ?? []); setLoading(false);

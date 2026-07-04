@@ -41,7 +41,7 @@ const Expenses = () => {
     setRows([]);
     const [{ data, error }, fr] = await Promise.all([
       supabase.from("expenses").select("*, farms(name)").eq("expense_date", date).order("created_at", { ascending: false }),
-      supabase.from("farms").select("id, name").order("name"),
+      supabase.from("farms").select("id, name").is("deleted_at", null).order("name"),
     ]);
     if (error) toast.error(error.message); else setRows((data as any) ?? []);
     setFarms((fr.data as any) ?? []); setLoading(false);

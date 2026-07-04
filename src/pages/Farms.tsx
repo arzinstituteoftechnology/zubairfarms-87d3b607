@@ -12,7 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-type Farm = { id: string; name: string; contact_person: string | null; phone: string | null; address: string | null; notes: string | null; opening_balance: number };
+type Farm = { id: string; name: string; contact_person: string | null; phone: string | null; address: string | null; notes: string | null; opening_balance: number; deleted_at?: string | null };
 
 const empty: Partial<Farm> = { name: "", contact_person: "", phone: "", address: "", notes: "", opening_balance: 0 };
 
@@ -28,7 +28,7 @@ const Farms = () => {
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from("farms").select("*").order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("farms").select("*").is("deleted_at", null).order("created_at", { ascending: false });
     if (error) toast.error(error.message); else setRows(data as any);
     setLoading(false);
   };
@@ -77,7 +77,13 @@ const Farms = () => {
   const doDelete = async () => {
     if (!delTarget) return;
     const { error } = await supabase.from("farms").delete().eq("id", delTarget.id);
-    if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(); }
+    if (error) {
+      if ((error as any).code === "23503") {
+        const { error: e2 } = await supabase.from("farms").update({ deleted_at: new Date().toISOString() } as any).eq("id", delTarget.id);
+        if (e2) toast.error(e2.message);
+        else { toast.success("This supplier has ledger history. It has been archived instead of permanently deleted."); load(); }
+      } else toast.error(error.message);
+    } else { toast.success(t("common.deleted")); load(); }
     setDelTarget(null);
   };
 

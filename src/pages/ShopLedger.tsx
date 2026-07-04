@@ -113,7 +113,7 @@ const ShopLedger = () => {
     setLoading(true);
     setRows([]);
     const [{ data: shops }, { data: su }, { data: le }, { data: rc }] = await Promise.all([
-      supabase.from("shops").select("id, name, phone, opening_balance").order("name"),
+      supabase.from("shops").select("id, name, phone, opening_balance").is("deleted_at", null).order("name"),
       supabase.from("supplies").select("shop_id, total_amount, reversed_at"),
       supabase.from("shop_ledger_entries").select("id, shop_id, entry_type, amount, reversed_at, reversal_entry_id, original_entry_id"),
       supabase.from("shop_recoveries").select("ledger_entry_id, reversed_at, reversal_ledger_entry_id").not("reversed_at", "is", null),
