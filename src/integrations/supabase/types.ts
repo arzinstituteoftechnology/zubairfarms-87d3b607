@@ -1045,9 +1045,11 @@ export type Database = {
       stock_adjustments: {
         Row: {
           adjustment_date: string
+          bird_count: number | null
           closing_id: string | null
           created_at: string
           created_by: string | null
+          farm_id: string | null
           id: string
           meat_type: string
           notes: string | null
@@ -1059,13 +1061,16 @@ export type Database = {
           reversal_reason: string | null
           reversed_at: string | null
           reversed_by: string | null
+          shop_id: string | null
           tenant_id: string
         }
         Insert: {
           adjustment_date: string
+          bird_count?: number | null
           closing_id?: string | null
           created_at?: string
           created_by?: string | null
+          farm_id?: string | null
           id?: string
           meat_type: string
           notes?: string | null
@@ -1077,13 +1082,16 @@ export type Database = {
           reversal_reason?: string | null
           reversed_at?: string | null
           reversed_by?: string | null
+          shop_id?: string | null
           tenant_id: string
         }
         Update: {
           adjustment_date?: string
+          bird_count?: number | null
           closing_id?: string | null
           created_at?: string
           created_by?: string | null
+          farm_id?: string | null
           id?: string
           meat_type?: string
           notes?: string | null
@@ -1095,6 +1103,7 @@ export type Database = {
           reversal_reason?: string | null
           reversed_at?: string | null
           reversed_by?: string | null
+          shop_id?: string | null
           tenant_id?: string
         }
         Relationships: [
@@ -1103,6 +1112,13 @@ export type Database = {
             columns: ["closing_id"]
             isOneToOne: false
             referencedRelation: "stock_closings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_farm_id_fkey"
+            columns: ["farm_id"]
+            isOneToOne: false
+            referencedRelation: "farms"
             referencedColumns: ["id"]
           },
           {
@@ -1117,6 +1133,13 @@ export type Database = {
             columns: ["reversal_adjustment_id"]
             isOneToOne: false
             referencedRelation: "stock_adjustments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
