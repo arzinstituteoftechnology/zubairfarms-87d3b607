@@ -812,6 +812,30 @@ export type Database = {
           },
         ]
       }
+      role_permissions: {
+        Row: {
+          action: string
+          allowed: boolean
+          module: string
+          role: string
+          updated_at: string
+        }
+        Insert: {
+          action: string
+          allowed?: boolean
+          module: string
+          role: string
+          updated_at?: string
+        }
+        Update: {
+          action?: string
+          allowed?: boolean
+          module?: string
+          role?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       settings: {
         Row: {
           id: number
@@ -1496,6 +1520,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          status: string
           tenant_id: string
           tenant_role: string
           user_id: string
@@ -1503,6 +1528,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          status?: string
           tenant_id: string
           tenant_role?: string
           user_id: string
@@ -1510,6 +1536,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          status?: string
           tenant_id?: string
           tenant_role?: string
           user_id?: string
@@ -1613,6 +1640,36 @@ export type Database = {
           },
         ]
       }
+      user_permission_overrides: {
+        Row: {
+          action: string
+          allowed: boolean
+          created_at: string
+          module: string
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          allowed: boolean
+          created_at?: string
+          module: string
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          allowed?: boolean
+          created_at?: string
+          module?: string
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -1640,8 +1697,20 @@ export type Database = {
     }
     Functions: {
       _assert_can_reverse: { Args: never; Returns: undefined }
+      assert_can_reverse_module: {
+        Args: { _module: string }
+        Returns: undefined
+      }
+      assert_permission: {
+        Args: { _action: string; _module: string }
+        Returns: undefined
+      }
       bootstrap_super_admin: { Args: never; Returns: boolean }
       current_tenant_id: { Args: never; Returns: string }
+      has_permission: {
+        Args: { _action: string; _module: string; _uid: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1651,6 +1720,7 @@ export type Database = {
       }
       is_business_user: { Args: { _uid: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      is_tenant_owner: { Args: { _uid: string }; Returns: boolean }
       record_super_admin_login_attempt: {
         Args: { _email: string; _success: boolean }
         Returns: undefined

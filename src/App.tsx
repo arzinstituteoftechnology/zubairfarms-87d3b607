@@ -43,6 +43,7 @@ import SABackups from "./pages/super-admin/Backups";
 import SABackupEmail from "./pages/super-admin/BackupEmailSettings";
 import Trust from "./pages/Trust";
 import { SuperAdminAuthProvider } from "@/hooks/useSuperAdminAuth";
+import UsersPermissions from "./pages/UsersPermissions";
 
 const queryClient = new QueryClient();
 
@@ -107,6 +108,7 @@ const App = () => (
               <Route path="/mortality-register" element={<MortalityRegister />} />
              <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/settings/users" element={<UsersPermissions />} />
             </Route>
             <Route path="/invoice/:id" element={<Invoice />} />
             <Route path="*" element={<NotFound />} />

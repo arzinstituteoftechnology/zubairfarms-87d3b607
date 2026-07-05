@@ -15,6 +15,10 @@ import { cn } from "@/lib/utils";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { SubscriptionGate } from "@/components/SubscriptionGate";
 import { useModuleFlags } from "@/hooks/useModuleFlags";
+import { PermissionsProvider, usePermissions, ROUTE_MODULE } from "@/hooks/usePermissions";
+import { RequirePermission } from "@/components/RequirePermission";
+import { useLocation } from "react-router-dom";
+import { UsersRound } from "lucide-react";
 
 const navItems = [
   { to: "/", key: "dashboard", icon: LayoutDashboard, end: true },
@@ -40,6 +44,7 @@ const navItems = [
 
 const SidebarContent = ({ role, onSignOut, customersEnabled }: { role: string | null; onSignOut: () => void; customersEnabled: boolean }) => {
   const { t } = useTranslation();
+  const { can, isOwner } = usePermissions();
   return (
   <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
     <div className="flex h-16 items-center gap-2 px-5 border-b border-sidebar-border">
@@ -57,8 +62,12 @@ const SidebarContent = ({ role, onSignOut, customersEnabled }: { role: string | 
     </div>
     <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
       {navItems
-        .filter((n) => !n.adminOnly || role === "admin")
+        .filter((n) => !n.adminOnly || isOwner)
         .filter((n: any) => !n.customersModule || customersEnabled)
+        .filter((n) => {
+          const mod = ROUTE_MODULE[n.to];
+          return !mod || can(mod, "view");
+        })
         .map((n) => (
         <NavLink
           key={n.to}
@@ -77,6 +86,18 @@ const SidebarContent = ({ role, onSignOut, customersEnabled }: { role: string | 
           {t(`nav.${n.key}`)}
         </NavLink>
       ))}
+      {isOwner && (
+        <NavLink
+          to="/settings/users"
+          className={({ isActive }) => cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+            isActive ? "bg-sidebar-primary text-sidebar-primary-foreground"
+              : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          )}
+        >
+          <UsersRound className="h-4 w-4" /> Users & Permissions
+        </NavLink>
+      )}
     </nav>
     <div className="p-3 border-t border-sidebar-border">
       <Button variant="ghost" className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" onClick={onSignOut}>
@@ -93,6 +114,7 @@ const AppLayout = () => {
   const { t } = useTranslation();
   const { selectedDate, setSelectedDate, today, isToday } = useLedgerDate();
   const { customers_module_enabled } = useModuleFlags();
+  const location = useLocation();
 
   useEffect(() => {
     if (!loading && !session) navigate("/login", { replace: true });
@@ -109,6 +131,7 @@ const AppLayout = () => {
 
   return (
     <SubscriptionGate>
+    <PermissionsProvider>
     <div className="min-h-screen flex bg-background">
       <aside className="hidden md:block w-64 shrink-0 border-r border-sidebar-border">
         <SidebarContent role={role} onSignOut={handleSignOut} customersEnabled={customers_module_enabled} />
@@ -138,11 +161,14 @@ const AppLayout = () => {
         </div>
         <main className="flex-1 overflow-auto">
           <div className="p-4 md:p-6 max-w-7xl mx-auto w-full">
-            <Outlet />
+            <RequirePermission key={location.pathname}>
+              <Outlet />
+            </RequirePermission>
           </div>
         </main>
       </div>
     </div>
+    </PermissionsProvider>
     </SubscriptionGate>
   );
 };
