@@ -12,6 +12,11 @@ import { toast } from "sonner";
 import { Save, Printer, History, Undo2 } from "lucide-react";
 import { SeoHead } from "@/components/SeoHead";
 import { ReverseTransactionDialog } from "@/components/ReverseTransactionDialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Info } from "lucide-react";
 
 type Reason = "weight_loss" | "mortality" | "wastage" | "damage" | "theft" | "other";
 const REASONS: { value: Reason; label: string }[] = [
@@ -62,6 +67,7 @@ const StockClosing = () => {
   const [loading, setLoading] = useState(true);
   const [audit, setAudit] = useState<Adjustment[]>([]);
   const [reverseTarget, setReverseTarget] = useState<Adjustment | null>(null);
+  const [confirmIdx, setConfirmIdx] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -159,6 +165,21 @@ const StockClosing = () => {
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   };
 
+  const requestSave = (i: number) => {
+    const r = rows[i];
+    if (r.physical === "" || isNaN(Number(r.physical))) {
+      toast.error("Enter physical stock");
+      return;
+    }
+    const physical = round2(Number(r.physical));
+    const difference = round2(physical - r.system);
+    if (Math.abs(difference) > 0.001 && !r.reason) {
+      toast.error("Select an adjustment reason for the difference");
+      return;
+    }
+    setConfirmIdx(i);
+  };
+
   const saveRow = async (i: number) => {
     const r = rows[i];
     if (r.physical === "" || isNaN(Number(r.physical))) {
@@ -216,7 +237,7 @@ const StockClosing = () => {
       if (aErr) toast.error("Adjustment log failed: " + aErr.message);
     }
 
-    toast.success(`${r.meat_type} closing saved`);
+    toast.success(`${r.meat_type} closing saved. Tomorrow's opening stock will be ${fmtKg(physical)}.`);
     updateRow(i, { saving: false, closingId: saved?.id });
     load();
   };
@@ -244,6 +265,13 @@ const StockClosing = () => {
           </Button>
         </CardHeader>
         <CardContent>
+          <div className="mb-3 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground flex gap-2">
+            <Info className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+            <div className="space-y-0.5">
+              <div><span className="font-semibold text-foreground">System Stock</span> = Expected stock according to transactions (Opening + Purchases − Supplies + Adjustments).</div>
+              <div><span className="font-semibold text-foreground">Physical Stock</span> = Actual stock counted in freezer/shop.</div>
+            </div>
+          </div>
           <div className="rounded-md border overflow-x-auto">
             <Table>
               <TableHeader>
@@ -268,7 +296,12 @@ const StockClosing = () => {
                 ) : rows.map((r, i) => {
                   const physicalNum = r.physical === "" ? null : Number(r.physical);
                   const diff = physicalNum == null || isNaN(physicalNum) ? null : round2(physicalNum - r.system);
-                  const diffClass = diff == null ? "" : diff < 0 ? "text-destructive font-semibold" : diff > 0 ? "text-success font-semibold" : "";
+                  const diffClass =
+                    diff == null ? "" :
+                    diff === 0 ? "text-success font-semibold" :
+                    diff > 0 ? "text-warning font-semibold" :
+                    "text-destructive font-semibold";
+                  const isZero = diff != null && Math.abs(diff) < 0.001;
                   return (
                     <TableRow key={r.meat_type}>
                       <TableCell className="font-medium">{r.meat_type}</TableCell>
@@ -294,12 +327,15 @@ const StockClosing = () => {
                       <TableCell className={`text-end ${diffClass}`}>{diff == null ? "—" : fmtKg(diff)}</TableCell>
                       <TableCell>
                         <Select
-                          value={r.reason || undefined}
+                          value={isZero ? "__none__" : (r.reason || undefined)}
                           onValueChange={(v) => updateRow(i, { reason: v as Reason })}
-                          disabled={diff != null && Math.abs(diff) < 0.001}
+                          disabled={isZero}
                         >
-                          <SelectTrigger className="h-8 w-[140px]"><SelectValue placeholder="—" /></SelectTrigger>
+                          <SelectTrigger className="h-8 w-[140px]">
+                            <SelectValue placeholder={isZero ? "None" : "Select reason"} />
+                          </SelectTrigger>
                           <SelectContent>
+                            {isZero && <SelectItem value="__none__">None</SelectItem>}
                             {REASONS.map((x) => <SelectItem key={x.value} value={x.value}>{x.label}</SelectItem>)}
                           </SelectContent>
                         </Select>
@@ -313,7 +349,7 @@ const StockClosing = () => {
                         />
                       </TableCell>
                       <TableCell className="text-end">
-                        <Button size="sm" onClick={() => saveRow(i)} disabled={!!r.saving}>
+                        <Button size="sm" onClick={() => requestSave(i)} disabled={!!r.saving}>
                           <Save className="h-4 w-4 mr-1" />
                           {r.closingId ? "Update" : "Save"}
                         </Button>
@@ -393,6 +429,48 @@ const StockClosing = () => {
           load();
         }}
       />
+
+      <AlertDialog open={confirmIdx !== null} onOpenChange={(o) => { if (!o) setConfirmIdx(null); }}>
+        <AlertDialogContent>
+          {confirmIdx !== null && (() => {
+            const r = rows[confirmIdx];
+            const physical = round2(Number(r.physical));
+            const diff = round2(physical - r.system);
+            return (
+              <>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Confirm closing — {r.meat_type}</AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="space-y-2 pt-2 text-sm">
+                      <div className="flex justify-between"><span>System Stock</span><span className="font-mono">{fmtKg(r.system)}</span></div>
+                      <div className="flex justify-between"><span>Physical Stock</span><span className="font-mono">{fmtKg(physical)}</span></div>
+                      <div className="flex justify-between font-semibold">
+                        <span>Difference</span>
+                        <span className={`font-mono ${Math.abs(diff) < 0.001 ? "text-success" : diff > 0 ? "text-warning" : "text-destructive"}`}>
+                          {diff > 0 ? "+" : ""}{fmtKg(diff)}
+                        </span>
+                      </div>
+                      {Math.abs(diff) > 0.001 && r.reason && (
+                        <div className="flex justify-between"><span>Adjustment Reason</span><span>{REASONS.find((x) => x.value === r.reason)?.label}</span></div>
+                      )}
+                      <div className="pt-2 text-xs text-muted-foreground">
+                        Tomorrow&apos;s opening stock for {r.meat_type} will be <span className="font-semibold text-foreground">{fmtKg(physical)}</span>.
+                      </div>
+                      <div className="pt-1">Do you want to save?</div>
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={(e) => { e.preventDefault(); const idx = confirmIdx; setConfirmIdx(null); if (idx !== null) saveRow(idx); }}>
+                    Save Closing
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </>
+            );
+          })()}
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
