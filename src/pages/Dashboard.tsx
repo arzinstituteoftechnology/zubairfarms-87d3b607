@@ -183,7 +183,29 @@ const Dashboard = () => {
         mortalityCost = (mortAll ?? []).reduce((a, x: any) => a + absKg(x) * (latestRate.get(x.meat_type) ?? 0), 0);
       }
 
-      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, payableToFarms, receivableFromCustomers, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost });
+      // All negative adjustments (any reason) — active, non-reversal — for month → today
+      const { data: adjAll } = await supabase
+        .from("stock_adjustments")
+        .select("reason, quantity_kg, adjustment_date")
+        .is("original_adjustment_id", null)
+        .is("reversed_at", null)
+        .lt("quantity_kg", 0)
+        .gte("adjustment_date", monthStart)
+        .lte("adjustment_date", today);
+      const breakdownToday = emptyBreakdown();
+      const breakdownWeek = emptyBreakdown();
+      const breakdownMonth = emptyBreakdown();
+      (adjAll ?? []).forEach((x: any) => {
+        const key = (x.reason ?? "other") as string;
+        const bkey = key in breakdownMonth ? key : "other";
+        const kg = absKg(x);
+        breakdownMonth[bkey] += kg;
+        if (x.adjustment_date >= weekStart) breakdownWeek[bkey] += kg;
+        if (x.adjustment_date === today) breakdownToday[bkey] += kg;
+      });
+      const inventoryLossToday = Object.values(breakdownToday).reduce((a, v) => a + v, 0);
+
+      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, payableToFarms, receivableFromCustomers, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost, inventoryLossToday, breakdownToday, breakdownWeek, breakdownMonth });
 
       // 7-day chart ending at selected date
       const days: any[] = [];
