@@ -21,6 +21,9 @@ const TRANSACTION_TABLES = [
   "shop_recoveries",
   "shop_ledger_entries",
   "supplier_ledger_entries",
+  // Stock closing & mortality — children (adjustments) before parents (closings).
+  "stock_adjustments",
+  "stock_closings",
 ];
 
 // Master / setup data — kept on Business Reset, wiped on Factory Reset.
