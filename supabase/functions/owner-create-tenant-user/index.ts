@@ -85,6 +85,17 @@ Deno.serve(async (req) => {
       return json({ error: `Link user to tenant failed: ${tuErr.message}` }, 400);
     }
 
+    // Mirror legacy user_roles for backward-compatible UI checks
+    if (body.tenant_role === "owner") {
+      await admin.from("user_roles").insert({ user_id: newUserId, role: "admin" }).then(({ error }) => {
+        if (error && !error.message.toLowerCase().includes("duplicate")) console.error("user_roles insert:", error);
+      });
+    } else if (body.tenant_role === "manager") {
+      await admin.from("user_roles").insert({ user_id: newUserId, role: "manager" }).then(({ error }) => {
+        if (error && !error.message.toLowerCase().includes("duplicate")) console.error("user_roles insert:", error);
+      });
+    }
+
     await admin.from("activity_logs").insert({
       actor_user_id: user.id, tenant_id: caller.tenant_id,
       action: "tenant_user.create", entity: "tenant_users", entity_id: newUserId,
