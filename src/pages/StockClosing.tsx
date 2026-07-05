@@ -26,6 +26,7 @@ const REASONS: { value: Reason; label: string }[] = [
 type Row = {
   meat_type: string;
   opening: number;
+  openingSource: "closing" | "calculated";
   purchases: number;
   supplies: number;
   adjustments: number;
