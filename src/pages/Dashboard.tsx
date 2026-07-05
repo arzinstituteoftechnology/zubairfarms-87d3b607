@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtKg, fmtMoney } from "@/lib/constants";
-import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull } from "lucide-react";
+import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull, PackageMinus } from "lucide-react";
 import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
@@ -21,9 +21,22 @@ interface KPI {
   payableToFarms: number; receivableFromCustomers: number;
   recoveryToday: number; recoveryWeek: number; recoveryMonth: number;
   mortalityToday: number; mortalityWeek: number; mortalityMonth: number; mortalityCost: number;
+  inventoryLossToday: number;
+  breakdownToday: Record<string, number>;
+  breakdownWeek: Record<string, number>;
+  breakdownMonth: Record<string, number>;
 }
 
-const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0 };
+const REASONS: { value: string; label: string }[] = [
+  { value: "mortality", label: "Mortality" },
+  { value: "weight_loss", label: "Weight Loss" },
+  { value: "wastage", label: "Wastage" },
+  { value: "damage", label: "Damage" },
+  { value: "theft", label: "Theft" },
+  { value: "other", label: "Other" },
+];
+const emptyBreakdown = (): Record<string, number> => Object.fromEntries(REASONS.map(r => [r.value, 0]));
+const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0, inventoryLossToday: 0, breakdownToday: emptyBreakdown(), breakdownWeek: emptyBreakdown(), breakdownMonth: emptyBreakdown() };
 
 const KpiCard = ({ icon: Icon, label, value, sub, tone = "default" }: any) => (
   <Card>
