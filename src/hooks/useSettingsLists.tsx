@@ -5,7 +5,7 @@ export type MeatTypeRow = { id: string; name: string; color: string; display_ord
 export type UnitRow = { id: string; code: string; name: string; display_order: number; is_active: boolean; is_system: boolean };
 export type PaymentMethodRow = { id: string; code: string; name: string; display_order: number; is_active: boolean; is_system: boolean };
 export type ExpenseCategoryRow = { id: string; name: string; display_order: number; is_active: boolean };
-export type AdjustmentReasonRow = { id: string; code: string; name: string; display_order: number; is_active: boolean; is_system: boolean };
+export type AdjustmentReasonRow = { id: string; code: string; name: string; description?: string | null; display_order: number; is_active: boolean; is_system: boolean };
 export type BusinessProfile = {
   id?: string; tenant_id?: string;
   company_name?: string | null; logo_url?: string | null; address?: string | null;

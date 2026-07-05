@@ -68,8 +68,12 @@ const StockClosing = () => {
   const { user, tenant, role, isSuperAdmin } = useAuth();
   const { meatTypes, adjustmentReasons } = useSettingsLists();
   const REASONS = (adjustmentReasons.length
-    ? activeOnly(adjustmentReasons).map(r => ({ value: r.code, label: r.name }))
-    : DEFAULT_REASONS);
+    ? activeOnly(adjustmentReasons).map(r => ({ value: r.code, label: r.name, id: r.id }))
+    : DEFAULT_REASONS.map(r => ({ ...r, id: undefined as string | undefined })));
+  // Include archived reasons so historical rows still resolve a label
+  const REASON_LABEL: Record<string, string> = Object.fromEntries(
+    (adjustmentReasons ?? []).map(r => [r.code, r.name])
+  );
   const ACTIVE_MEATS = activeOnly(meatTypes).map(m => m.name);
   const canReverse = role === "admin" || isSuperAdmin;
   const [rows, setRows] = useState<Row[]>([]);
@@ -228,6 +232,9 @@ const StockClosing = () => {
       physical_stock: physical,
       difference,
       reason: Math.abs(difference) > 0.001 && r.reason ? (r.reason as any) : null,
+      reason_id: Math.abs(difference) > 0.001 && r.reason
+        ? (REASONS.find(x => x.value === r.reason)?.id ?? null)
+        : null,
       notes: r.notes || null,
       created_by: user?.id ?? null,
     };
@@ -252,6 +259,7 @@ const StockClosing = () => {
         meat_type: r.meat_type,
         quantity_kg: difference,
         reason: r.reason as any,
+        reason_id: REASONS.find(x => x.value === r.reason)?.id ?? null,
         notes: r.notes || null,
         closing_id: saved?.id ?? null,
         created_by: user?.id ?? null,
@@ -414,7 +422,7 @@ const StockClosing = () => {
                   <TableRow key={a.id} className={a.reversed_at ? "opacity-60" : ""}>
                     <TableCell className="text-xs text-muted-foreground">{new Date(a.created_at).toLocaleString()}</TableCell>
                     <TableCell className="font-medium">{a.meat_type}</TableCell>
-                    <TableCell>{REASONS.find((x) => x.value === a.reason)?.label ?? a.reason}</TableCell>
+                    <TableCell>{REASON_LABEL[a.reason] ?? REASONS.find((x) => x.value === a.reason)?.label ?? a.reason}</TableCell>
                     <TableCell className={`text-end font-semibold ${a.quantity_kg < 0 ? "text-destructive" : "text-success"}`}>
                       {a.quantity_kg > 0 ? "+" : ""}{fmtKg(a.quantity_kg)}
                     </TableCell>
