@@ -155,7 +155,7 @@ const StockClosing = () => {
       system_stock: r.system,
       physical_stock: physical,
       difference,
-      reason: Math.abs(difference) > 0.001 ? r.reason : null,
+      reason: Math.abs(difference) > 0.001 && r.reason ? (r.reason as Reason) : null,
       notes: r.notes || null,
       created_by: user?.id ?? null,
     };
