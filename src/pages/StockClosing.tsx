@@ -56,7 +56,8 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 const StockClosing = () => {
   const { selectedDate } = useLedgerDate();
-  const { user, tenant } = useAuth();
+  const { user, tenant, role, isSuperAdmin } = useAuth();
+  const canReverse = role === "admin" || isSuperAdmin;
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [audit, setAudit] = useState<Adjustment[]>([]);
@@ -365,7 +366,7 @@ const StockClosing = () => {
                       )}
                     </TableCell>
                     <TableCell className="text-end">
-                      {!a.reversed_at && !a.original_adjustment_id && (
+                      {canReverse && !a.reversed_at && !a.original_adjustment_id && (
                         <Button size="sm" variant="outline" onClick={() => setReverseTarget(a)}>
                           <Undo2 className="h-3.5 w-3.5 mr-1" /> Reverse
                         </Button>
