@@ -17,14 +17,16 @@ import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { printReport } from "@/lib/printReport";
+import { useSettingsLists, activeOnly } from "@/hooks/useSettingsLists";
 
-const CATEGORIES = ["Feed", "Labour", "Salary", "Transport", "Fuel", "Utilities", "Repairs", "Medicine", "Rent", "Other"];
 type E = { id: string; category: string; amount: number; expense_date: string; farm_id: string | null; notes: string | null; farms?: { name: string } | null };
 const empty = (date = format(new Date(), "yyyy-MM-dd")) => ({ category: "Feed", amount: "", expense_date: date, farm_id: "", notes: "" });
 
 const Expenses = () => {
   const { role, user, tenant } = useAuth();
   const { t } = useTranslation();
+  const { expenseCategories } = useSettingsLists();
+  const CATEGORIES = activeOnly(expenseCategories).map(c => c.name);
   const queryClient = useQueryClient();
   const [rows, setRows] = useState<E[]>([]);
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);

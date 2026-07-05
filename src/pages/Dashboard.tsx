@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { useModuleFlags } from "@/hooks/useModuleFlags";
 import { SeoHead } from "@/components/SeoHead";
+import { useSettingsLists, activeOnly } from "@/hooks/useSettingsLists";
 
 interface KPI {
   purchaseKg: number; purchaseAmt: number;
@@ -27,7 +28,7 @@ interface KPI {
   breakdownMonth: Record<string, number>;
 }
 
-const REASONS: { value: string; label: string }[] = [
+const DEFAULT_REASONS: { value: string; label: string }[] = [
   { value: "mortality", label: "Mortality" },
   { value: "weight_loss", label: "Weight Loss" },
   { value: "wastage", label: "Wastage" },
@@ -35,7 +36,7 @@ const REASONS: { value: string; label: string }[] = [
   { value: "theft", label: "Theft" },
   { value: "other", label: "Other" },
 ];
-const emptyBreakdown = (): Record<string, number> => Object.fromEntries(REASONS.map(r => [r.value, 0]));
+const emptyBreakdown = (): Record<string, number> => Object.fromEntries(DEFAULT_REASONS.map(r => [r.value, 0]));
 const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0, inventoryLossToday: 0, breakdownToday: emptyBreakdown(), breakdownWeek: emptyBreakdown(), breakdownMonth: emptyBreakdown() };
 
 const KpiCard = ({ icon: Icon, label, value, sub, tone = "default" }: any) => (
@@ -62,6 +63,10 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const { selectedDate, setSelectedDate, today: currentDate, isToday } = useLedgerDate();
   const { customers_module_enabled: customersEnabled } = useModuleFlags();
+  const { adjustmentReasons } = useSettingsLists();
+  const REASONS = (adjustmentReasons.length
+    ? activeOnly(adjustmentReasons).map(r => ({ value: r.code, label: r.name }))
+    : DEFAULT_REASONS);
 
   useEffect(() => {
     setLoading(true);

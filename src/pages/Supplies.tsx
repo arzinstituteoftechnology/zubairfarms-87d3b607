@@ -13,7 +13,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Pencil, Trash2, Printer } from "lucide-react";
 import { toast } from "sonner";
-import { MEAT_TYPES, fmtKg, fmtMoney } from "@/lib/constants";
+import { fmtKg, fmtMoney } from "@/lib/constants";
+import { useSettingsLists, activeOnly } from "@/hooks/useSettingsLists";
 import { format } from "date-fns";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { printReport } from "@/lib/printReport";
@@ -34,6 +35,8 @@ const emptyForm = (): SupplyForm => ({ shop_id: "", meat_type: "Beef", weight_kg
 const Supplies = () => {
   const { role, user, tenant } = useAuth();
   const { t } = useTranslation();
+  const { meatTypes } = useSettingsLists();
+  const activeMeats = activeOnly(meatTypes);
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<SupplyForm>(emptyForm());
@@ -234,7 +237,7 @@ const Supplies = () => {
               <div><Label>{t("purchases.meat_type")}</Label>
                 <Select value={form.meat_type} onValueChange={(v) => setForm({ ...form, meat_type: v, cost_per_kg: "" })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{MEAT_TYPES.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+                  <SelectContent>{activeMeats.map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div><Label>{t("purchases.weight")}</Label><Input type="number" step="0.001" min="0" value={form.weight_kg} onChange={(e) => setForm({ ...form, weight_kg: e.target.value })} /></div>
