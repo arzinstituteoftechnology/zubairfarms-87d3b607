@@ -63,6 +63,10 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const { selectedDate, setSelectedDate, today: currentDate, isToday } = useLedgerDate();
   const { customers_module_enabled: customersEnabled } = useModuleFlags();
+  const { adjustmentReasons } = useSettingsLists();
+  const REASONS = (adjustmentReasons.length
+    ? activeOnly(adjustmentReasons).map(r => ({ value: r.code, label: r.name }))
+    : DEFAULT_REASONS);
 
   useEffect(() => {
     setLoading(true);
