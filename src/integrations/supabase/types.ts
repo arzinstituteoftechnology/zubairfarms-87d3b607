@@ -1042,6 +1042,110 @@ export type Database = {
           },
         ]
       }
+      stock_adjustments: {
+        Row: {
+          adjustment_date: string
+          closing_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          meat_type: string
+          notes: string | null
+          quantity_kg: number
+          reason: Database["public"]["Enums"]["stock_adjustment_reason"]
+          tenant_id: string
+        }
+        Insert: {
+          adjustment_date: string
+          closing_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          meat_type: string
+          notes?: string | null
+          quantity_kg: number
+          reason: Database["public"]["Enums"]["stock_adjustment_reason"]
+          tenant_id: string
+        }
+        Update: {
+          adjustment_date?: string
+          closing_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          meat_type?: string
+          notes?: string | null
+          quantity_kg?: number
+          reason?: Database["public"]["Enums"]["stock_adjustment_reason"]
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_adjustments_closing_id_fkey"
+            columns: ["closing_id"]
+            isOneToOne: false
+            referencedRelation: "stock_closings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_closings: {
+        Row: {
+          adjustments_kg: number
+          closing_date: string
+          created_at: string
+          created_by: string | null
+          difference: number
+          id: string
+          meat_type: string
+          notes: string | null
+          opening_stock: number
+          physical_stock: number
+          purchases_kg: number
+          reason: Database["public"]["Enums"]["stock_adjustment_reason"] | null
+          supplies_kg: number
+          system_stock: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          adjustments_kg?: number
+          closing_date: string
+          created_at?: string
+          created_by?: string | null
+          difference?: number
+          id?: string
+          meat_type: string
+          notes?: string | null
+          opening_stock?: number
+          physical_stock?: number
+          purchases_kg?: number
+          reason?: Database["public"]["Enums"]["stock_adjustment_reason"] | null
+          supplies_kg?: number
+          system_stock?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          adjustments_kg?: number
+          closing_date?: string
+          created_at?: string
+          created_by?: string | null
+          difference?: number
+          id?: string
+          meat_type?: string
+          notes?: string | null
+          opening_stock?: number
+          physical_stock?: number
+          purchases_kg?: number
+          reason?: Database["public"]["Enums"]["stock_adjustment_reason"] | null
+          supplies_kg?: number
+          system_stock?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       subscription_plans: {
         Row: {
           billing_cycle: string
@@ -1543,6 +1647,13 @@ export type Database = {
         | "reversed_adjustment_increase"
         | "reversed_adjustment_decrease"
         | "reversed_opening_balance"
+      stock_adjustment_reason:
+        | "weight_loss"
+        | "mortality"
+        | "wastage"
+        | "damage"
+        | "theft"
+        | "other"
       supplier_ledger_type:
         | "opening_balance"
         | "manual_purchase"
@@ -1698,6 +1809,14 @@ export const Constants = {
         "reversed_adjustment_increase",
         "reversed_adjustment_decrease",
         "reversed_opening_balance",
+      ],
+      stock_adjustment_reason: [
+        "weight_loss",
+        "mortality",
+        "wastage",
+        "damage",
+        "theft",
+        "other",
       ],
       supplier_ledger_type: [
         "opening_balance",
