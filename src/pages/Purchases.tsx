@@ -13,7 +13,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Pencil, Trash2, Printer } from "lucide-react";
 import { toast } from "sonner";
-import { MEAT_TYPES, fmtKg, fmtMoney } from "@/lib/constants";
+import { fmtKg, fmtMoney } from "@/lib/constants";
+import { useSettingsLists, activeOnly } from "@/hooks/useSettingsLists";
 import { format } from "date-fns";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { printReport } from "@/lib/printReport";
