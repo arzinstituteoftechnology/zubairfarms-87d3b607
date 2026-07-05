@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -332,8 +332,8 @@ const Inventory = () => {
                 filtered.map((r) => {
                   const isOpen = !!expanded[r.meat_type];
                   return (
-                    <>
-                      <TableRow key={r.meat_type}>
+                    <Fragment key={r.meat_type}>
+                      <TableRow>
                         <TableCell>
                           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => toggle(r.meat_type)}>
                             {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -368,7 +368,7 @@ const Inventory = () => {
                           </TableCell>
                         </TableRow>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })
               )}
