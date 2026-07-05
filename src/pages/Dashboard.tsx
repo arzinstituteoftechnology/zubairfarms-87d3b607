@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtKg, fmtMoney } from "@/lib/constants";
-import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins } from "lucide-react";
+import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull } from "lucide-react";
 import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
@@ -20,9 +20,10 @@ interface KPI {
   profit: number;
   payableToFarms: number; receivableFromCustomers: number;
   recoveryToday: number; recoveryWeek: number; recoveryMonth: number;
+  mortalityToday: number; mortalityWeek: number; mortalityMonth: number; mortalityCost: number;
 }
 
-const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0 };
+const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0 };
 
 const KpiCard = ({ icon: Icon, label, value, sub, tone = "default" }: any) => (
   <Card>
@@ -138,7 +139,38 @@ const Dashboard = () => {
       const recoveryWeek = (recAll ?? []).filter((x: any) => x.recovery_date >= weekStart).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
       const recoveryMonth = (recAll ?? []).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
 
-      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, payableToFarms, receivableFromCustomers, recoveryToday, recoveryWeek, recoveryMonth });
+      // Mortality: active adjustments with reason=mortality, sum of |quantity| in kg for today/week/month
+      const { data: mortAll } = await supabase
+        .from("stock_adjustments")
+        .select("meat_type, quantity_kg, adjustment_date")
+        .eq("reason", "mortality")
+        .is("original_adjustment_id", null)
+        .is("reversed_at", null)
+        .lt("quantity_kg", 0)
+        .gte("adjustment_date", monthStart)
+        .lte("adjustment_date", today);
+      const absKg = (r: any) => Math.abs(Number(r.quantity_kg ?? 0));
+      const mortalityToday = (mortAll ?? []).filter((x: any) => x.adjustment_date === today).reduce((a, x: any) => a + absKg(x), 0);
+      const mortalityWeek = (mortAll ?? []).filter((x: any) => x.adjustment_date >= weekStart).reduce((a, x: any) => a + absKg(x), 0);
+      const mortalityMonth = (mortAll ?? []).reduce((a, x: any) => a + absKg(x), 0);
+      // Mortality cost: use latest purchase rate per meat_type on or before today
+      const mortTypes = Array.from(new Set((mortAll ?? []).map((r: any) => r.meat_type)));
+      let mortalityCost = 0;
+      if (mortTypes.length) {
+        const { data: rateRows } = await supabase
+          .from("purchases")
+          .select("meat_type, rate_per_kg, purchase_date")
+          .in("meat_type", mortTypes)
+          .lte("purchase_date", today)
+          .order("purchase_date", { ascending: false });
+        const latestRate = new Map<string, number>();
+        (rateRows ?? []).forEach((p: any) => {
+          if (!latestRate.has(p.meat_type)) latestRate.set(p.meat_type, Number(p.rate_per_kg ?? 0));
+        });
+        mortalityCost = (mortAll ?? []).reduce((a, x: any) => a + absKg(x) * (latestRate.get(x.meat_type) ?? 0), 0);
+      }
+
+      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, payableToFarms, receivableFromCustomers, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost });
 
       // 7-day chart ending at selected date
       const days: any[] = [];
@@ -190,6 +222,10 @@ const Dashboard = () => {
         <KpiCard icon={HandCoins} label="Today's Recovery" value={fmtMoney(kpi.recoveryToday)} sub={selectedDate} tone="success" />
         <KpiCard icon={HandCoins} label="This Week Recovery" value={fmtMoney(kpi.recoveryWeek)} sub="Mon → selected" tone="success" />
         <KpiCard icon={HandCoins} label="This Month Recovery" value={fmtMoney(kpi.recoveryMonth)} sub="Month to date" tone="success" />
+        <KpiCard icon={Skull} label="Today's Mortality" value={fmtKg(kpi.mortalityToday)} sub={selectedDate} tone={kpi.mortalityToday > 0 ? "danger" : "default"} />
+        <KpiCard icon={Skull} label="This Week Mortality" value={fmtKg(kpi.mortalityWeek)} sub="Mon → selected" tone={kpi.mortalityWeek > 0 ? "danger" : "default"} />
+        <KpiCard icon={Skull} label="This Month Mortality" value={fmtKg(kpi.mortalityMonth)} sub="Month to date" tone={kpi.mortalityMonth > 0 ? "danger" : "default"} />
+        <KpiCard icon={Wallet} label="Mortality Cost (Month)" value={fmtMoney(kpi.mortalityCost)} sub="Dead weight × latest rate" tone={kpi.mortalityCost > 0 ? "danger" : "default"} />
       </div>
 
       <div className="grid gap-4">
