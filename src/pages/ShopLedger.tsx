@@ -18,6 +18,7 @@ import { fmtMoney } from "@/lib/constants";
 import { format } from "date-fns";
 import { ReverseTransactionDialog, type ReverseTarget } from "@/components/ReverseTransactionDialog";
 import { printReport } from "@/lib/printReport";
+import { useSettingsLists, activeOnly } from "@/hooks/useSettingsLists";
 
 type Row = { id: string; name: string; phone: string | null; opening_balance: number; supplied: number; paid: number; balance: number };
 type LedgerKind =
