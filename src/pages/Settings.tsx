@@ -325,6 +325,7 @@ const AdjustmentReasonsSection = ({ canEdit, lists }: any) => (
     columns={[
       { key: "code", label: "Code", width: "140px" },
       { key: "name", label: "Name" },
+      { key: "description", label: "Description" },
     ]} onChanged={lists.reload} codeField="code" />
 );
 
