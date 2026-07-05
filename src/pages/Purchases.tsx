@@ -41,6 +41,9 @@ const calcTotal = (f: Pick<PurchaseForm, "weight_kg" | "rate_per_kg" | "faraq">)
 const Purchases = () => {
   const { role, user, tenant } = useAuth();
   const { t } = useTranslation();
+  const { meatTypes, paymentMethods } = useSettingsLists();
+  const activeMeats = activeOnly(meatTypes);
+  const activePMs = activeOnly(paymentMethods);
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<PurchaseForm>(emptyForm());
@@ -242,7 +245,7 @@ const Purchases = () => {
               <div><Label>{t("purchases.meat_type")}</Label>
                 <Select value={form.meat_type} onValueChange={(v) => setForm({ ...form, meat_type: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{MEAT_TYPES.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+                  <SelectContent>{activeMeats.map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div><Label>{t("purchases.weight")}</Label><Input type="number" step="0.001" min="0" value={form.weight_kg} onChange={(e) => setForm({ ...form, weight_kg: e.target.value })} /></div>
@@ -261,10 +264,7 @@ const Purchases = () => {
                 }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="credit">{t("purchases.udhaar")}</SelectItem>
-                    <SelectItem value="cash">{t("purchases.naqd")}</SelectItem>
-                    <SelectItem value="bank">{t("purchases.bank")}</SelectItem>
-                    <SelectItem value="partial">{t("purchases.partial")}</SelectItem>
+                    {activePMs.map(m => <SelectItem key={m.id} value={m.code}>{m.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
