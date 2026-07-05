@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MEAT_TYPES, fmtKg } from "@/lib/constants";
+import { fmtKg } from "@/lib/constants";
+import { useSettingsLists, activeOnly } from "@/hooks/useSettingsLists";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { toast } from "sonner";
 import { Save, Printer, History, Undo2 } from "lucide-react";
@@ -18,8 +19,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Info } from "lucide-react";
 
-type Reason = "weight_loss" | "mortality" | "wastage" | "damage" | "theft" | "other";
-const REASONS: { value: Reason; label: string }[] = [
+type Reason = string;
+const DEFAULT_REASONS: { value: string; label: string }[] = [
   { value: "weight_loss", label: "Weight Loss" },
   { value: "mortality", label: "Mortality" },
   { value: "wastage", label: "Wastage" },
@@ -65,6 +66,11 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const StockClosing = () => {
   const { selectedDate } = useLedgerDate();
   const { user, tenant, role, isSuperAdmin } = useAuth();
+  const { meatTypes, adjustmentReasons } = useSettingsLists();
+  const REASONS = (adjustmentReasons.length
+    ? activeOnly(adjustmentReasons).map(r => ({ value: r.code, label: r.name }))
+    : DEFAULT_REASONS);
+  const ACTIVE_MEATS = activeOnly(meatTypes).map(m => m.name);
   const canReverse = role === "admin" || isSuperAdmin;
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,7 +136,7 @@ const StockClosing = () => {
     (existing ?? []).forEach((r: any) => existingMap.set(r.meat_type, r));
 
     // Discovered meat types = configured + any that already have data
-    const types = new Set<string>(MEAT_TYPES as readonly string[]);
+    const types = new Set<string>(ACTIVE_MEATS.length ? ACTIVE_MEATS : ["Beef","Mutton","Goat","Chicken","Lamb","Buffalo"]);
     pMap.forEach((_, k) => types.add(k));
     sMap.forEach((_, k) => types.add(k));
     openingMap.forEach((_, k) => types.add(k));
