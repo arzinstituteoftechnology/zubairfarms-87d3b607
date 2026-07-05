@@ -51,6 +51,7 @@
     "trucks": "Trucks",
     "deliveries": "Deliveries",
     "inventory": "Inventory",
+    "stock_closing": "Daily Closing Stock",
     "settings": "Settings",
     "sign_out": "Sign out"
   },
