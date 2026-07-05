@@ -66,11 +66,39 @@ const Dashboard = () => {
         supabase.from("purchases").select("weight_kg, total_amount, meat_type, rate_per_kg, purchase_date").eq("purchase_date", today),
         supabase.from("supplies").select("weight_kg, total_amount, cost_per_kg, supply_date").eq("supply_date", today),
       ]);
-      // Cumulative up to and including the selected date for stock balance
-      const [{ data: pCum }, { data: sCum }] = await Promise.all([
-        supabase.from("purchases").select("weight_kg").lte("purchase_date", today),
-        supabase.from("supplies").select("weight_kg").lte("supply_date", today),
+      // Stock balance: use latest physical closing (per meat_type) on/before selectedDate,
+      // then add purchases and subtract supplies AFTER that closing up to selectedDate.
+      // If no closing has ever been recorded, fall back to cumulative purchases − supplies.
+      const [{ data: closings }, { data: pCumAll }, { data: sCumAll }, { data: adjCum }] = await Promise.all([
+        supabase.from("stock_closings").select("meat_type, physical_stock, closing_date").lte("closing_date", today).order("closing_date", { ascending: false }),
+        supabase.from("purchases").select("meat_type, weight_kg, purchase_date").lte("purchase_date", today),
+        supabase.from("supplies").select("meat_type, weight_kg, supply_date").lte("supply_date", today).is("reversed_at", null),
+        supabase.from("stock_adjustments").select("meat_type, quantity_kg, adjustment_date").lte("adjustment_date", today).is("reversed_at", null),
       ]);
+      const latestClosing = new Map<string, { physical: number; date: string }>();
+      (closings ?? []).forEach((c: any) => {
+        if (!latestClosing.has(c.meat_type)) latestClosing.set(c.meat_type, { physical: Number(c.physical_stock ?? 0), date: c.closing_date });
+      });
+      const meatKeys = new Set<string>([
+        ...(pCumAll ?? []).map((r: any) => r.meat_type),
+        ...(sCumAll ?? []).map((r: any) => r.meat_type),
+        ...latestClosing.keys(),
+      ]);
+      let stockKg = 0;
+      meatKeys.forEach((mt) => {
+        const c = latestClosing.get(mt);
+        if (c) {
+          const pAfter = (pCumAll ?? []).filter((r: any) => r.meat_type === mt && r.purchase_date > c.date).reduce((a, r: any) => a + Number(r.weight_kg), 0);
+          const sAfter = (sCumAll ?? []).filter((r: any) => r.meat_type === mt && r.supply_date > c.date).reduce((a, r: any) => a + Number(r.weight_kg), 0);
+          const aAfter = (adjCum ?? []).filter((r: any) => r.meat_type === mt && r.adjustment_date > c.date).reduce((a, r: any) => a + Number(r.quantity_kg), 0);
+          stockKg += c.physical + pAfter - sAfter + aAfter;
+        } else {
+          const pAll2 = (pCumAll ?? []).filter((r: any) => r.meat_type === mt).reduce((a, r: any) => a + Number(r.weight_kg), 0);
+          const sAll2 = (sCumAll ?? []).filter((r: any) => r.meat_type === mt).reduce((a, r: any) => a + Number(r.weight_kg), 0);
+          const aAll2 = (adjCum ?? []).filter((r: any) => r.meat_type === mt).reduce((a, r: any) => a + Number(r.quantity_kg), 0);
+          stockKg += pAll2 - sAll2 + aAll2;
+        }
+      });
       // Selected-date totals for outstanding payable/receivable
       const [{ data: pSum }, { data: sSum }] = await Promise.all([
         supabase.from("purchases").select("total_amount, paid_amount").eq("purchase_date", today),
@@ -94,7 +122,6 @@ const Dashboard = () => {
       const purchaseAmt = sum(pAll, "total_amount");
       const supplyKg = sum(sAll, "weight_kg");
       const supplyAmt = sum(sAll, "total_amount");
-      const stockKg = sum(pCum, "weight_kg") - sum(sCum, "weight_kg");
       // profit on the selected date = supplies revenue - cost of supplied that day
       const dayRevenue = (sAll ?? []).reduce((a, x: any) => a + Number(x.total_amount ?? 0), 0);
       const dayCost = (sAll ?? []).reduce((a, x: any) => a + Number(x.weight_kg) * Number(x.cost_per_kg ?? 0), 0);
