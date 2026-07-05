@@ -261,7 +261,42 @@ const Dashboard = () => {
         <KpiCard icon={Skull} label="This Week Mortality" value={fmtKg(kpi.mortalityWeek)} sub="Mon → selected" tone={kpi.mortalityWeek > 0 ? "danger" : "default"} />
         <KpiCard icon={Skull} label="This Month Mortality" value={fmtKg(kpi.mortalityMonth)} sub="Month to date" tone={kpi.mortalityMonth > 0 ? "danger" : "default"} />
         <KpiCard icon={Wallet} label="Mortality Cost (Month)" value={fmtMoney(kpi.mortalityCost)} sub="Dead weight × latest rate" tone={kpi.mortalityCost > 0 ? "danger" : "default"} />
+        <KpiCard icon={PackageMinus} label="Today's Inventory Loss" value={fmtKg(kpi.inventoryLossToday)} sub="All negative adjustments" tone={kpi.inventoryLossToday > 0 ? "danger" : "default"} />
       </div>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Inventory Loss Breakdown by Reason</CardTitle></CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b">
+                  <th className="py-2 pr-4 font-medium">Reason</th>
+                  <th className="py-2 px-4 font-medium text-right">Today</th>
+                  <th className="py-2 px-4 font-medium text-right">This Week</th>
+                  <th className="py-2 pl-4 font-medium text-right">This Month</th>
+                </tr>
+              </thead>
+              <tbody>
+                {REASONS.map((r) => (
+                  <tr key={r.value} className="border-b last:border-b-0">
+                    <td className="py-2 pr-4">{r.label}</td>
+                    <td className="py-2 px-4 text-right">{fmtKg(kpi.breakdownToday[r.value] ?? 0)}</td>
+                    <td className="py-2 px-4 text-right">{fmtKg(kpi.breakdownWeek[r.value] ?? 0)}</td>
+                    <td className="py-2 pl-4 text-right">{fmtKg(kpi.breakdownMonth[r.value] ?? 0)}</td>
+                  </tr>
+                ))}
+                <tr className="font-semibold">
+                  <td className="py-2 pr-4">Total</td>
+                  <td className="py-2 px-4 text-right">{fmtKg(Object.values(kpi.breakdownToday).reduce((a, v) => a + v, 0))}</td>
+                  <td className="py-2 px-4 text-right">{fmtKg(Object.values(kpi.breakdownWeek).reduce((a, v) => a + v, 0))}</td>
+                  <td className="py-2 pl-4 text-right">{fmtKg(Object.values(kpi.breakdownMonth).reduce((a, v) => a + v, 0))}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4">
         <Card>
