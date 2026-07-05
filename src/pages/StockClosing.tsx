@@ -348,14 +348,28 @@ const StockClosing = () => {
                 {audit.length === 0 ? (
                   <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No adjustments recorded.</TableCell></TableRow>
                 ) : audit.map((a) => (
-                  <TableRow key={a.id}>
+                  <TableRow key={a.id} className={a.reversed_at ? "opacity-60" : ""}>
                     <TableCell className="text-xs text-muted-foreground">{new Date(a.created_at).toLocaleString()}</TableCell>
                     <TableCell className="font-medium">{a.meat_type}</TableCell>
                     <TableCell>{REASONS.find((x) => x.value === a.reason)?.label ?? a.reason}</TableCell>
                     <TableCell className={`text-end font-semibold ${a.quantity_kg < 0 ? "text-destructive" : "text-success"}`}>
                       {a.quantity_kg > 0 ? "+" : ""}{fmtKg(a.quantity_kg)}
                     </TableCell>
-                    <TableCell className="text-sm">{a.notes ?? "—"}</TableCell>
+                    <TableCell className="text-sm">
+                      {a.notes ?? "—"}
+                      {a.reversed_at && (
+                        <div className="text-[10px] uppercase tracking-wider text-destructive mt-1">
+                          Reversed{a.reversal_reason ? ` — ${a.reversal_reason}` : ""}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-end">
+                      {!a.reversed_at && !a.original_adjustment_id && (
+                        <Button size="sm" variant="outline" onClick={() => setReverseTarget(a)}>
+                          <Undo2 className="h-3.5 w-3.5 mr-1" /> Reverse
+                        </Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -363,6 +377,20 @@ const StockClosing = () => {
           </div>
         </CardContent>
       </Card>
+
+      <ReverseTransactionDialog
+        open={!!reverseTarget}
+        target={reverseTarget ? { label: `${reverseTarget.meat_type} adjustment`, amount: reverseTarget.quantity_kg, date: reverseTarget.adjustment_date } : null}
+        onOpenChange={(o) => { if (!o) setReverseTarget(null); }}
+        onConfirm={async (reason, notes) => {
+          if (!reverseTarget) return;
+          const { error } = await supabase.rpc("reverse_stock_adjustment", { p_id: reverseTarget.id, p_reason: reason, p_notes: notes || null });
+          if (error) { toast.error(error.message); return; }
+          toast.success("Adjustment reversed");
+          setReverseTarget(null);
+          load();
+        }}
+      />
     </div>
   );
 };
