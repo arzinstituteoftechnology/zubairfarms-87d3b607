@@ -342,11 +342,12 @@ const StockClosing = () => {
                   <TableHead>Reason</TableHead>
                   <TableHead className="text-end">Quantity</TableHead>
                   <TableHead>Notes</TableHead>
+                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {audit.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No adjustments recorded.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No adjustments recorded.</TableCell></TableRow>
                 ) : audit.map((a) => (
                   <TableRow key={a.id} className={a.reversed_at ? "opacity-60" : ""}>
                     <TableCell className="text-xs text-muted-foreground">{new Date(a.created_at).toLocaleString()}</TableCell>
