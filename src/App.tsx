@@ -105,6 +105,7 @@ const App = () => (
               <Route path="/stock-closing" element={<StockClosing />} />
               <Route path="/closing-history" element={<ClosingHistory />} />
               <Route path="/mortality-register" element={<MortalityRegister />} />
+             <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
             <Route path="/invoice/:id" element={<Invoice />} />
