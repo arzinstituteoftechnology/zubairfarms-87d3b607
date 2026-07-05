@@ -5,7 +5,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { MEAT_TYPES, fmtKg } from "@/lib/constants";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { Boxes, ChevronDown, ChevronRight, Printer, FileSpreadsheet, FileText, PackageMinus, TrendingDown, CalendarDays, CalendarRange } from "lucide-react";
