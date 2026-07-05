@@ -266,7 +266,7 @@ const Inventory = () => {
 
   return (
     <div className="space-y-4">
-      <SeoHead title="Inventory" description="Real-time current stock, inventory loss breakdown and reports." />
+      <SeoHead title="Inventory" description="Real-time current stock, inventory loss breakdown and reports." path="/inventory" />
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Inventory</h1>
         <p className="text-sm text-muted-foreground">
@@ -329,16 +329,15 @@ const Inventory = () => {
                   <Boxes className="h-8 w-8 mx-auto mb-2 opacity-40" />No stock records for this date.
                 </TableCell></TableRow>
               ) : (
-                filtered.map((r) => (
-                  <Collapsible key={r.meat_type} asChild open={!!expanded[r.meat_type]} onOpenChange={() => toggle(r.meat_type)}>
+                filtered.map((r) => {
+                  const isOpen = !!expanded[r.meat_type];
+                  return (
                     <>
-                      <TableRow>
+                      <TableRow key={r.meat_type}>
                         <TableCell>
-                          <CollapsibleTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-6 w-6">
-                              {expanded[r.meat_type] ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                            </Button>
-                          </CollapsibleTrigger>
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => toggle(r.meat_type)}>
+                            {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                          </Button>
                         </TableCell>
                         <TableCell className="font-medium">{r.meat_type}</TableCell>
                         <TableCell className="text-end">{fmtKg(r.opening)}</TableCell>
@@ -347,8 +346,8 @@ const Inventory = () => {
                         <TableCell className={`text-end ${r.loss > 0 ? "text-destructive font-medium" : ""}`}>{fmtKg(r.loss)}</TableCell>
                         <TableCell className={`text-end font-semibold ${r.current < 0 ? "text-destructive" : ""}`}>{fmtKg(r.current)}</TableCell>
                       </TableRow>
-                      <CollapsibleContent asChild>
-                        <TableRow className="bg-muted/40">
+                      {isOpen && (
+                        <TableRow key={r.meat_type + "-b"} className="bg-muted/40">
                           <TableCell />
                           <TableCell colSpan={6}>
                             <div className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
@@ -368,10 +367,10 @@ const Inventory = () => {
                             </div>
                           </TableCell>
                         </TableRow>
-                      </CollapsibleContent>
+                      )}
                     </>
-                  </Collapsible>
-                ))
+                  );
+                })
               )}
               {filtered.length > 0 && (
                 <TableRow className="bg-muted/60 font-semibold">
