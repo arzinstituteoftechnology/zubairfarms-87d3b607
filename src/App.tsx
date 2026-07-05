@@ -16,6 +16,7 @@ import Supplies from "./pages/Supplies";
 import Inventory from "./pages/Inventory";
 import StockClosing from "./pages/StockClosing";
 import ClosingHistory from "./pages/ClosingHistory";
+import MortalityRegister from "./pages/MortalityRegister";
 import Settings from "./pages/Settings";
 import Customers from "./pages/Customers";
 import Suppliers from "./pages/Suppliers";
@@ -102,6 +103,7 @@ const App = () => (
               <Route path="/inventory" element={<Inventory />} />
               <Route path="/stock-closing" element={<StockClosing />} />
               <Route path="/closing-history" element={<ClosingHistory />} />
+              <Route path="/mortality-register" element={<MortalityRegister />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
             <Route path="/invoice/:id" element={<Invoice />} />
