@@ -82,6 +82,8 @@ const ShopLedger = () => {
   const canManage = isSuperAdmin || role === "admin";
   const canDelete = isSuperAdmin;
   const { t } = useTranslation();
+  const { paymentMethods } = useSettingsLists();
+  const activePMs = activeOnly(paymentMethods).filter(m => m.code !== "credit" && m.code !== "partial");
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [ledger, setLedger] = useState<Row | null>(null);
@@ -692,10 +694,9 @@ const ShopLedger = () => {
                   <Label>Payment Method</Label>
                   <select className="border rounded-md h-10 px-2 w-full bg-background" value={recoveryForm.payment_method}
                     onChange={(e) => setRecoveryForm({ ...recoveryForm, payment_method: e.target.value })}>
-                    <option value="cash">Cash</option>
-                    <option value="bank">Bank</option>
-                    <option value="jazzcash">JazzCash</option>
-                    <option value="easypaisa">Easypaisa</option>
+                    {(activePMs.length ? activePMs : [{ id: "d1", code: "cash", name: "Cash" } as any]).map(m => (
+                      <option key={m.id} value={m.code}>{m.name}</option>
+                    ))}
                   </select>
                 </div>
                 <div><Label>Collected By</Label><Input value={recoveryForm.collected_by} onChange={(e) => setRecoveryForm({ ...recoveryForm, collected_by: e.target.value })} /></div>
