@@ -1051,8 +1051,14 @@ export type Database = {
           id: string
           meat_type: string
           notes: string | null
+          original_adjustment_id: string | null
           quantity_kg: number
           reason: Database["public"]["Enums"]["stock_adjustment_reason"]
+          reversal_adjustment_id: string | null
+          reversal_notes: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by: string | null
           tenant_id: string
         }
         Insert: {
@@ -1063,8 +1069,14 @@ export type Database = {
           id?: string
           meat_type: string
           notes?: string | null
+          original_adjustment_id?: string | null
           quantity_kg: number
           reason: Database["public"]["Enums"]["stock_adjustment_reason"]
+          reversal_adjustment_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           tenant_id: string
         }
         Update: {
@@ -1075,8 +1087,14 @@ export type Database = {
           id?: string
           meat_type?: string
           notes?: string | null
+          original_adjustment_id?: string | null
           quantity_kg?: number
           reason?: Database["public"]["Enums"]["stock_adjustment_reason"]
+          reversal_adjustment_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           tenant_id?: string
         }
         Relationships: [
@@ -1085,6 +1103,20 @@ export type Database = {
             columns: ["closing_id"]
             isOneToOne: false
             referencedRelation: "stock_closings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_original_adjustment_id_fkey"
+            columns: ["original_adjustment_id"]
+            isOneToOne: false
+            referencedRelation: "stock_adjustments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_adjustments_reversal_adjustment_id_fkey"
+            columns: ["reversal_adjustment_id"]
+            isOneToOne: false
+            referencedRelation: "stock_adjustments"
             referencedColumns: ["id"]
           },
         ]
@@ -1613,6 +1645,10 @@ export type Database = {
         Returns: string
       }
       reverse_shop_recovery: {
+        Args: { p_id: string; p_notes?: string; p_reason: string }
+        Returns: string
+      }
+      reverse_stock_adjustment: {
         Args: { p_id: string; p_notes?: string; p_reason: string }
         Returns: string
       }

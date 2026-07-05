@@ -9,8 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MEAT_TYPES, fmtKg } from "@/lib/constants";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { toast } from "sonner";
-import { Save, Printer, History } from "lucide-react";
+import { Save, Printer, History, Undo2 } from "lucide-react";
 import { SeoHead } from "@/components/SeoHead";
+import { ReverseTransactionDialog } from "@/components/ReverseTransactionDialog";
 
 type Reason = "weight_loss" | "mortality" | "wastage" | "damage" | "theft" | "other";
 const REASONS: { value: Reason; label: string }[] = [
@@ -25,6 +26,7 @@ const REASONS: { value: Reason; label: string }[] = [
 type Row = {
   meat_type: string;
   opening: number;
+  openingSource: "closing" | "calculated";
   purchases: number;
   supplies: number;
   adjustments: number;
@@ -44,6 +46,9 @@ type Adjustment = {
   reason: Reason;
   notes: string | null;
   created_at: string;
+  reversed_at?: string | null;
+  reversal_reason?: string | null;
+  original_adjustment_id?: string | null;
 };
 
 const num = (v: unknown) => Number(v ?? 0) || 0;
@@ -55,6 +60,7 @@ const StockClosing = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [audit, setAudit] = useState<Adjustment[]>([]);
+  const [reverseTarget, setReverseTarget] = useState<Adjustment | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,15 +73,23 @@ const StockClosing = () => {
       .order("closing_date", { ascending: false });
 
     const openingMap = new Map<string, number>();
+    const openingSourceMap = new Map<string, "closing" | "calculated">();
     (prior ?? []).forEach((r: any) => {
-      if (!openingMap.has(r.meat_type)) openingMap.set(r.meat_type, num(r.physical_stock));
+      if (!openingMap.has(r.meat_type)) {
+        openingMap.set(r.meat_type, num(r.physical_stock));
+        openingSourceMap.set(r.meat_type, "closing");
+      }
     });
 
-    const [{ data: p }, { data: s }, { data: adj }, { data: existing }] = await Promise.all([
+    const [{ data: p }, { data: s }, { data: adj }, { data: existing }, { data: pPrior }, { data: sPrior }, { data: adjPrior }] = await Promise.all([
       supabase.from("purchases").select("meat_type, weight_kg").eq("purchase_date", selectedDate),
       supabase.from("supplies").select("meat_type, weight_kg").eq("supply_date", selectedDate).is("reversed_at", null),
-      supabase.from("stock_adjustments").select("meat_type, quantity_kg").eq("adjustment_date", selectedDate),
+      supabase.from("stock_adjustments").select("meat_type, quantity_kg").eq("adjustment_date", selectedDate).is("reversed_at", null),
       supabase.from("stock_closings").select("*").eq("closing_date", selectedDate),
+      // Fallback opening: cumulative purchases/supplies/adjustments BEFORE selectedDate
+      supabase.from("purchases").select("meat_type, weight_kg").lt("purchase_date", selectedDate),
+      supabase.from("supplies").select("meat_type, weight_kg").lt("supply_date", selectedDate).is("reversed_at", null),
+      supabase.from("stock_adjustments").select("meat_type, quantity_kg").lt("adjustment_date", selectedDate).is("reversed_at", null),
     ]);
 
     const sumBy = (arr: any[] | null, kType: string, kVal: string) => {
@@ -86,6 +100,9 @@ const StockClosing = () => {
     const pMap = sumBy(p ?? null, "meat_type", "weight_kg");
     const sMap = sumBy(s ?? null, "meat_type", "weight_kg");
     const aMap = sumBy(adj ?? null, "meat_type", "quantity_kg");
+    const pPriorMap = sumBy(pPrior ?? null, "meat_type", "weight_kg");
+    const sPriorMap = sumBy(sPrior ?? null, "meat_type", "weight_kg");
+    const aPriorMap = sumBy(adjPrior ?? null, "meat_type", "quantity_kg");
     const existingMap = new Map<string, any>();
     (existing ?? []).forEach((r: any) => existingMap.set(r.meat_type, r));
 
@@ -95,9 +112,20 @@ const StockClosing = () => {
     sMap.forEach((_, k) => types.add(k));
     openingMap.forEach((_, k) => types.add(k));
     existingMap.forEach((_, k) => types.add(k));
+    pPriorMap.forEach((_, k) => types.add(k));
+    sPriorMap.forEach((_, k) => types.add(k));
 
     const nextRows: Row[] = [...types].sort().map((mt) => {
-      const opening = round2(openingMap.get(mt) ?? 0);
+      let opening: number;
+      let openingSource: "closing" | "calculated";
+      if (openingMap.has(mt)) {
+        opening = round2(openingMap.get(mt) ?? 0);
+        openingSource = "closing";
+      } else {
+        // No prior closing → keep using the current stock calculation
+        opening = round2((pPriorMap.get(mt) ?? 0) - (sPriorMap.get(mt) ?? 0) + (aPriorMap.get(mt) ?? 0));
+        openingSource = "calculated";
+      }
       const purchases = round2(pMap.get(mt) ?? 0);
       const supplies = round2(sMap.get(mt) ?? 0);
       const adjustments = round2(aMap.get(mt) ?? 0);
@@ -105,7 +133,7 @@ const StockClosing = () => {
       const ex = existingMap.get(mt);
       return {
         meat_type: mt,
-        opening, purchases, supplies, adjustments, system,
+        opening, openingSource, purchases, supplies, adjustments, system,
         physical: ex ? String(num(ex.physical_stock)) : "",
         reason: (ex?.reason as Reason) ?? "",
         notes: ex?.notes ?? "",
@@ -116,7 +144,7 @@ const StockClosing = () => {
 
     const { data: auditRows } = await supabase
       .from("stock_adjustments")
-      .select("id, adjustment_date, meat_type, quantity_kg, reason, notes, created_at")
+      .select("id, adjustment_date, meat_type, quantity_kg, reason, notes, created_at, reversed_at, reversal_reason, original_adjustment_id")
       .eq("adjustment_date", selectedDate)
       .order("created_at", { ascending: false });
     setAudit((auditRows ?? []) as Adjustment[]);
@@ -243,7 +271,12 @@ const StockClosing = () => {
                   return (
                     <TableRow key={r.meat_type}>
                       <TableCell className="font-medium">{r.meat_type}</TableCell>
-                      <TableCell className="text-end">{fmtKg(r.opening)}</TableCell>
+                      <TableCell className="text-end">
+                        {fmtKg(r.opening)}
+                        {r.openingSource === "calculated" && (
+                          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">calculated</div>
+                        )}
+                      </TableCell>
                       <TableCell className="text-end">{fmtKg(r.purchases)}</TableCell>
                       <TableCell className="text-end">{fmtKg(r.supplies)}</TableCell>
                       <TableCell className="text-end">{fmtKg(r.system)}</TableCell>
@@ -309,20 +342,35 @@ const StockClosing = () => {
                   <TableHead>Reason</TableHead>
                   <TableHead className="text-end">Quantity</TableHead>
                   <TableHead>Notes</TableHead>
+                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {audit.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No adjustments recorded.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No adjustments recorded.</TableCell></TableRow>
                 ) : audit.map((a) => (
-                  <TableRow key={a.id}>
+                  <TableRow key={a.id} className={a.reversed_at ? "opacity-60" : ""}>
                     <TableCell className="text-xs text-muted-foreground">{new Date(a.created_at).toLocaleString()}</TableCell>
                     <TableCell className="font-medium">{a.meat_type}</TableCell>
                     <TableCell>{REASONS.find((x) => x.value === a.reason)?.label ?? a.reason}</TableCell>
                     <TableCell className={`text-end font-semibold ${a.quantity_kg < 0 ? "text-destructive" : "text-success"}`}>
                       {a.quantity_kg > 0 ? "+" : ""}{fmtKg(a.quantity_kg)}
                     </TableCell>
-                    <TableCell className="text-sm">{a.notes ?? "—"}</TableCell>
+                    <TableCell className="text-sm">
+                      {a.notes ?? "—"}
+                      {a.reversed_at && (
+                        <div className="text-[10px] uppercase tracking-wider text-destructive mt-1">
+                          Reversed{a.reversal_reason ? ` — ${a.reversal_reason}` : ""}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-end">
+                      {!a.reversed_at && !a.original_adjustment_id && (
+                        <Button size="sm" variant="outline" onClick={() => setReverseTarget(a)}>
+                          <Undo2 className="h-3.5 w-3.5 mr-1" /> Reverse
+                        </Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -330,6 +378,20 @@ const StockClosing = () => {
           </div>
         </CardContent>
       </Card>
+
+      <ReverseTransactionDialog
+        open={!!reverseTarget}
+        target={reverseTarget ? { label: `${reverseTarget.meat_type} adjustment`, amount: reverseTarget.quantity_kg, date: reverseTarget.adjustment_date } : null}
+        onOpenChange={(o) => { if (!o) setReverseTarget(null); }}
+        onConfirm={async (reason, notes) => {
+          if (!reverseTarget) return;
+          const { error } = await supabase.rpc("reverse_stock_adjustment", { p_id: reverseTarget.id, p_reason: reason, p_notes: notes || null });
+          if (error) { toast.error(error.message); return; }
+          toast.success("Adjustment reversed");
+          setReverseTarget(null);
+          load();
+        }}
+      />
     </div>
   );
 };
