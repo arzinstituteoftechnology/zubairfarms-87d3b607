@@ -17,6 +17,7 @@ import Inventory from "./pages/Inventory";
 import StockClosing from "./pages/StockClosing";
 import ClosingHistory from "./pages/ClosingHistory";
 import MortalityRegister from "./pages/MortalityRegister";
+import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Customers from "./pages/Customers";
 import Suppliers from "./pages/Suppliers";
