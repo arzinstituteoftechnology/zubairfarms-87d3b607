@@ -6,7 +6,7 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import {
   LayoutDashboard, Beef, Tractor, Store, ShoppingCart, Truck,
   Boxes, Settings as SettingsIcon, LogOut, Menu, ClipboardCheck,
-  Users, Wallet, Receipt, TruckIcon, HandCoins, History, Skull,
+  Users, Wallet, Receipt, TruckIcon, HandCoins, History, Skull, FileBarChart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,7 @@ const navItems = [
   { to: "/stock-closing", key: "stock_closing", icon: ClipboardCheck },
   { to: "/closing-history", key: "closing_history", icon: History },
   { to: "/mortality-register", key: "mortality_register", icon: Skull },
+  { to: "/reports", key: "reports", icon: FileBarChart },
   { to: "/settings", key: "settings", icon: SettingsIcon, adminOnly: true },
 ];
 
