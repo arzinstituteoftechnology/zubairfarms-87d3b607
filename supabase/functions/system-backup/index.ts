@@ -13,6 +13,7 @@ const BUSINESS_TABLES = [
   "supplier_ledger_entries", "shop_ledger_entries",
   "shop_recoveries", "farm_payments", "customer_payments", "payments",
   "expenses", "pos_sales", "pos_sale_items",
+  "stock_adjustments", "stock_closings",
   "activity_logs",
 ];
 
