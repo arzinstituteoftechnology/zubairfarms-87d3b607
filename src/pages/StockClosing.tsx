@@ -271,7 +271,12 @@ const StockClosing = () => {
                   return (
                     <TableRow key={r.meat_type}>
                       <TableCell className="font-medium">{r.meat_type}</TableCell>
-                      <TableCell className="text-end">{fmtKg(r.opening)}</TableCell>
+                      <TableCell className="text-end">
+                        {fmtKg(r.opening)}
+                        {r.openingSource === "calculated" && (
+                          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">calculated</div>
+                        )}
+                      </TableCell>
                       <TableCell className="text-end">{fmtKg(r.purchases)}</TableCell>
                       <TableCell className="text-end">{fmtKg(r.supplies)}</TableCell>
                       <TableCell className="text-end">{fmtKg(r.system)}</TableCell>
