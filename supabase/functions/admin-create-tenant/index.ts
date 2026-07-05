@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
     }
 
     // 3. Link user to tenant as admin
-    const { error: tuErr } = await admin.from("tenant_users").insert({ tenant_id: tenant.id, user_id: newUserId, tenant_role: "admin" });
+    const { error: tuErr } = await admin.from("tenant_users").insert({ tenant_id: tenant.id, user_id: newUserId, tenant_role: "owner", status: "active" });
     if (tuErr) {
       console.error("tenant_users insert failed:", tuErr);
       await admin.from("tenants").delete().eq("id", tenant.id);
