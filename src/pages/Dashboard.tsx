@@ -86,7 +86,8 @@ const Dashboard = () => {
         .from("shop_recoveries")
         .select("amount, recovery_date")
         .gte("recovery_date", monthStart)
-        .lte("recovery_date", today);
+        .lte("recovery_date", today)
+        .is("reversed_at", null);
 
       const sum = (arr: any[] | null, k: string) => (arr ?? []).reduce((a, x) => a + Number(x[k] ?? 0), 0);
       const purchaseKg = sum(pAll, "weight_kg");
