@@ -39,6 +39,9 @@ type Row = {
   physical: string; // input
   reason: Reason | "";
   notes: string;
+  farm_id?: string | null;
+  shop_id?: string | null;
+  bird_count?: string; // input as string
   closingId?: string;
   saving?: boolean;
 };
@@ -68,6 +71,19 @@ const StockClosing = () => {
   const [audit, setAudit] = useState<Adjustment[]>([]);
   const [reverseTarget, setReverseTarget] = useState<Adjustment | null>(null);
   const [confirmIdx, setConfirmIdx] = useState<number | null>(null);
+  const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
+  const [shops, setShops] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const [{ data: f }, { data: s }] = await Promise.all([
+        supabase.from("farms").select("id, name").order("name"),
+        supabase.from("shops").select("id, name").order("name"),
+      ]);
+      setFarms((f ?? []) as any);
+      setShops((s ?? []) as any);
+    })();
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -233,6 +249,9 @@ const StockClosing = () => {
         notes: r.notes || null,
         closing_id: saved?.id ?? null,
         created_by: user?.id ?? null,
+        farm_id: r.farm_id || null,
+        shop_id: r.shop_id || null,
+        bird_count: r.bird_count && !isNaN(Number(r.bird_count)) ? Math.max(0, Math.trunc(Number(r.bird_count))) : null,
       });
       if (aErr) toast.error("Adjustment log failed: " + aErr.message);
     }
@@ -452,6 +471,44 @@ const StockClosing = () => {
                       </div>
                       {Math.abs(diff) > 0.001 && r.reason && (
                         <div className="flex justify-between"><span>Adjustment Reason</span><span>{REASONS.find((x) => x.value === r.reason)?.label}</span></div>
+                      )}
+                      {r.reason === "mortality" && diff < -0.001 && (
+                        <div className="pt-3 border-t space-y-2">
+                          <div className="text-xs uppercase tracking-wider text-muted-foreground">Mortality details (optional)</div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-xs text-muted-foreground block mb-1">Farm</label>
+                              <Select value={r.farm_id ?? "__none__"} onValueChange={(v) => updateRow(confirmIdx!, { farm_id: v === "__none__" ? null : v })}>
+                                <SelectTrigger className="h-8"><SelectValue placeholder="Select farm" /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__">— None —</SelectItem>
+                                  {farms.map((f) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground block mb-1">Shop</label>
+                              <Select value={r.shop_id ?? "__none__"} onValueChange={(v) => updateRow(confirmIdx!, { shop_id: v === "__none__" ? null : v })}>
+                                <SelectTrigger className="h-8"><SelectValue placeholder="Select shop" /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__">— None —</SelectItem>
+                                  {shops.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="col-span-2">
+                              <label className="text-xs text-muted-foreground block mb-1">Bird Count</label>
+                              <Input
+                                type="number"
+                                min="0"
+                                className="h-8 force-ltr"
+                                value={r.bird_count ?? ""}
+                                onChange={(e) => updateRow(confirmIdx!, { bird_count: e.target.value })}
+                                placeholder="e.g. 12"
+                              />
+                            </div>
+                          </div>
+                        </div>
                       )}
                       <div className="pt-2 text-xs text-muted-foreground">
                         Tomorrow&apos;s opening stock for {r.meat_type} will be <span className="font-semibold text-foreground">{fmtKg(physical)}</span>.
