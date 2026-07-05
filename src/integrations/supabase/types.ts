@@ -1220,6 +1220,7 @@ export type Database = {
         Row: {
           code: string
           created_at: string
+          description: string | null
           display_order: number
           id: string
           is_active: boolean
@@ -1231,6 +1232,7 @@ export type Database = {
         Insert: {
           code: string
           created_at?: string
+          description?: string | null
           display_order?: number
           id?: string
           is_active?: boolean
@@ -1242,6 +1244,7 @@ export type Database = {
         Update: {
           code?: string
           created_at?: string
+          description?: string | null
           display_order?: number
           id?: string
           is_active?: boolean
@@ -1265,7 +1268,8 @@ export type Database = {
           notes: string | null
           original_adjustment_id: string | null
           quantity_kg: number
-          reason: Database["public"]["Enums"]["stock_adjustment_reason"]
+          reason: string | null
+          reason_id: string | null
           reversal_adjustment_id: string | null
           reversal_notes: string | null
           reversal_reason: string | null
@@ -1286,7 +1290,8 @@ export type Database = {
           notes?: string | null
           original_adjustment_id?: string | null
           quantity_kg: number
-          reason: Database["public"]["Enums"]["stock_adjustment_reason"]
+          reason?: string | null
+          reason_id?: string | null
           reversal_adjustment_id?: string | null
           reversal_notes?: string | null
           reversal_reason?: string | null
@@ -1307,7 +1312,8 @@ export type Database = {
           notes?: string | null
           original_adjustment_id?: string | null
           quantity_kg?: number
-          reason?: Database["public"]["Enums"]["stock_adjustment_reason"]
+          reason?: string | null
+          reason_id?: string | null
           reversal_adjustment_id?: string | null
           reversal_notes?: string | null
           reversal_reason?: string | null
@@ -1339,6 +1345,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "stock_adjustments_reason_id_fkey"
+            columns: ["reason_id"]
+            isOneToOne: false
+            referencedRelation: "stock_adjustment_reasons"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "stock_adjustments_reversal_adjustment_id_fkey"
             columns: ["reversal_adjustment_id"]
             isOneToOne: false
@@ -1367,7 +1380,8 @@ export type Database = {
           opening_stock: number
           physical_stock: number
           purchases_kg: number
-          reason: Database["public"]["Enums"]["stock_adjustment_reason"] | null
+          reason: string | null
+          reason_id: string | null
           supplies_kg: number
           system_stock: number
           tenant_id: string
@@ -1385,7 +1399,8 @@ export type Database = {
           opening_stock?: number
           physical_stock?: number
           purchases_kg?: number
-          reason?: Database["public"]["Enums"]["stock_adjustment_reason"] | null
+          reason?: string | null
+          reason_id?: string | null
           supplies_kg?: number
           system_stock?: number
           tenant_id: string
@@ -1403,13 +1418,22 @@ export type Database = {
           opening_stock?: number
           physical_stock?: number
           purchases_kg?: number
-          reason?: Database["public"]["Enums"]["stock_adjustment_reason"] | null
+          reason?: string | null
+          reason_id?: string | null
           supplies_kg?: number
           system_stock?: number
           tenant_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "stock_closings_reason_id_fkey"
+            columns: ["reason_id"]
+            isOneToOne: false
+            referencedRelation: "stock_adjustment_reasons"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subscription_plans: {
         Row: {
@@ -1999,13 +2023,6 @@ export type Database = {
         | "reversed_adjustment_increase"
         | "reversed_adjustment_decrease"
         | "reversed_opening_balance"
-      stock_adjustment_reason:
-        | "weight_loss"
-        | "mortality"
-        | "wastage"
-        | "damage"
-        | "theft"
-        | "other"
       supplier_ledger_type:
         | "opening_balance"
         | "manual_purchase"
@@ -2161,14 +2178,6 @@ export const Constants = {
         "reversed_adjustment_increase",
         "reversed_adjustment_decrease",
         "reversed_opening_balance",
-      ],
-      stock_adjustment_reason: [
-        "weight_loss",
-        "mortality",
-        "wastage",
-        "damage",
-        "theft",
-        "other",
       ],
       supplier_ledger_type: [
         "opening_balance",
