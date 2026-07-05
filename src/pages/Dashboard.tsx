@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtKg, fmtMoney } from "@/lib/constants";
-import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull } from "lucide-react";
+import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull, PackageMinus } from "lucide-react";
 import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
@@ -21,9 +21,22 @@ interface KPI {
   payableToFarms: number; receivableFromCustomers: number;
   recoveryToday: number; recoveryWeek: number; recoveryMonth: number;
   mortalityToday: number; mortalityWeek: number; mortalityMonth: number; mortalityCost: number;
+  inventoryLossToday: number;
+  breakdownToday: Record<string, number>;
+  breakdownWeek: Record<string, number>;
+  breakdownMonth: Record<string, number>;
 }
 
-const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0 };
+const REASONS: { value: string; label: string }[] = [
+  { value: "mortality", label: "Mortality" },
+  { value: "weight_loss", label: "Weight Loss" },
+  { value: "wastage", label: "Wastage" },
+  { value: "damage", label: "Damage" },
+  { value: "theft", label: "Theft" },
+  { value: "other", label: "Other" },
+];
+const emptyBreakdown = (): Record<string, number> => Object.fromEntries(REASONS.map(r => [r.value, 0]));
+const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0, inventoryLossToday: 0, breakdownToday: emptyBreakdown(), breakdownWeek: emptyBreakdown(), breakdownMonth: emptyBreakdown() };
 
 const KpiCard = ({ icon: Icon, label, value, sub, tone = "default" }: any) => (
   <Card>
@@ -170,7 +183,29 @@ const Dashboard = () => {
         mortalityCost = (mortAll ?? []).reduce((a, x: any) => a + absKg(x) * (latestRate.get(x.meat_type) ?? 0), 0);
       }
 
-      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, payableToFarms, receivableFromCustomers, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost });
+      // All negative adjustments (any reason) — active, non-reversal — for month → today
+      const { data: adjAll } = await supabase
+        .from("stock_adjustments")
+        .select("reason, quantity_kg, adjustment_date")
+        .is("original_adjustment_id", null)
+        .is("reversed_at", null)
+        .lt("quantity_kg", 0)
+        .gte("adjustment_date", monthStart)
+        .lte("adjustment_date", today);
+      const breakdownToday = emptyBreakdown();
+      const breakdownWeek = emptyBreakdown();
+      const breakdownMonth = emptyBreakdown();
+      (adjAll ?? []).forEach((x: any) => {
+        const key = (x.reason ?? "other") as string;
+        const bkey = key in breakdownMonth ? key : "other";
+        const kg = absKg(x);
+        breakdownMonth[bkey] += kg;
+        if (x.adjustment_date >= weekStart) breakdownWeek[bkey] += kg;
+        if (x.adjustment_date === today) breakdownToday[bkey] += kg;
+      });
+      const inventoryLossToday = Object.values(breakdownToday).reduce((a, v) => a + v, 0);
+
+      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, payableToFarms, receivableFromCustomers, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost, inventoryLossToday, breakdownToday, breakdownWeek, breakdownMonth });
 
       // 7-day chart ending at selected date
       const days: any[] = [];
@@ -226,7 +261,42 @@ const Dashboard = () => {
         <KpiCard icon={Skull} label="This Week Mortality" value={fmtKg(kpi.mortalityWeek)} sub="Mon → selected" tone={kpi.mortalityWeek > 0 ? "danger" : "default"} />
         <KpiCard icon={Skull} label="This Month Mortality" value={fmtKg(kpi.mortalityMonth)} sub="Month to date" tone={kpi.mortalityMonth > 0 ? "danger" : "default"} />
         <KpiCard icon={Wallet} label="Mortality Cost (Month)" value={fmtMoney(kpi.mortalityCost)} sub="Dead weight × latest rate" tone={kpi.mortalityCost > 0 ? "danger" : "default"} />
+        <KpiCard icon={PackageMinus} label="Today's Inventory Loss" value={fmtKg(kpi.inventoryLossToday)} sub="All negative adjustments" tone={kpi.inventoryLossToday > 0 ? "danger" : "default"} />
       </div>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Inventory Loss Breakdown by Reason</CardTitle></CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground border-b">
+                  <th className="py-2 pr-4 font-medium">Reason</th>
+                  <th className="py-2 px-4 font-medium text-right">Today</th>
+                  <th className="py-2 px-4 font-medium text-right">This Week</th>
+                  <th className="py-2 pl-4 font-medium text-right">This Month</th>
+                </tr>
+              </thead>
+              <tbody>
+                {REASONS.map((r) => (
+                  <tr key={r.value} className="border-b last:border-b-0">
+                    <td className="py-2 pr-4">{r.label}</td>
+                    <td className="py-2 px-4 text-right">{fmtKg(kpi.breakdownToday[r.value] ?? 0)}</td>
+                    <td className="py-2 px-4 text-right">{fmtKg(kpi.breakdownWeek[r.value] ?? 0)}</td>
+                    <td className="py-2 pl-4 text-right">{fmtKg(kpi.breakdownMonth[r.value] ?? 0)}</td>
+                  </tr>
+                ))}
+                <tr className="font-semibold">
+                  <td className="py-2 pr-4">Total</td>
+                  <td className="py-2 px-4 text-right">{fmtKg(Object.values(kpi.breakdownToday).reduce((a, v) => a + v, 0))}</td>
+                  <td className="py-2 px-4 text-right">{fmtKg(Object.values(kpi.breakdownWeek).reduce((a, v) => a + v, 0))}</td>
+                  <td className="py-2 pl-4 text-right">{fmtKg(Object.values(kpi.breakdownMonth).reduce((a, v) => a + v, 0))}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4">
         <Card>
