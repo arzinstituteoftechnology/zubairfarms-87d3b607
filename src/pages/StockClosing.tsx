@@ -227,7 +227,7 @@ const StockClosing = () => {
       system_stock: r.system,
       physical_stock: physical,
       difference,
-      reason: Math.abs(difference) > 0.001 && r.reason ? (r.reason as Reason) : null,
+      reason: Math.abs(difference) > 0.001 && r.reason ? (r.reason as any) : null,
       notes: r.notes || null,
       created_by: user?.id ?? null,
     };
@@ -251,7 +251,7 @@ const StockClosing = () => {
         adjustment_date: selectedDate,
         meat_type: r.meat_type,
         quantity_kg: difference,
-        reason: r.reason,
+        reason: r.reason as any,
         notes: r.notes || null,
         closing_id: saved?.id ?? null,
         created_by: user?.id ?? null,
