@@ -39,6 +39,9 @@ type Row = {
   physical: string; // input
   reason: Reason | "";
   notes: string;
+  farm_id?: string | null;
+  shop_id?: string | null;
+  bird_count?: string; // input as string
   closingId?: string;
   saving?: boolean;
 };
@@ -68,6 +71,19 @@ const StockClosing = () => {
   const [audit, setAudit] = useState<Adjustment[]>([]);
   const [reverseTarget, setReverseTarget] = useState<Adjustment | null>(null);
   const [confirmIdx, setConfirmIdx] = useState<number | null>(null);
+  const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
+  const [shops, setShops] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const [{ data: f }, { data: s }] = await Promise.all([
+        supabase.from("farms").select("id, name").order("name"),
+        supabase.from("shops").select("id, name").order("name"),
+      ]);
+      setFarms((f ?? []) as any);
+      setShops((s ?? []) as any);
+    })();
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -233,6 +249,9 @@ const StockClosing = () => {
         notes: r.notes || null,
         closing_id: saved?.id ?? null,
         created_by: user?.id ?? null,
+        farm_id: r.farm_id || null,
+        shop_id: r.shop_id || null,
+        bird_count: r.bird_count && !isNaN(Number(r.bird_count)) ? Math.max(0, Math.trunc(Number(r.bird_count))) : null,
       });
       if (aErr) toast.error("Adjustment log failed: " + aErr.message);
     }
