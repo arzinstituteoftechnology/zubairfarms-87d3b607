@@ -73,7 +73,7 @@ const Dashboard = () => {
         supabase.from("stock_closings").select("meat_type, physical_stock, closing_date").lte("closing_date", today).order("closing_date", { ascending: false }),
         supabase.from("purchases").select("meat_type, weight_kg, purchase_date").lte("purchase_date", today),
         supabase.from("supplies").select("meat_type, weight_kg, supply_date").lte("supply_date", today).is("reversed_at", null),
-        supabase.from("stock_adjustments").select("meat_type, quantity_kg, adjustment_date").lte("adjustment_date", today).is("reversed_at", null),
+        supabase.from("stock_adjustments").select("meat_type, quantity_kg, adjustment_date").lte("adjustment_date", today).is("reversed_at", null).is("original_adjustment_id", null),
       ]);
       const latestClosing = new Map<string, { physical: number; date: string }>();
       (closings ?? []).forEach((c: any) => {
