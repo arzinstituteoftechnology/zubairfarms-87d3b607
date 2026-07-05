@@ -53,6 +53,7 @@
     "inventory": "Inventory",
     "stock_closing": "Daily Closing Stock",
     "closing_history": "Closing History",
+    "mortality_register": "Mortality Register",
     "settings": "Settings",
     "sign_out": "Sign out"
   },
