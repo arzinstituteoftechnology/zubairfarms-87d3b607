@@ -11,9 +11,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, Receipt } from "lucide-react";
 import { toast } from "sonner";
-import { MEAT_TYPES, fmtMoney } from "@/lib/constants";
+import { fmtMoney } from "@/lib/constants";
 import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { useModuleFlags } from "@/hooks/useModuleFlags";
+import { useSettingsLists, activeOnly } from "@/hooks/useSettingsLists";
 
 type Item = { meat_type: string; weight_kg: string; rate_per_kg: string; faraq: string };
 const newItem = (): Item => ({ meat_type: "Chicken", weight_kg: "", rate_per_kg: "", faraq: "0" });
@@ -28,6 +29,9 @@ const POS = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { customers_module_enabled: customersEnabled } = useModuleFlags();
+  const { meatTypes, paymentMethods } = useSettingsLists();
+  const activeMeats = activeOnly(meatTypes);
+  const activePMs = activeOnly(paymentMethods);
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
   const [items, setItems] = useState<Item[]>([newItem()]);
   const [customerId, setCustomerId] = useState<string>("");
@@ -114,7 +118,7 @@ const POS = () => {
                         <td className="p-1">
                           <Select value={it.meat_type} onValueChange={(v) => update(i, "meat_type", v)}>
                             <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                            <SelectContent>{MEAT_TYPES.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+                            <SelectContent>{activeMeats.map((m) => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}</SelectContent>
                           </Select>
                         </td>
                         <td className="p-1"><Input className="h-9 text-end" type="number" step="0.001" value={it.weight_kg} onChange={(e) => update(i, "weight_kg", e.target.value)} /></td>
@@ -143,7 +147,7 @@ const POS = () => {
           <div className="flex items-center gap-2"><Label className="text-sm shrink-0">{t("pos.method")}</Label>
             <Select value={method} onValueChange={setMethod}>
               <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="cash">{t("pos.cash")}</SelectItem><SelectItem value="card">{t("pos.card")}</SelectItem><SelectItem value="bank">{t("pos.bank")}</SelectItem><SelectItem value="credit">{t("pos.credit")}</SelectItem></SelectContent>
+              <SelectContent>{activePMs.map(m => <SelectItem key={m.id} value={m.code}>{m.name}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className={`flex justify-between text-sm ${due > 0 ? "text-destructive" : "text-success"}`}><span>{t("pos.due")}</span><span className="font-semibold">{fmtMoney(due)}</span></div>
