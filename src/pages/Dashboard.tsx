@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,11 +68,8 @@ const Dashboard = () => {
     ? activeOnly(adjustmentReasons).map(r => ({ value: r.code, label: r.name }))
     : DEFAULT_REASONS);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     setLoading(true);
-    setKpi(emptyKpi);
-    setChart([]);
-    (async () => {
       const today = selectedDate;
       const last7 = format(subDays(new Date(selectedDate), 6), "yyyy-MM-dd");
 
@@ -224,8 +221,25 @@ const Dashboard = () => {
       setChart(days);
 
       setLoading(false);
-    })();
   }, [selectedDate]);
+
+  useEffect(() => { setKpi(emptyKpi); setChart([]); load(); }, [load]);
+
+  // Realtime — recompute whenever anything that feeds the dashboard changes
+  // (purchases, supplies, adjustments, closings, recoveries). This ensures
+  // reversing a Daily Closing adjustment immediately updates stock & loss KPIs.
+  useEffect(() => {
+    const ch = supabase.channel("dashboard-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "stock_adjustments" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "stock_closings" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "purchases" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "supplies" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "shop_recoveries" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "farm_payments" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "pos_sales" }, () => load())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [load]);
 
   return (
     <div className="space-y-6">
