@@ -11,19 +11,13 @@ import { Boxes, ChevronDown, ChevronRight, Printer, FileSpreadsheet, FileText, P
 import { SeoHead } from "@/components/SeoHead";
 import { printReport } from "@/lib/printReport";
 import { format, startOfWeek, startOfMonth } from "date-fns";
+import { useSettingsLists } from "@/hooks/useSettingsLists";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-type Reason = "weight_loss" | "mortality" | "wastage" | "damage" | "theft" | "other";
-const REASONS: { value: Reason; label: string }[] = [
-  { value: "mortality", label: "Mortality" },
-  { value: "weight_loss", label: "Weight Loss" },
-  { value: "wastage", label: "Wastage" },
-  { value: "damage", label: "Damage" },
-  { value: "theft", label: "Theft" },
-  { value: "other", label: "Other" },
-];
+type ReasonKey = string; // reason_id (uuid) OR legacy code fallback
+type ReasonMeta = { key: string; label: string };
 
 type Row = {
   meat_type: string;
@@ -32,16 +26,16 @@ type Row = {
   supplied: number;
   loss: number; // positive number = total loss
   current: number;
-  breakdown: Record<Reason, number>;
+  breakdown: Record<ReasonKey, number>;
 };
 
 const num = (v: any) => (v == null || isNaN(Number(v)) ? 0 : Number(v));
 const round2 = (n: number) => Math.round(n * 100) / 100;
-const emptyBreakdown = (): Record<Reason, number> =>
-  ({ mortality: 0, weight_loss: 0, wastage: 0, damage: 0, theft: 0, other: 0 });
+const emptyBreakdown = (): Record<ReasonKey, number> => ({});
 
 const Inventory = () => {
   const { selectedDate, setSelectedDate } = useLedgerDate();
+  const { adjustmentReasons } = useSettingsLists();
   const [meatFilter, setMeatFilter] = useState<string>("all");
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +43,19 @@ const Inventory = () => {
   const [lossToday, setLossToday] = useState(0);
   const [lossWeek, setLossWeek] = useState(0);
   const [lossMonth, setLossMonth] = useState(0);
+  const [reasonMetas, setReasonMetas] = useState<ReasonMeta[]>([]);
+
+  // Maps for resolving reason names — includes archived reasons for historical rows.
+  const reasonIdToLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    adjustmentReasons.forEach((r) => m.set(r.id, r.name));
+    return m;
+  }, [adjustmentReasons]);
+  const reasonCodeToLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    adjustmentReasons.forEach((r) => { if (r.code) m.set(r.code, r.name); });
+    return m;
+  }, [adjustmentReasons]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,7 +75,7 @@ const Inventory = () => {
         .lt("closing_date", selectedDate).order("closing_date", { ascending: false }),
       supabase.from("purchases").select("meat_type, weight_kg").eq("purchase_date", selectedDate),
       supabase.from("supplies").select("meat_type, weight_kg").eq("supply_date", selectedDate).is("reversed_at", null),
-      supabase.from("stock_adjustments").select("meat_type, quantity_kg, reason")
+      supabase.from("stock_adjustments").select("meat_type, quantity_kg, reason, reason_id")
         .eq("adjustment_date", selectedDate).is("reversed_at", null).is("original_adjustment_id", null),
       supabase.from("purchases").select("meat_type, weight_kg").lt("purchase_date", selectedDate),
       supabase.from("supplies").select("meat_type, weight_kg").lt("supply_date", selectedDate).is("reversed_at", null),
@@ -97,19 +104,26 @@ const Inventory = () => {
     const aPriorMap = sumBy(adjPrior ?? null, "meat_type");
 
     // Adjustments today by meat_type & reason
-    const breakdownMap = new Map<string, Record<Reason, number>>();
+    const breakdownMap = new Map<string, Record<ReasonKey, number>>();
     const netAdjToday = new Map<string, number>(); // signed sum (includes positives)
+    const seenReasons = new Map<string, string>(); // key -> label
     (adj ?? []).forEach((r: any) => {
       const mt = r.meat_type;
       const q = num(r.quantity_kg);
       netAdjToday.set(mt, num(netAdjToday.get(mt)) + q);
       if (q < 0) {
         const b = breakdownMap.get(mt) ?? emptyBreakdown();
-        const reason = (REASONS.find(x => x.value === r.reason)?.value) ?? "other";
-        b[reason] = round2(b[reason] + Math.abs(q));
+        const key: string = r.reason_id ?? r.reason ?? "unknown";
+        const label =
+          (r.reason_id && reasonIdToLabel.get(r.reason_id)) ||
+          (r.reason && reasonCodeToLabel.get(r.reason)) ||
+          (r.reason ? String(r.reason).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Unknown");
+        seenReasons.set(key, label);
+        b[key] = round2(num(b[key]) + Math.abs(q));
         breakdownMap.set(mt, b);
       }
     });
+    setReasonMetas(Array.from(seenReasons, ([key, label]) => ({ key, label })));
 
     const types = new Set<string>(MEAT_TYPES as readonly string[]);
     [openingMap, pMap, sMap, pPriorMap, sPriorMap, aPriorMap, breakdownMap, netAdjToday]
@@ -142,7 +156,7 @@ const Inventory = () => {
     setLossWeek(round2(w));
     setLossMonth(round2(m));
     setLoading(false);
-  }, [selectedDate]);
+  }, [selectedDate, reasonIdToLabel, reasonCodeToLabel]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -179,20 +193,16 @@ const Inventory = () => {
   const buildExportRows = () => {
     const out: any[] = [];
     filtered.forEach((r) => {
-      out.push({
+      const base: any = {
         "Meat Type": r.meat_type,
         "Opening (kg)": r.opening,
         "Purchased (kg)": r.purchased,
         "Supplied (kg)": r.supplied,
-        "Mortality (kg)": r.breakdown.mortality,
-        "Weight Loss (kg)": r.breakdown.weight_loss,
-        "Wastage (kg)": r.breakdown.wastage,
-        "Damage (kg)": r.breakdown.damage,
-        "Theft (kg)": r.breakdown.theft,
-        "Other (kg)": r.breakdown.other,
-        "Inventory Loss (kg)": r.loss,
-        "Current Stock (kg)": r.current,
-      });
+      };
+      reasonMetas.forEach((rm) => { base[`${rm.label} (kg)`] = num(r.breakdown[rm.key]); });
+      base["Inventory Loss (kg)"] = r.loss;
+      base["Current Stock (kg)"] = r.current;
+      out.push(base);
     });
     return out;
   };
@@ -236,12 +246,11 @@ const Inventory = () => {
     pdf.text(`As of ${selectedDate}`, 14, 20);
     autoTable(pdf, {
       startY: 26,
-      head: [["Meat Type", "Opening", "Purchased", "Supplied", "Mortality", "Weight Loss", "Wastage", "Damage", "Theft", "Other", "Loss", "Current"]],
+      head: [["Meat Type", "Opening", "Purchased", "Supplied", ...reasonMetas.map((r) => r.label), "Loss", "Current"]],
       body: filtered.map((r) => [
         r.meat_type,
         fmtKg(r.opening), fmtKg(r.purchased), fmtKg(r.supplied),
-        fmtKg(r.breakdown.mortality), fmtKg(r.breakdown.weight_loss), fmtKg(r.breakdown.wastage),
-        fmtKg(r.breakdown.damage), fmtKg(r.breakdown.theft), fmtKg(r.breakdown.other),
+        ...reasonMetas.map((rm) => fmtKg(num(r.breakdown[rm.key]))),
         fmtKg(r.loss), fmtKg(r.current),
       ]),
       styles: { fontSize: 8 },
@@ -354,10 +363,10 @@ const Inventory = () => {
                               <TrendingDown className="h-3 w-3" /> Loss Breakdown — {r.meat_type}
                             </div>
                             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-                              {REASONS.map((rs) => (
-                                <div key={rs.value} className="rounded border bg-background px-2 py-1.5">
+                              {(reasonMetas.length > 0 ? reasonMetas : []).map((rs) => (
+                                <div key={rs.key} className="rounded border bg-background px-2 py-1.5">
                                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{rs.label}</div>
-                                  <div className="text-sm font-medium">{fmtKg(r.breakdown[rs.value])}</div>
+                                  <div className="text-sm font-medium">{fmtKg(num(r.breakdown[rs.key]))}</div>
                                 </div>
                               ))}
                               <div className="rounded border bg-destructive/10 px-2 py-1.5">
