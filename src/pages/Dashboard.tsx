@@ -138,10 +138,14 @@ const Dashboard = () => {
       const purchaseAmt = sum(pAll, "total_amount");
       const supplyKg = sum(sAll, "weight_kg");
       const supplyAmt = sum(sAll, "total_amount");
-      // profit on the selected date = supplies revenue - cost of supplied that day
-      const dayRevenue = (sAll ?? []).reduce((a, x: any) => a + Number(x.total_amount ?? 0), 0);
-      const dayCost = (sAll ?? []).reduce((a, x: any) => a + Number(x.weight_kg) * Number(x.cost_per_kg ?? 0), 0);
-      const profit = dayRevenue - dayCost;
+      // Realized Profit on the selected date =
+      //   Total Supply Revenue (that date) − Cost of Goods Sold (that date's purchases)
+      // We intentionally do NOT include:
+      //   - opening stock value / remaining inventory value
+      //   - inventory adjustments (mortality, wastage, etc.)
+      //   - transactions outside the selected date
+      // Inventory valuation, if needed, is displayed separately (not inside Profit).
+      const profit = calcRealizedProfit(supplyAmt, purchaseAmt);
 
       // Payable to farms = total purchases - (paid_amount on purchases + farm_payments)
       const totalPurchaseAmt = (pSum ?? []).reduce((a, x: any) => a + Number(x.total_amount ?? 0), 0);
