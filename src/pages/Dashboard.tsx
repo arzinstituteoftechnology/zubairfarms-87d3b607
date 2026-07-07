@@ -13,6 +13,7 @@ import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { useModuleFlags } from "@/hooks/useModuleFlags";
 import { SeoHead } from "@/components/SeoHead";
 import { useSettingsLists, activeOnly } from "@/hooks/useSettingsLists";
+import { calcRealizedProfit } from "@/lib/profit";
 
 interface KPI {
   purchaseKg: number; purchaseAmt: number;
