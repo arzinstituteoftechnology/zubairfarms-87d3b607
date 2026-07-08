@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabaseSuperAdmin as supabase } from "@/integrations/supabase/superAdminClient";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ interface Tenant { id: string; company_name: string; owner_name: string; email: 
 interface Plan { id: string; name: string; duration_days: number; price: number; billing_cycle: string }
 
 const Clients = () => {
+  const queryClient = useQueryClient();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [showArchived, setShowArchived] = useState(false);
@@ -204,17 +206,21 @@ const Clients = () => {
       body: { action: manage.mode, tenant_id: manage.tenant.id, confirm: cfg.phrase },
     });
     if (stepTimer.current) { window.clearInterval(stepTimer.current); stepTimer.current = null; }
-    if (error || (data as any)?.error) {
+    const resp: any = data;
+    if (error || resp?.error || resp?.verification_failed || resp?.ok === false) {
       const errs = (data as any)?.errors ?? {};
       const detail = Object.entries(errs).map(([k, v]: any) => {
         const [table, scope] = k.split(".");
         return `• ${table} (${scope}) — ${v?.code ?? "ERR"}: ${v?.message}${v?.constraint ? ` [constraint ${v.constraint}]` : ""}`;
       }).join("\n");
+      const remaining = resp?.remaining_counts ?? {};
+      const remainingLines = Object.entries(remaining).map(([t, n]) => `• ${t} — ${n} row(s) remaining`).join("\n");
+      const combined = [detail, remainingLines].filter(Boolean).join("\n\n");
       console.error("[reset]", { action: manage.mode, error, data });
       setManage({ ...manage, stage: "confirm" });
       return toast.error(
-        (data as any)?.error ?? error?.message ?? "Operation failed",
-        { description: detail || undefined, duration: 12000 },
+        resp?.message ?? resp?.error ?? error?.message ?? "Reset failed",
+        { description: combined || undefined, duration: 14000 },
       );
     }
     const total = (data as any)?.total_rows_deleted ?? 0;
@@ -224,6 +230,8 @@ const Clients = () => {
       description: `${total} record(s) removed in ${(ms / 1000).toFixed(1)}s.`,
       duration: 6000,
     });
+    // Drop every cached query so any open tenant view refetches fresh data next render.
+    try { queryClient.clear(); } catch { /* noop */ }
     await load();
   };
 
