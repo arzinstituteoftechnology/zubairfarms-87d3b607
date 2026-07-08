@@ -365,6 +365,40 @@ async function resetTenant(
   console.log(`[reset] tenant=${tenantId} mode=${mode} total=${total}`, deleted_counts, errors);
   const duration_ms = Date.now() - started;
 
+  // ---------- Verification pass ----------
+  // Count remaining rows in every wiped table for this tenant. If anything remains
+  // (either by tenant_id or via the orphan sweep IDs), report it as a verification
+  // failure so the caller can surface the offending tables to the user.
+  const remaining_counts: Record<string, number> = {};
+  const verifyTable = async (table: string) => {
+    let total = 0;
+    try {
+      const { count, error } = await admin
+        .from(table).select("*", { count: "exact", head: true }).eq("tenant_id", tenantId);
+      if (error) { if (!isMissingTable(error)) rememberError(table, "verify_tenant", error, OPTIONAL_BUSINESS_TABLES.includes(table)); return; }
+      total += count ?? 0;
+    } catch { /* ignore */ }
+    const checkIn = async (column: string, ids: string[]) => {
+      if (!ids.length) return;
+      try {
+        const { count } = await admin.from(table).select("*", { count: "exact", head: true }).in(column, ids);
+        total += count ?? 0;
+      } catch { /* ignore */ }
+    };
+    if (posSaleIds.length && table === "pos_sale_items") await checkIn("sale_id", posSaleIds);
+    if (purchaseIds.length && table === "supplies") await checkIn("purchase_id", purchaseIds);
+    if (customerIds.length && CUSTOMER_CHILD_TABLES.has(table)) await checkIn("customer_id", customerIds);
+    if (truckIds.length && TRUCK_CHILD_TABLES.has(table)) await checkIn("truck_id", truckIds);
+    if (shopIds.length && SHOP_CHILD_TABLES.has(table)) await checkIn("shop_id", shopIds);
+    if (farmIds.length && FARM_CHILD_TABLES.has(table)) await checkIn("farm_id", farmIds);
+    if (total > 0) remaining_counts[table] = total;
+  };
+  for (const table of tables) await verifyTable(table);
+  const verification_failed = Object.keys(remaining_counts).length > 0;
+  if (verification_failed) {
+    console.error(`[reset] verification failed for tenant=${tenantId}`, remaining_counts);
+  }
+
   // Detailed audit log — tenant-scoped, never affects other tenants.
   await admin.from("activity_logs").insert({
     actor_user_id: actor.id,
@@ -381,15 +415,18 @@ async function resetTenant(
       actor_email: actor.email ?? null,
       reset_at: new Date().toISOString(),
       duration_ms,
-      status: Object.keys(errors).length ? "partial_failure" : "success",
+      status: verification_failed
+        ? "verification_failed"
+        : Object.keys(errors).length ? "partial_failure" : "success",
       deleted_counts,
       total_rows_deleted: total,
       errors: Object.keys(errors).length ? errors : undefined,
+      remaining_counts: verification_failed ? remaining_counts : undefined,
     },
   }).then(() => {}, () => {});
 
   return json({
-    ok: true,
+    ok: !verification_failed,
     mode,
     tenant_id: tenantId,
     tenant_name: tenant.company_name,
@@ -398,10 +435,14 @@ async function resetTenant(
     deleted_counts,
     total_rows_deleted: total,
     errors: Object.keys(errors).length ? errors : undefined,
+    remaining_counts: verification_failed ? remaining_counts : undefined,
+    verification_failed,
     backup,
-    message: mode === "business_reset"
-      ? `Business Data Reset Successfully. ${total} record(s) removed. Master data (farms, shops, suppliers, trucks, customers) preserved.`
-      : `Factory Reset Completed Successfully. ${total} record(s) removed. Owner account, subscription and organization profile preserved.`,
+    message: verification_failed
+      ? `Reset incomplete — ${Object.keys(remaining_counts).length} table(s) still contain data for this tenant: ${Object.keys(remaining_counts).join(", ")}.`
+      : mode === "business_reset"
+        ? `Business Data Reset Successfully. ${total} record(s) removed. Master data (farms, shops, suppliers, trucks, customers) preserved.`
+        : `Factory Reset Completed Successfully. ${total} record(s) removed. Owner account, subscription and organization profile preserved.`,
   });
 }
 
