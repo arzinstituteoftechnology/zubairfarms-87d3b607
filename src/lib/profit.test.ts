@@ -1,30 +1,38 @@
 import { describe, it, expect } from "vitest";
-import { calcRealizedProfit } from "./profit";
+import { calcRealizedProfit, calcSupplyLineProfit } from "./profit";
 
 describe("calcRealizedProfit", () => {
-  it("matches the user's worked example (Purchase 150,000 / Supply 152,220 → 2,220)", () => {
-    expect(calcRealizedProfit(152220, 150000)).toBe(2220);
+  it("worked example: 215.5kg × (304 − 294) = 2,155 (not −328,448)", () => {
+    // Purchase 1340kg @ 294 = 393,960 (irrelevant — inventory is NOT loss)
+    // Supply 215.5kg @ sale 304, cost 294 → profit 2,155
+    expect(calcRealizedProfit([{ weight_kg: 215.5, rate_per_kg: 304, cost_per_kg: 294 }])).toBeCloseTo(2155, 6);
   });
 
-  it("returns 0 when supply equals purchase", () => {
-    expect(calcRealizedProfit(100000, 100000)).toBe(0);
+  it("sums profit across multiple supply lines", () => {
+    expect(calcRealizedProfit([
+      { weight_kg: 100, rate_per_kg: 310, cost_per_kg: 300 }, // 1000
+      { weight_kg: 50,  rate_per_kg: 320, cost_per_kg: 300 }, // 1000
+    ])).toBe(2000);
   });
 
-  it("returns negative when purchases exceed supply revenue", () => {
-    expect(calcRealizedProfit(80000, 100000)).toBe(-20000);
+  it("returns 0 when sale rate equals cost", () => {
+    expect(calcRealizedProfit([{ weight_kg: 100, rate_per_kg: 300, cost_per_kg: 300 }])).toBe(0);
+  });
+
+  it("returns negative when sale rate < cost", () => {
+    expect(calcRealizedProfit([{ weight_kg: 100, rate_per_kg: 290, cost_per_kg: 300 }])).toBe(-1000);
   });
 
   it("treats null/undefined as zero", () => {
-    expect(calcRealizedProfit(null, undefined)).toBe(0);
-    expect(calcRealizedProfit(5000, null)).toBe(5000);
-    expect(calcRealizedProfit(undefined, 3000)).toBe(-3000);
+    expect(calcRealizedProfit(null)).toBe(0);
+    expect(calcRealizedProfit(undefined)).toBe(0);
+    expect(calcRealizedProfit([])).toBe(0);
+    expect(calcSupplyLineProfit({ weight_kg: null, rate_per_kg: 100, cost_per_kg: 50 })).toBe(0);
   });
 
-  it("ignores inventory/adjustments — inputs must already be date-scoped totals", () => {
-    // Simulates: 500kg purchased @ 300 = 150,000; 490kg supplied for 152,220.
-    // Remaining 10kg inventory value must NOT enter profit.
-    const purchaseAmt = 150000;
-    const supplyAmt = 152220;
-    expect(calcRealizedProfit(supplyAmt, purchaseAmt)).toBe(2220);
+  it("ignores remaining inventory — only supplied weight generates profit", () => {
+    // 500kg purchased @ 300 = 150,000 cost; 490kg supplied @ 310.65 sale, 300 cost
+    // Profit = 490 × (310.65 − 300) = 5,218.5 — remaining 10kg does NOT count
+    expect(calcRealizedProfit([{ weight_kg: 490, rate_per_kg: 310.65, cost_per_kg: 300 }])).toBeCloseTo(5218.5, 6);
   });
 });
