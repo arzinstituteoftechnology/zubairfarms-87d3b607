@@ -81,7 +81,7 @@ const Dashboard = () => {
       // Pull the selected-date slice
       const [{ data: pAll }, { data: sAll }] = await Promise.all([
         supabase.from("purchases").select("weight_kg, total_amount, meat_type, rate_per_kg, purchase_date").eq("purchase_date", today),
-        supabase.from("supplies").select("weight_kg, total_amount, cost_per_kg, supply_date").eq("supply_date", today),
+        supabase.from("supplies").select("weight_kg, total_amount, cost_per_kg, rate_per_kg, supply_date").eq("supply_date", today).is("reversed_at", null),
       ]);
       // Stock balance: use latest physical closing (per meat_type) on/before selectedDate,
       // then add purchases and subtract supplies AFTER that closing up to selectedDate.
@@ -139,14 +139,12 @@ const Dashboard = () => {
       const purchaseAmt = sum(pAll, "total_amount");
       const supplyKg = sum(sAll, "weight_kg");
       const supplyAmt = sum(sAll, "total_amount");
-      // Realized Profit on the selected date =
-      //   Total Supply Revenue (that date) − Cost of Goods Sold (that date's purchases)
-      // We intentionally do NOT include:
-      //   - opening stock value / remaining inventory value
-      //   - inventory adjustments (mortality, wastage, etc.)
-      //   - transactions outside the selected date
-      // Inventory valuation, if needed, is displayed separately (not inside Profit).
-      const profit = calcRealizedProfit(supplyAmt, purchaseAmt);
+      // Realized Profit on the selected date is calculated PER SUPPLY LINE:
+      //   Σ supplied_weight × (sale_rate_per_kg − cost_per_kg)
+      // We do NOT subtract full purchase value from supply revenue — remaining
+      // stock is inventory, not loss. This matches the profit shown in each
+      // supply row/edit modal.
+      const profit = calcRealizedProfit(sAll ?? []);
 
       // Payable to farms = total purchases - (paid_amount on purchases + farm_payments)
       const totalPurchaseAmt = (pSum ?? []).reduce((a, x: any) => a + Number(x.total_amount ?? 0), 0);
