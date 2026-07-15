@@ -364,5 +364,23 @@ async function handleRestore(admin: any, body: any, userId: string | null) {
     results[t] = { restored: count ?? payload.length, error: error?.message };
   }
 
+  // Audit trail — Requirement #8: restore operations must generate audit events.
+  const restoredTotal = Object.values(results).reduce((a, r: any) => a + (r.restored ?? 0), 0);
+  const restoreErrors = Object.entries(results).filter(([, r]: any) => r?.error).map(([t, r]: any) => ({ table: t, error: r.error }));
+  await admin.from("activity_logs").insert({
+    action: "backup_restore",
+    entity: "backup_history",
+    entity_id: body.backup_id ?? null,
+    tenant_id: payload?.tenant_id ?? null,
+    actor_user_id: userId,
+    metadata: {
+      backup_id: body.backup_id ?? null,
+      pre_restore_backup_id: preBody.backup_id,
+      total_restored: restoredTotal,
+      table_errors: restoreErrors,
+      preserved_super_admins: [...superIds],
+    },
+  }).then(() => {}, () => {});
+
   return json({ ok: true, pre_restore_backup_id: preBody.backup_id, results, preserved_super_admins: [...superIds] });
 }
