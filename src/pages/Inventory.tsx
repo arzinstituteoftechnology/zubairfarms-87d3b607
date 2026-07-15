@@ -73,11 +73,11 @@ const Inventory = () => {
     ] = await Promise.all([
       supabase.from("stock_closings").select("meat_type, physical_stock, closing_date")
         .lt("closing_date", selectedDate).order("closing_date", { ascending: false }),
-      supabase.from("purchases").select("meat_type, weight_kg").eq("purchase_date", selectedDate),
+      supabase.from("purchases").select("meat_type, weight_kg").eq("purchase_date", selectedDate).is("reversed_at", null),
       supabase.from("supplies").select("meat_type, weight_kg").eq("supply_date", selectedDate).is("reversed_at", null),
       supabase.from("stock_adjustments").select("meat_type, quantity_kg, reason, reason_id")
         .eq("adjustment_date", selectedDate).is("reversed_at", null).is("original_adjustment_id", null),
-      supabase.from("purchases").select("meat_type, weight_kg").lt("purchase_date", selectedDate),
+      supabase.from("purchases").select("meat_type, weight_kg").lt("purchase_date", selectedDate).is("reversed_at", null),
       supabase.from("supplies").select("meat_type, weight_kg").lt("supply_date", selectedDate).is("reversed_at", null),
       supabase.from("stock_adjustments").select("meat_type, quantity_kg")
         .lt("adjustment_date", selectedDate).is("reversed_at", null).is("original_adjustment_id", null),
