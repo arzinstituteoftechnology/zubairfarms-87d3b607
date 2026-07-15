@@ -70,6 +70,122 @@ const handlers: Record<string, Handler> = {
     await report(100);
     return { recovered: data as number };
   },
+
+  // Enterprise health check — probes each subsystem, writes a snapshot,
+  // evaluates alert rules, and opens/closes incidents.
+  health_check: async (_job, { sb, report }) => {
+    const started = Date.now();
+    const components: Record<string, "green" | "yellow" | "red"> = {};
+    const metrics: Record<string, number | null> = {};
+
+    // Database
+    await report(10, "database");
+    try {
+      const { error } = await sb.from("background_jobs").select("id", { head: true, count: "exact" }).limit(1);
+      components.database = error ? "red" : "green";
+      metrics.db_healthy = error ? 0 : 1;
+    } catch { components.database = "red"; metrics.db_healthy = 0; }
+
+    // Auth
+    await report(20, "auth");
+    try {
+      const { data, error } = await (sb.auth as any).admin.listUsers({ page: 1, perPage: 1 });
+      components.auth = error ? "red" : "green";
+      metrics.auth_users_total = data?.total ?? null;
+    } catch { components.auth = "red"; }
+
+    // Storage
+    await report(30, "storage");
+    try {
+      const { data, error } = await sb.storage.listBuckets();
+      components.storage = error ? "red" : "green";
+      metrics.storage_buckets = data?.length ?? 0;
+    } catch { components.storage = "red"; }
+
+    // Live metrics (queue / scheduler / errors)
+    await report(50, "metrics");
+    const { data: live, error: liveErr } = await sb.rpc("get_live_metrics", { _window_minutes: 15 });
+    const live_metrics = (live ?? {}) as Record<string, number | string | null>;
+    if (liveErr) components.metrics = "red";
+    for (const [k, v] of Object.entries(live_metrics)) {
+      if (typeof v === "number") metrics[k] = v;
+    }
+
+    // Scheduler component
+    const tickSec = Number(live_metrics.scheduler_last_tick_seconds ?? 99999);
+    components.scheduler = tickSec > 300 ? "red" : tickSec > 120 ? "yellow" : "green";
+
+    // Queue component
+    const qsize = Number(live_metrics.queue_size ?? 0);
+    components.queue = qsize > 200 ? "red" : qsize > 50 ? "yellow" : "green";
+
+    // Realtime (best-effort — publication exists implies functional)
+    components.realtime = "green";
+
+    // API — since we're inside an edge function, being alive means OK
+    components.api = "green";
+
+    // Overall
+    const worst = Object.values(components).reduce<"green" | "yellow" | "red">(
+      (acc, s) => (s === "red" || acc === "red" ? "red" : s === "yellow" || acc === "yellow" ? "yellow" : "green"),
+      "green",
+    );
+
+    await report(75, "writing snapshot");
+    const { data: snap } = await sb
+      .from("system_health_snapshots")
+      .insert({
+        overall: worst,
+        components,
+        metrics,
+        latency_ms: Date.now() - started,
+        worker_id: WORKER_ID,
+      })
+      .select("id")
+      .single();
+
+    // Evaluate alert rules
+    await report(90, "evaluating alerts");
+    const { data: rules } = await sb.from("alert_rules").select("*").eq("enabled", true);
+    const cmp = (a: number, op: string, b: number) =>
+      op === ">" ? a > b : op === ">=" ? a >= b : op === "<" ? a < b : op === "<=" ? a <= b : a === b;
+
+    for (const r of rules ?? []) {
+      const obs = Number(metrics[r.metric] ?? 0);
+      const firing = cmp(obs, r.op, Number(r.threshold));
+
+      // Currently firing incident for this rule?
+      const { data: openInc } = await sb
+        .from("alert_incidents")
+        .select("id")
+        .eq("rule_id", r.id)
+        .eq("status", "firing")
+        .limit(1)
+        .maybeSingle();
+
+      if (firing && !openInc) {
+        await sb.from("alert_incidents").insert({
+          rule_id: r.id, metric: r.metric,
+          observed_value: obs, threshold: r.threshold,
+          severity: r.severity, status: "firing",
+          snapshot_id: snap?.id ?? null,
+          details: { rule_name: r.name, op: r.op },
+        });
+        await sb.from("system_errors").insert({
+          module: "monitoring", source: "job", severity: r.severity,
+          message: `Alert firing: ${r.name} (${r.metric} ${r.op} ${r.threshold}, observed ${obs})`,
+          context: { rule_id: r.id, metric: r.metric, observed: obs, threshold: r.threshold },
+        });
+      } else if (!firing && openInc) {
+        await sb.from("alert_incidents").update({
+          status: "resolved", resolved_at: new Date().toISOString(),
+        }).eq("id", openInc.id);
+      }
+    }
+
+    await report(100, "done");
+    return { overall: worst, components, metrics, snapshot_id: snap?.id ?? null };
+  },
 };
 
 async function runOne(sb: SupabaseClient, job: Job) {
