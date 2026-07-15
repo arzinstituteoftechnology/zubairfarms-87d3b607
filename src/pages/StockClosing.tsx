@@ -115,12 +115,13 @@ const StockClosing = () => {
     });
 
     const [{ data: p }, { data: s }, { data: adj }, { data: existing }, { data: pPrior }, { data: sPrior }, { data: adjPrior }] = await Promise.all([
-      supabase.from("purchases").select("meat_type, weight_kg").eq("purchase_date", selectedDate),
+      supabase.from("purchases").select("meat_type, weight_kg").eq("purchase_date", selectedDate).is("reversed_at", null),
       supabase.from("supplies").select("meat_type, weight_kg").eq("supply_date", selectedDate).is("reversed_at", null),
       supabase.from("stock_adjustments").select("meat_type, quantity_kg").eq("adjustment_date", selectedDate).is("reversed_at", null).is("original_adjustment_id", null).is("closing_id", null),
       supabase.from("stock_closings").select("*").eq("closing_date", selectedDate),
       // Fallback opening: cumulative purchases/supplies/adjustments BEFORE selectedDate
-      supabase.from("purchases").select("meat_type, weight_kg").lt("purchase_date", selectedDate),
+      // (reversed rows must NOT contribute to stock — audit only)
+      supabase.from("purchases").select("meat_type, weight_kg").lt("purchase_date", selectedDate).is("reversed_at", null),
       supabase.from("supplies").select("meat_type, weight_kg").lt("supply_date", selectedDate).is("reversed_at", null),
       supabase.from("stock_adjustments").select("meat_type, quantity_kg").lt("adjustment_date", selectedDate).is("reversed_at", null).is("original_adjustment_id", null),
     ]);
