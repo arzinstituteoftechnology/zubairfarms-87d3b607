@@ -55,6 +55,95 @@ export type Database = {
           },
         ]
       }
+      alert_incidents: {
+        Row: {
+          details: Json
+          fired_at: string
+          id: string
+          metric: string
+          observed_value: number
+          resolved_at: string | null
+          rule_id: string
+          severity: Database["public"]["Enums"]["system_error_severity"]
+          snapshot_id: string | null
+          status: string
+          threshold: number
+        }
+        Insert: {
+          details?: Json
+          fired_at?: string
+          id?: string
+          metric: string
+          observed_value: number
+          resolved_at?: string | null
+          rule_id: string
+          severity: Database["public"]["Enums"]["system_error_severity"]
+          snapshot_id?: string | null
+          status?: string
+          threshold: number
+        }
+        Update: {
+          details?: Json
+          fired_at?: string
+          id?: string
+          metric?: string
+          observed_value?: number
+          resolved_at?: string | null
+          rule_id?: string
+          severity?: Database["public"]["Enums"]["system_error_severity"]
+          snapshot_id?: string | null
+          status?: string
+          threshold?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_incidents_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "alert_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      alert_rules: {
+        Row: {
+          created_at: string
+          description: string | null
+          enabled: boolean
+          id: string
+          metric: string
+          name: string
+          op: string
+          severity: Database["public"]["Enums"]["system_error_severity"]
+          threshold: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          metric: string
+          name: string
+          op: string
+          severity?: Database["public"]["Enums"]["system_error_severity"]
+          threshold: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          metric?: string
+          name?: string
+          op?: string
+          severity?: Database["public"]["Enums"]["system_error_severity"]
+          threshold?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       background_jobs: {
         Row: {
           attempts: number
@@ -1994,6 +2083,96 @@ export type Database = {
           },
         ]
       }
+      system_errors: {
+        Row: {
+          context: Json
+          created_at: string
+          id: string
+          message: string
+          module: string
+          request_method: string | null
+          request_path: string | null
+          resolution_notes: string | null
+          resolved: boolean
+          resolved_at: string | null
+          resolved_by: string | null
+          severity: Database["public"]["Enums"]["system_error_severity"]
+          source: string
+          stack: string | null
+          status_code: number | null
+          tenant_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          context?: Json
+          created_at?: string
+          id?: string
+          message: string
+          module?: string
+          request_method?: string | null
+          request_path?: string | null
+          resolution_notes?: string | null
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: Database["public"]["Enums"]["system_error_severity"]
+          source?: string
+          stack?: string | null
+          status_code?: number | null
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          context?: Json
+          created_at?: string
+          id?: string
+          message?: string
+          module?: string
+          request_method?: string | null
+          request_path?: string | null
+          resolution_notes?: string | null
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          severity?: Database["public"]["Enums"]["system_error_severity"]
+          source?: string
+          stack?: string | null
+          status_code?: number | null
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      system_health_snapshots: {
+        Row: {
+          components: Json
+          created_at: string
+          id: string
+          latency_ms: number | null
+          metrics: Json
+          overall: Database["public"]["Enums"]["health_status"]
+          worker_id: string | null
+        }
+        Insert: {
+          components?: Json
+          created_at?: string
+          id?: string
+          latency_ms?: number | null
+          metrics?: Json
+          overall: Database["public"]["Enums"]["health_status"]
+          worker_id?: string | null
+        }
+        Update: {
+          components?: Json
+          created_at?: string
+          id?: string
+          latency_ms?: number | null
+          metrics?: Json
+          overall?: Database["public"]["Enums"]["health_status"]
+          worker_id?: string | null
+        }
+        Relationships: []
+      }
       system_settings: {
         Row: {
           app_name: string
@@ -2309,6 +2488,7 @@ export type Database = {
         Args: { _details?: Json; _error: string; _id: string }
         Returns: undefined
       }
+      get_live_metrics: { Args: { _window_minutes?: number }; Returns: Json }
       has_permission: {
         Args: { _action: string; _module: string; _uid: string }
         Returns: boolean
@@ -2323,6 +2503,21 @@ export type Database = {
       is_business_user: { Args: { _uid: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
       is_tenant_owner: { Args: { _uid: string }; Returns: boolean }
+      log_system_error: {
+        Args: {
+          _context?: Json
+          _message: string
+          _module: string
+          _request_method?: string
+          _request_path?: string
+          _severity?: Database["public"]["Enums"]["system_error_severity"]
+          _source?: string
+          _stack?: string
+          _status_code?: number
+          _tenant_id?: string
+        }
+        Returns: string
+      }
       mark_all_notifications_read: { Args: never; Returns: number }
       mark_notification_read: { Args: { _id: string }; Returns: undefined }
       notify_admins_of_tenant: {
@@ -2363,6 +2558,10 @@ export type Database = {
       recover_stuck_jobs: { Args: { _stale_minutes?: number }; Returns: number }
       report_job_progress: {
         Args: { _id: string; _message?: string; _pct: number }
+        Returns: undefined
+      }
+      resolve_system_error: {
+        Args: { _id: string; _notes?: string }
         Returns: undefined
       }
       retry_job: { Args: { _id: string }; Returns: undefined }
@@ -2406,6 +2605,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "staff" | "super_admin" | "manager"
+      health_status: "green" | "yellow" | "red"
       job_status:
         | "queued"
         | "running"
@@ -2472,6 +2672,7 @@ export type Database = {
         | "reversed_adjustment_increase"
         | "reversed_adjustment_decrease"
         | "reversed_opening_balance"
+      system_error_severity: "info" | "warning" | "error" | "critical"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2600,6 +2801,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "staff", "super_admin", "manager"],
+      health_status: ["green", "yellow", "red"],
       job_status: [
         "queued",
         "running",
@@ -2670,6 +2872,7 @@ export const Constants = {
         "reversed_adjustment_decrease",
         "reversed_opening_balance",
       ],
+      system_error_severity: ["info", "warning", "error", "critical"],
     },
   },
 } as const
