@@ -34,6 +34,21 @@ const MASTER_TABLES = [
   "trucks",
 ];
 
+// Per-tenant configuration & lookup tables (business profile, unit / meat /
+// payment / expense / adjustment-reason customization, per-user permission
+// overrides). Kept on Business Reset so the client can carry on. Wiped on
+// Factory Reset so the tenant returns to the seeded defaults — matches the
+// "brand-new state" promise shown in the UI.
+const SETTINGS_TABLES = [
+  "business_profiles",
+  "meat_types",
+  "units",
+  "payment_methods",
+  "expense_categories",
+  "stock_adjustment_reasons",
+  "user_permission_overrides",
+];
+
 // Logs are wiped in every reset mode.
 const LOG_TABLES = ["activity_logs"];
 
@@ -50,8 +65,9 @@ const OPTIONAL_TRANSACTION_TABLES = [
 ];
 const OPTIONAL_MASTER_TABLES = ["products"];
 
-// Legacy union used by backup routine.
-const BUSINESS_TABLES = [...TRANSACTION_TABLES, ...MASTER_TABLES, ...LOG_TABLES];
+// Legacy union used by backup routine. Includes settings tables so a
+// tenant-scoped safety backup captures the client's customized lookups.
+const BUSINESS_TABLES = [...TRANSACTION_TABLES, ...MASTER_TABLES, ...SETTINGS_TABLES, ...LOG_TABLES];
 const OPTIONAL_BUSINESS_TABLES = [...OPTIONAL_TRANSACTION_TABLES, ...OPTIONAL_MASTER_TABLES];
 
 // Tables whose rows can also be reached via shop_id / farm_id of this tenant.
@@ -245,6 +261,7 @@ async function resetTenant(
         ...OPTIONAL_TRANSACTION_TABLES,
         ...MASTER_TABLES,
         ...OPTIONAL_MASTER_TABLES,
+        ...SETTINGS_TABLES,
         ...LOG_TABLES,
         "settings",
       ];
