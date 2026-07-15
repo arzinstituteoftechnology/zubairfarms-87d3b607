@@ -271,6 +271,9 @@ async function handleCleanup(admin: any) {
   // emergency + pre_restore: keep last 10
   await trim("emergency", 10);
   await trim("pre_restore", 10);
+  // pre_reset backups are generated before every Business/Factory Reset. Without
+  // trimming they accumulate forever and fill storage.
+  await trim("pre_reset", 10);
 
   return json({ ok: true, deleted: deleted.length });
 }
