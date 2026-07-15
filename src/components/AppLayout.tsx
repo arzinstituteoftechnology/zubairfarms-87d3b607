@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { NotificationBell } from "@/components/NotificationBell";
 import {
   LayoutDashboard, Beef, Tractor, Store, ShoppingCart, Truck,
   Boxes, Settings as SettingsIcon, LogOut, Menu, ClipboardCheck,
@@ -151,6 +152,7 @@ const AppLayout = () => {
             <span className="font-semibold">{t("app.name")}</span>
           </div>
           <div className="ml-auto"><LanguageSwitcher /></div>
+          <NotificationBell />
         </header>
         <div className="border-b bg-card px-4 py-3 md:px-6 flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -158,6 +160,7 @@ const AppLayout = () => {
             <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value || today)} className="force-ltr w-[180px]" />
           </div>
           <Button variant="outline" size="sm" disabled={isToday} onClick={() => setSelectedDate(today)}>{t("dashboard.today_btn")}</Button>
+          <div className="ml-auto hidden md:block"><NotificationBell /></div>
         </div>
         <main className="flex-1 overflow-auto">
           <div className="p-4 md:p-6 max-w-7xl mx-auto w-full">

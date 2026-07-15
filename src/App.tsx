@@ -44,6 +44,7 @@ import SABackupEmail from "./pages/super-admin/BackupEmailSettings";
 import Trust from "./pages/Trust";
 import { SuperAdminAuthProvider } from "@/hooks/useSuperAdminAuth";
 import UsersPermissions from "./pages/UsersPermissions";
+import Notifications from "./pages/Notifications";
 
 const queryClient = new QueryClient();
 
@@ -109,6 +110,7 @@ const App = () => (
              <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/settings/users" element={<UsersPermissions />} />
+              <Route path="/notifications" element={<Notifications />} />
             </Route>
             <Route path="/invoice/:id" element={<Invoice />} />
             <Route path="*" element={<NotFound />} />
