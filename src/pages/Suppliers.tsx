@@ -118,16 +118,20 @@ const Suppliers = () => {
     // Aggregate the full lifetime balance from purchases, payments, and the manual ledger
     const [{ data: farms }, { data: pu }, { data: pa }, { data: le }] = await Promise.all([
       supabase.from("farms").select("id, name, phone, opening_balance").is("deleted_at", null).order("name"),
-      supabase.from("purchases").select("farm_id, total_amount, paid_amount"),
-      supabase.from("farm_payments").select("farm_id, amount"),
+      supabase.from("purchases").select("farm_id, total_amount, paid_amount, reversed_at"),
+      supabase.from("farm_payments").select("farm_id, amount, reversed_at"),
       supabase.from("supplier_ledger_entries").select("supplier_id, entry_type, amount"),
     ]);
     const purMap: Record<string, number> = {}, payMap: Record<string, number> = {}, adjMap: Record<string, number> = {};
     (pu ?? []).forEach((x: any) => {
+      if (x.reversed_at) return; // fully-reversed purchase must not inflate Purchased/Paid columns
       purMap[x.farm_id] = (purMap[x.farm_id] ?? 0) + Number(x.total_amount ?? 0);
       payMap[x.farm_id] = (payMap[x.farm_id] ?? 0) + Number(x.paid_amount ?? 0);
     });
-    (pa ?? []).forEach((x: any) => payMap[x.farm_id] = (payMap[x.farm_id] ?? 0) + Number(x.amount));
+    (pa ?? []).forEach((x: any) => {
+      if (x.reversed_at) return; // reversed payment removed from Paid column
+      payMap[x.farm_id] = (payMap[x.farm_id] ?? 0) + Number(x.amount);
+    });
     (le ?? []).forEach((x: any) => {
       const amt = Number(x.amount ?? 0);
       const sid = x.supplier_id;
