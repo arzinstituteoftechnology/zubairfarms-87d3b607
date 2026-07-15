@@ -163,7 +163,7 @@ const Inventory = () => {
   // Realtime updates so no manual refresh is needed
   useEffect(() => {
     const ch = supabase
-      .channel("inventory-live")
+      .channel("inventory-live" + "-" + Math.random().toString(36).slice(2))
       .on("postgres_changes", { event: "*", schema: "public", table: "purchases" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "supplies" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "stock_adjustments" }, () => load())

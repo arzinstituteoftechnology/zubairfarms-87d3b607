@@ -65,7 +65,7 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!session?.user) return;
     const ch = supabase
-      .channel("perm-live")
+      .channel("perm-live" + "-" + Math.random().toString(36).slice(2))
       .on("postgres_changes", { event: "*", schema: "public", table: "role_permissions" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "user_permission_overrides" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "tenant_users", filter: `user_id=eq.${session.user.id}` }, () => load())
