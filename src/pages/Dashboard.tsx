@@ -75,12 +75,12 @@ const Dashboard = () => {
       const last7 = format(subDays(new Date(selectedDate), 6), "yyyy-MM-dd");
 
       const [{ data: p }, { data: s }] = await Promise.all([
-        supabase.from("purchases").select("purchase_date, meat_type, weight_kg, rate_per_kg, total_amount").gte("purchase_date", last7).lte("purchase_date", today),
-        supabase.from("supplies").select("supply_date, meat_type, weight_kg, rate_per_kg, cost_per_kg, total_amount").gte("supply_date", last7).lte("supply_date", today),
+        supabase.from("purchases").select("purchase_date, meat_type, weight_kg, rate_per_kg, total_amount").gte("purchase_date", last7).lte("purchase_date", today).is("reversed_at", null),
+        supabase.from("supplies").select("supply_date, meat_type, weight_kg, rate_per_kg, cost_per_kg, total_amount").gte("supply_date", last7).lte("supply_date", today).is("reversed_at", null),
       ]);
-      // Pull the selected-date slice
+      // Pull the selected-date slice (reversed rows must NOT count anywhere)
       const [{ data: pAll }, { data: sAll }] = await Promise.all([
-        supabase.from("purchases").select("weight_kg, total_amount, meat_type, rate_per_kg, purchase_date").eq("purchase_date", today),
+        supabase.from("purchases").select("weight_kg, total_amount, meat_type, rate_per_kg, purchase_date").eq("purchase_date", today).is("reversed_at", null),
         supabase.from("supplies").select("weight_kg, total_amount, cost_per_kg, rate_per_kg, supply_date").eq("supply_date", today).is("reversed_at", null),
       ]);
       // Stock balance: use latest physical closing (per meat_type) on/before selectedDate,
@@ -88,7 +88,7 @@ const Dashboard = () => {
       // If no closing has ever been recorded, fall back to cumulative purchases − supplies.
       const [{ data: closings }, { data: pCumAll }, { data: sCumAll }, { data: adjCum }] = await Promise.all([
         supabase.from("stock_closings").select("meat_type, physical_stock, closing_date").lte("closing_date", today).order("closing_date", { ascending: false }),
-        supabase.from("purchases").select("meat_type, weight_kg, purchase_date").lte("purchase_date", today),
+        supabase.from("purchases").select("meat_type, weight_kg, purchase_date").lte("purchase_date", today).is("reversed_at", null),
         supabase.from("supplies").select("meat_type, weight_kg, supply_date").lte("supply_date", today).is("reversed_at", null),
         supabase.from("stock_adjustments").select("meat_type, quantity_kg, adjustment_date").lte("adjustment_date", today).is("reversed_at", null).is("original_adjustment_id", null),
       ]);
@@ -116,14 +116,17 @@ const Dashboard = () => {
           stockKg += pAll2 - sAll2 + aAll2;
         }
       });
-      // Selected-date totals for outstanding payable/receivable
-      const [{ data: pSum }, { data: sSum }] = await Promise.all([
-        supabase.from("purchases").select("total_amount, paid_amount").eq("purchase_date", today),
-        supabase.from("supplies").select("weight_kg, cost_per_kg, total_amount").eq("supply_date", today),
-      ]);
-      const [{ data: fpAll }, { data: posAll }] = await Promise.all([
-        supabase.from("farm_payments").select("amount").eq("payment_date", today),
-        supabase.from("pos_sales").select("due").eq("sale_date", today),
+      // Cumulative outstanding as-of selected date (Total Udhaar / Receivable).
+      // Reversed rows are excluded so a reversal instantly clears the balance.
+      const [
+        { data: farmsRows }, { data: puCum }, { data: fpCum }, { data: leCum },
+        { data: posCum },
+      ] = await Promise.all([
+        supabase.from("farms").select("id, opening_balance").is("deleted_at", null),
+        supabase.from("purchases").select("total_amount, paid_amount, purchase_date").lte("purchase_date", today).is("reversed_at", null),
+        supabase.from("farm_payments").select("amount, payment_date").lte("payment_date", today).is("reversed_at", null),
+        supabase.from("supplier_ledger_entries").select("entry_type, amount, entry_date, reversed_at, original_entry_id").lte("entry_date", today),
+        supabase.from("pos_sales").select("due, sale_date").lte("sale_date", today),
       ]);
       const weekStart = format(startOfWeek(new Date(selectedDate), { weekStartsOn: 1 }), "yyyy-MM-dd");
       const monthStart = format(startOfMonth(new Date(selectedDate)), "yyyy-MM-dd");
@@ -146,12 +149,28 @@ const Dashboard = () => {
       // supply row/edit modal.
       const profit = calcRealizedProfit(sAll ?? []);
 
-      // Payable to farms = total purchases - (paid_amount on purchases + farm_payments)
-      const totalPurchaseAmt = (pSum ?? []).reduce((a, x: any) => a + Number(x.total_amount ?? 0), 0);
-      const paidOnPurchases = (pSum ?? []).reduce((a, x: any) => a + Number(x.paid_amount ?? 0), 0);
-      const extraFarmPaid = (fpAll ?? []).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
-      const payableToFarms = Math.max(0, totalPurchaseAmt - paidOnPurchases - extraFarmPaid);
-      const receivableFromCustomers = (posAll ?? []).reduce((a, x: any) => a + Number(x.due ?? 0), 0);
+      // Payable to farms (Total Udhaar) — cumulative as-of selected date.
+      // Mirrors the Suppliers ledger balance math so Dashboard matches Suppliers.
+      const openingFarms = (farmsRows ?? []).reduce((a, f: any) => a + Number(f.opening_balance ?? 0), 0);
+      const totalPurchaseAmt = (puCum ?? []).reduce((a, x: any) => a + Number(x.total_amount ?? 0), 0);
+      const paidOnPurchases = (puCum ?? []).reduce((a, x: any) => a + Number(x.paid_amount ?? 0), 0);
+      const extraFarmPaid = (fpCum ?? []).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
+      let ledgerAdj = 0;
+      (leCum ?? []).forEach((x: any) => {
+        if (x.reversed_at || x.original_entry_id) return; // skip originals-of-reversals and reversal entries
+        const amt = Number(x.amount ?? 0);
+        switch (x.entry_type) {
+          case "manual_purchase":
+          case "adjustment_increase":
+            ledgerAdj += amt; break;
+          case "manual_payment":
+          case "adjustment_decrease":
+            ledgerAdj -= amt; break;
+          // opening_balance is already on farms.opening_balance; reversed_* are skipped above.
+        }
+      });
+      const payableToFarms = Math.max(0, openingFarms + totalPurchaseAmt - paidOnPurchases - extraFarmPaid + ledgerAdj);
+      const receivableFromCustomers = (posCum ?? []).reduce((a, x: any) => a + Number(x.due ?? 0), 0);
 
       const recoveryToday = (recAll ?? []).filter((x: any) => x.recovery_date === today).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
       const recoveryWeek = (recAll ?? []).filter((x: any) => x.recovery_date >= weekStart).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
@@ -180,6 +199,7 @@ const Dashboard = () => {
           .select("meat_type, rate_per_kg, purchase_date")
           .in("meat_type", mortTypes)
           .lte("purchase_date", today)
+          .is("reversed_at", null)
           .order("purchase_date", { ascending: false });
         const latestRate = new Map<string, number>();
         (rateRows ?? []).forEach((p: any) => {

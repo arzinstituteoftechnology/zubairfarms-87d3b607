@@ -333,7 +333,7 @@ const loaders: Record<string, ReportDef["load"]> = {
     const [{ data: prior }, { data: p }, { data: s }, { data: adj }] = await Promise.all([
       supabase.from("stock_closings").select("meat_type, physical_stock, closing_date")
         .lte("closing_date", asOf).order("closing_date", { ascending: false }),
-      supabase.from("purchases").select("meat_type, weight_kg, purchase_date").lte("purchase_date", asOf),
+      supabase.from("purchases").select("meat_type, weight_kg, purchase_date").lte("purchase_date", asOf).is("reversed_at", null),
       supabase.from("supplies").select("meat_type, weight_kg, supply_date").lte("supply_date", asOf).is("reversed_at", null),
       supabase.from("stock_adjustments").select("meat_type, quantity_kg, adjustment_date")
         .lte("adjustment_date", asOf).is("reversed_at", null).is("original_adjustment_id", null),
