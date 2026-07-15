@@ -120,13 +120,14 @@ const Dashboard = () => {
       // Reversed rows are excluded so a reversal instantly clears the balance.
       const [
         { data: farmsRows }, { data: puCum }, { data: fpCum }, { data: leCum },
-        { data: posCum },
+        { data: posCum }, { data: cpCum },
       ] = await Promise.all([
         supabase.from("farms").select("id, opening_balance").is("deleted_at", null),
         supabase.from("purchases").select("total_amount, paid_amount, purchase_date").lte("purchase_date", today).is("reversed_at", null),
         supabase.from("farm_payments").select("amount, payment_date").lte("payment_date", today).is("reversed_at", null),
         supabase.from("supplier_ledger_entries").select("entry_type, amount, entry_date, reversed_at, original_entry_id").lte("entry_date", today),
         supabase.from("pos_sales").select("due, sale_date").lte("sale_date", today),
+        supabase.from("customer_payments").select("amount, payment_date").lte("payment_date", today),
       ]);
       const weekStart = format(startOfWeek(new Date(selectedDate), { weekStartsOn: 1 }), "yyyy-MM-dd");
       const monthStart = format(startOfMonth(new Date(selectedDate)), "yyyy-MM-dd");
@@ -170,7 +171,11 @@ const Dashboard = () => {
         }
       });
       const payableToFarms = Math.max(0, openingFarms + totalPurchaseAmt - paidOnPurchases - extraFarmPaid + ledgerAdj);
-      const receivableFromCustomers = (posCum ?? []).reduce((a, x: any) => a + Number(x.due ?? 0), 0);
+      // Receivables = cumulative POS "due" MINUS cumulative customer payments
+      // (customer_payments do NOT write back to pos_sales.due).
+      const dueFromSales = (posCum ?? []).reduce((a, x: any) => a + Number(x.due ?? 0), 0);
+      const paidByCustomers = (cpCum ?? []).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
+      const receivableFromCustomers = Math.max(0, dueFromSales - paidByCustomers);
 
       const recoveryToday = (recAll ?? []).filter((x: any) => x.recovery_date === today).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
       const recoveryWeek = (recAll ?? []).filter((x: any) => x.recovery_date >= weekStart).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
