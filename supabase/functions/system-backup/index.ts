@@ -207,6 +207,16 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
       completed_at: new Date().toISOString(),
     }).eq("id", row.id);
 
+    // Audit trail — Requirement #8: backup operations must generate audit events.
+    await admin.from("activity_logs").insert({
+      action: "backup_create",
+      entity: "backup_history",
+      entity_id: row.id,
+      tenant_id: tenantId,
+      actor_user_id: userId,
+      metadata: { backup_type, backup_name: backupName, path, size: gzBuf.byteLength, counts, tenant_name: tenantName },
+    }).then(() => {}, () => {});
+
     // Trigger cleanup async (don't block)
     handleCleanup(admin).catch(() => {});
 
@@ -216,6 +226,14 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
     await admin.from("backup_history").update({
       status: "failed", error_message: msg, completed_at: new Date().toISOString(),
     }).eq("id", row.id);
+    await admin.from("activity_logs").insert({
+      action: "backup_create_failed",
+      entity: "backup_history",
+      entity_id: row.id,
+      tenant_id: tenantId,
+      actor_user_id: userId,
+      metadata: { backup_type, error: msg, tenant_name: tenantName },
+    }).then(() => {}, () => {});
     return json({ error: msg, backup_id: row.id }, 500);
   }
 }
