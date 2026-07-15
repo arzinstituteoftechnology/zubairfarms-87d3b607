@@ -4,7 +4,7 @@ import { useSuperAdminAuth } from "@/hooks/useSuperAdminAuth";
 import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard, Users, CreditCard, Package, Receipt,
-  Activity, Settings as SettingsIcon, LogOut, ShieldAlert, Building2, Database, Mail
+  Activity, Settings as SettingsIcon, LogOut, ShieldAlert, Building2, Database, Mail, Zap
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +18,7 @@ const items = [
   { to: "/super-admin/logs", label: "Activity Logs", icon: Activity },
   { to: "/super-admin/backups", label: "Backups", icon: Database },
   { to: "/super-admin/backup-email", label: "Backup Emails", icon: Mail },
+  { to: "/super-admin/jobs", label: "Background Jobs", icon: Zap },
   { to: "/super-admin/settings", label: "System Settings", icon: SettingsIcon },
 ];
 

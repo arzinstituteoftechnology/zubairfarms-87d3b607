@@ -41,6 +41,7 @@ import SALogs from "./pages/super-admin/ActivityLogs";
 import SASettings from "./pages/super-admin/SystemSettings";
 import SABackups from "./pages/super-admin/Backups";
 import SABackupEmail from "./pages/super-admin/BackupEmailSettings";
+import SAJobs from "./pages/super-admin/BackgroundJobs";
 import Trust from "./pages/Trust";
 import { SuperAdminAuthProvider } from "@/hooks/useSuperAdminAuth";
 import UsersPermissions from "./pages/UsersPermissions";
@@ -87,6 +88,7 @@ const App = () => (
               <Route path="settings" element={<SASettings />} />
               <Route path="backups" element={<SABackups />} />
               <Route path="backup-email" element={<SABackupEmail />} />
+              <Route path="jobs" element={<SAJobs />} />
             </Route>
             <Route element={<AppLayout />}>
               <Route path="/" element={<Dashboard />} />
