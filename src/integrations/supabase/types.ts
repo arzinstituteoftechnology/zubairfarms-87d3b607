@@ -55,6 +55,132 @@ export type Database = {
           },
         ]
       }
+      background_jobs: {
+        Row: {
+          attempts: number
+          cancelled_by: string | null
+          created_at: string
+          created_by: string | null
+          duration_ms: number | null
+          error_details: Json | null
+          finished_at: string | null
+          id: string
+          idempotency_key: string | null
+          job_type: string
+          last_error: string | null
+          locked_at: string | null
+          max_attempts: number
+          next_run_at: string
+          payload: Json
+          priority: number
+          progress: number
+          progress_message: string | null
+          result: Json | null
+          retention_expires_at: string | null
+          scheduled_at: string
+          started_at: string | null
+          status: Database["public"]["Enums"]["job_status"]
+          tenant_id: string | null
+          updated_at: string
+          worker_id: string | null
+        }
+        Insert: {
+          attempts?: number
+          cancelled_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          duration_ms?: number | null
+          error_details?: Json | null
+          finished_at?: string | null
+          id?: string
+          idempotency_key?: string | null
+          job_type: string
+          last_error?: string | null
+          locked_at?: string | null
+          max_attempts?: number
+          next_run_at?: string
+          payload?: Json
+          priority?: number
+          progress?: number
+          progress_message?: string | null
+          result?: Json | null
+          retention_expires_at?: string | null
+          scheduled_at?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["job_status"]
+          tenant_id?: string | null
+          updated_at?: string
+          worker_id?: string | null
+        }
+        Update: {
+          attempts?: number
+          cancelled_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          duration_ms?: number | null
+          error_details?: Json | null
+          finished_at?: string | null
+          id?: string
+          idempotency_key?: string | null
+          job_type?: string
+          last_error?: string | null
+          locked_at?: string | null
+          max_attempts?: number
+          next_run_at?: string
+          payload?: Json
+          priority?: number
+          progress?: number
+          progress_message?: string | null
+          result?: Json | null
+          retention_expires_at?: string | null
+          scheduled_at?: string
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["job_status"]
+          tenant_id?: string | null
+          updated_at?: string
+          worker_id?: string | null
+        }
+        Relationships: []
+      }
+      background_jobs_dead_letter: {
+        Row: {
+          attempts: number
+          created_at: string
+          error_details: Json | null
+          id: string
+          job_type: string
+          last_error: string | null
+          moved_at: string
+          original_job_id: string
+          payload: Json
+          tenant_id: string | null
+        }
+        Insert: {
+          attempts: number
+          created_at?: string
+          error_details?: Json | null
+          id?: string
+          job_type: string
+          last_error?: string | null
+          moved_at?: string
+          original_job_id: string
+          payload?: Json
+          tenant_id?: string | null
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          error_details?: Json | null
+          id?: string
+          job_type?: string
+          last_error?: string | null
+          moved_at?: string
+          original_job_id?: string
+          payload?: Json
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       backup_history: {
         Row: {
           backup_name: string | null
@@ -2121,7 +2247,68 @@ export type Database = {
         Returns: undefined
       }
       bootstrap_super_admin: { Args: never; Returns: boolean }
+      cancel_job: { Args: { _id: string }; Returns: undefined }
+      claim_next_jobs: {
+        Args: { _limit?: number; _worker_id: string }
+        Returns: {
+          attempts: number
+          cancelled_by: string | null
+          created_at: string
+          created_by: string | null
+          duration_ms: number | null
+          error_details: Json | null
+          finished_at: string | null
+          id: string
+          idempotency_key: string | null
+          job_type: string
+          last_error: string | null
+          locked_at: string | null
+          max_attempts: number
+          next_run_at: string
+          payload: Json
+          priority: number
+          progress: number
+          progress_message: string | null
+          result: Json | null
+          retention_expires_at: string | null
+          scheduled_at: string
+          started_at: string | null
+          status: Database["public"]["Enums"]["job_status"]
+          tenant_id: string | null
+          updated_at: string
+          worker_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "background_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      cleanup_background_jobs: { Args: never; Returns: number }
+      complete_job: {
+        Args: { _id: string; _result?: Json }
+        Returns: undefined
+      }
       current_tenant_id: { Args: never; Returns: string }
+      delete_job: { Args: { _id: string }; Returns: undefined }
+      enqueue_job: {
+        Args: {
+          _delay_seconds?: number
+          _idempotency_key?: string
+          _job_type: string
+          _max_attempts?: number
+          _payload: Json
+          _priority?: number
+          _retention_hours?: number
+          _tenant_id: string
+        }
+        Returns: string
+      }
+      fail_job: {
+        Args: { _details?: Json; _error: string; _id: string }
+        Returns: undefined
+      }
       has_permission: {
         Args: { _action: string; _module: string; _uid: string }
         Returns: boolean
@@ -2173,6 +2360,12 @@ export type Database = {
         Args: { _email: string; _success: boolean }
         Returns: undefined
       }
+      recover_stuck_jobs: { Args: { _stale_minutes?: number }; Returns: number }
+      report_job_progress: {
+        Args: { _id: string; _message?: string; _pct: number }
+        Returns: undefined
+      }
+      retry_job: { Args: { _id: string }; Returns: undefined }
       reverse_farm_payment: {
         Args: { p_id: string; p_notes?: string; p_reason: string }
         Returns: string
@@ -2201,6 +2394,7 @@ export type Database = {
         Args: { p_id: string; p_notes?: string; p_reason: string }
         Returns: string
       }
+      run_job_now: { Args: { _id: string }; Returns: undefined }
       seed_tenant_settings: { Args: { _tid: string }; Returns: undefined }
       soft_delete_notification: { Args: { _id: string }; Returns: undefined }
       super_admin_exists: { Args: never; Returns: boolean }
@@ -2212,6 +2406,13 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "staff" | "super_admin" | "manager"
+      job_status:
+        | "queued"
+        | "running"
+        | "succeeded"
+        | "failed"
+        | "cancelled"
+        | "dead"
       notification_priority: "low" | "normal" | "high" | "critical"
       notification_type:
         | "purchase_created"
@@ -2399,6 +2600,14 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "staff", "super_admin", "manager"],
+      job_status: [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "dead",
+      ],
       notification_priority: ["low", "normal", "high", "critical"],
       notification_type: [
         "purchase_created",
