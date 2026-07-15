@@ -199,6 +199,7 @@ const Dashboard = () => {
           .select("meat_type, rate_per_kg, purchase_date")
           .in("meat_type", mortTypes)
           .lte("purchase_date", today)
+          .is("reversed_at", null)
           .order("purchase_date", { ascending: false });
         const latestRate = new Map<string, number>();
         (rateRows ?? []).forEach((p: any) => {
