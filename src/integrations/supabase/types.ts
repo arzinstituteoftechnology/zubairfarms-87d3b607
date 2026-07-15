@@ -399,6 +399,68 @@ export type Database = {
           },
         ]
       }
+      email_notification_queue: {
+        Row: {
+          attempts: number
+          created_at: string
+          id: string
+          last_error: string | null
+          max_attempts: number
+          next_attempt_at: string
+          notification_id: string | null
+          recipient_email: string
+          recipient_user_id: string
+          sent_at: string | null
+          status: string
+          template: string
+          template_data: Json
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          max_attempts?: number
+          next_attempt_at?: string
+          notification_id?: string | null
+          recipient_email: string
+          recipient_user_id: string
+          sent_at?: string | null
+          status?: string
+          template?: string
+          template_data?: Json
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          max_attempts?: number
+          next_attempt_at?: string
+          notification_id?: string | null
+          recipient_email?: string
+          recipient_user_id?: string
+          sent_at?: string | null
+          status?: string
+          template?: string
+          template_data?: Json
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_notification_queue_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       expense_categories: {
         Row: {
           created_at: string
@@ -634,6 +696,113 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      notification_preferences: {
+        Row: {
+          created_at: string
+          email: boolean
+          id: string
+          in_app: boolean
+          min_priority: Database["public"]["Enums"]["notification_priority"]
+          module: string
+          muted_until: string | null
+          tenant_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: boolean
+          id?: string
+          in_app?: boolean
+          min_priority?: Database["public"]["Enums"]["notification_priority"]
+          module?: string
+          muted_until?: string | null
+          tenant_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: boolean
+          id?: string
+          in_app?: boolean
+          min_priority?: Database["public"]["Enums"]["notification_priority"]
+          module?: string
+          muted_until?: string | null
+          tenant_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          dedupe_key: string | null
+          deleted_at: string | null
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          is_read: boolean
+          message: string
+          metadata: Json
+          module: string
+          priority: Database["public"]["Enums"]["notification_priority"]
+          read_at: string | null
+          tenant_id: string | null
+          title: string
+          type: Database["public"]["Enums"]["notification_type"]
+          user_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          dedupe_key?: string | null
+          deleted_at?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          is_read?: boolean
+          message: string
+          metadata?: Json
+          module: string
+          priority?: Database["public"]["Enums"]["notification_priority"]
+          read_at?: string | null
+          tenant_id?: string | null
+          title: string
+          type: Database["public"]["Enums"]["notification_type"]
+          user_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          dedupe_key?: string | null
+          deleted_at?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          is_read?: boolean
+          message?: string
+          metadata?: Json
+          module?: string
+          priority?: Database["public"]["Enums"]["notification_priority"]
+          read_at?: string | null
+          tenant_id?: string | null
+          title?: string
+          type?: Database["public"]["Enums"]["notification_type"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       payment_methods: {
         Row: {
@@ -1967,6 +2136,39 @@ export type Database = {
       is_business_user: { Args: { _uid: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
       is_tenant_owner: { Args: { _uid: string }; Returns: boolean }
+      mark_all_notifications_read: { Args: never; Returns: number }
+      mark_notification_read: { Args: { _id: string }; Returns: undefined }
+      notify_admins_of_tenant: {
+        Args: {
+          _actor: string
+          _dedupe: string
+          _entity_id: string
+          _entity_type: string
+          _message: string
+          _metadata: Json
+          _module: string
+          _priority: Database["public"]["Enums"]["notification_priority"]
+          _tenant_id: string
+          _title: string
+          _type: Database["public"]["Enums"]["notification_type"]
+        }
+        Returns: undefined
+      }
+      notify_super_admins: {
+        Args: {
+          _actor: string
+          _dedupe: string
+          _entity_id: string
+          _entity_type: string
+          _message: string
+          _metadata: Json
+          _module: string
+          _priority: Database["public"]["Enums"]["notification_priority"]
+          _title: string
+          _type: Database["public"]["Enums"]["notification_type"]
+        }
+        Returns: undefined
+      }
       record_super_admin_login_attempt: {
         Args: { _email: string; _success: boolean }
         Returns: undefined
@@ -2000,6 +2202,7 @@ export type Database = {
         Returns: string
       }
       seed_tenant_settings: { Args: { _tid: string }; Returns: undefined }
+      soft_delete_notification: { Args: { _id: string }; Returns: undefined }
       super_admin_exists: { Args: never; Returns: boolean }
       super_admin_login_lockout: { Args: { _email: string }; Returns: number }
       tenant_has_active_subscription: {
@@ -2009,6 +2212,38 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "staff" | "super_admin" | "manager"
+      notification_priority: "low" | "normal" | "high" | "critical"
+      notification_type:
+        | "purchase_created"
+        | "purchase_reversed"
+        | "supply_created"
+        | "supply_reversed"
+        | "recovery_created"
+        | "recovery_reversed"
+        | "expense_created"
+        | "farm_payment_created"
+        | "farm_payment_reversed"
+        | "customer_payment_created"
+        | "stock_closing_created"
+        | "stock_adjustment_created"
+        | "stock_adjustment_reversed"
+        | "ledger_entry_created"
+        | "ledger_entry_reversed"
+        | "daily_closing_finalized"
+        | "factory_reset"
+        | "business_reset"
+        | "backup_created"
+        | "backup_restored"
+        | "backup_failed"
+        | "user_created"
+        | "user_updated"
+        | "user_removed"
+        | "permission_changed"
+        | "role_permission_changed"
+        | "password_changed"
+        | "login_alert"
+        | "super_admin_login"
+        | "system"
       shop_ledger_type:
         | "opening_balance"
         | "manual_supply"
@@ -2164,6 +2399,39 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "staff", "super_admin", "manager"],
+      notification_priority: ["low", "normal", "high", "critical"],
+      notification_type: [
+        "purchase_created",
+        "purchase_reversed",
+        "supply_created",
+        "supply_reversed",
+        "recovery_created",
+        "recovery_reversed",
+        "expense_created",
+        "farm_payment_created",
+        "farm_payment_reversed",
+        "customer_payment_created",
+        "stock_closing_created",
+        "stock_adjustment_created",
+        "stock_adjustment_reversed",
+        "ledger_entry_created",
+        "ledger_entry_reversed",
+        "daily_closing_finalized",
+        "factory_reset",
+        "business_reset",
+        "backup_created",
+        "backup_restored",
+        "backup_failed",
+        "user_created",
+        "user_updated",
+        "user_removed",
+        "permission_changed",
+        "role_permission_changed",
+        "password_changed",
+        "login_alert",
+        "super_admin_login",
+        "system",
+      ],
       shop_ledger_type: [
         "opening_balance",
         "manual_supply",
