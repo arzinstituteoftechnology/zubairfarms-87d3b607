@@ -87,7 +87,7 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-4">
-      <SeoHead title="Notifications" description="View and manage your notification feed" />
+      <SeoHead title="Notifications" description="View and manage your notification feed" path="/notifications" />
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h1 className="text-2xl font-semibold flex items-center gap-2"><Bell className="h-6 w-6" /> Notifications</h1>
         <div className="flex gap-2">
