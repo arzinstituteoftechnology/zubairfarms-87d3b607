@@ -105,6 +105,7 @@ const MortalityRegister = () => {
           .select("meat_type, rate_per_kg, purchase_date")
           .in("meat_type", uniqueTypes)
           .lte("purchase_date", to)
+          .is("reversed_at", null)
           .order("purchase_date", { ascending: false });
         const perType = new Map<string, { date: string; rate: number }[]>();
         (pRates ?? []).forEach((p: any) => {
@@ -141,10 +142,12 @@ const MortalityRegister = () => {
           .gte("adjustment_date", start).lte("adjustment_date", end),
         supabase.from("purchases")
           .select("meat_type, weight_kg, purchase_date")
-          .gte("purchase_date", start).lte("purchase_date", end),
+          .gte("purchase_date", start).lte("purchase_date", end)
+          .is("reversed_at", null),
         supabase.from("purchases")
           .select("meat_type, rate_per_kg, purchase_date")
           .lte("purchase_date", end)
+          .is("reversed_at", null)
           .order("purchase_date", { ascending: false }),
       ]);
 
