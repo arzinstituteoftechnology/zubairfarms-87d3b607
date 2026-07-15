@@ -416,6 +416,18 @@ async function resetTenant(
     console.error(`[reset] verification failed for tenant=${tenantId}`, remaining_counts);
   }
 
+  // Factory reset returns the tenant to its "brand-new state". After wiping
+  // settings/lookup tables (meat types, units, payment methods, expense
+  // categories, adjustment reasons, business profile) we MUST re-seed the
+  // defaults or the tenant loses every dropdown the UI depends on.
+  if (!verification_failed && mode === "factory_reset") {
+    const { error: seedErr } = await admin.rpc("seed_tenant_settings", { _tid: tenantId });
+    if (seedErr) {
+      console.error(`[reset] re-seed failed for tenant=${tenantId}`, seedErr);
+      errors["seed_tenant_settings.rpc"] = { message: seedErr.message, code: seedErr.code ?? null };
+    }
+  }
+
   // Detailed audit log — tenant-scoped, never affects other tenants.
   await admin.from("activity_logs").insert({
     actor_user_id: actor.id,
