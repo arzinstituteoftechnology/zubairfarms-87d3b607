@@ -207,6 +207,16 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
       completed_at: new Date().toISOString(),
     }).eq("id", row.id);
 
+    // Audit trail — Requirement #8: backup operations must generate audit events.
+    await admin.from("activity_logs").insert({
+      action: "backup_create",
+      entity: "backup_history",
+      entity_id: row.id,
+      tenant_id: tenantId,
+      actor_user_id: userId,
+      metadata: { backup_type, backup_name: backupName, path, size: gzBuf.byteLength, counts, tenant_name: tenantName },
+    }).then(() => {}, () => {});
+
     // Trigger cleanup async (don't block)
     handleCleanup(admin).catch(() => {});
 
@@ -216,6 +226,14 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
     await admin.from("backup_history").update({
       status: "failed", error_message: msg, completed_at: new Date().toISOString(),
     }).eq("id", row.id);
+    await admin.from("activity_logs").insert({
+      action: "backup_create_failed",
+      entity: "backup_history",
+      entity_id: row.id,
+      tenant_id: tenantId,
+      actor_user_id: userId,
+      metadata: { backup_type, error: msg, tenant_name: tenantName },
+    }).then(() => {}, () => {});
     return json({ error: msg, backup_id: row.id }, 500);
   }
 }
@@ -345,6 +363,24 @@ async function handleRestore(admin: any, body: any, userId: string | null) {
     const { error, count } = await admin.from(t).upsert(payload, { onConflict: "id", count: "exact" });
     results[t] = { restored: count ?? payload.length, error: error?.message };
   }
+
+  // Audit trail — Requirement #8: restore operations must generate audit events.
+  const restoredTotal = Object.values(results).reduce((a, r: any) => a + (r.restored ?? 0), 0);
+  const restoreErrors = Object.entries(results).filter(([, r]: any) => r?.error).map(([t, r]: any) => ({ table: t, error: r.error }));
+  await admin.from("activity_logs").insert({
+    action: "backup_restore",
+    entity: "backup_history",
+    entity_id: body.backup_id ?? null,
+    tenant_id: payload?.tenant_id ?? null,
+    actor_user_id: userId,
+    metadata: {
+      backup_id: body.backup_id ?? null,
+      pre_restore_backup_id: preBody.backup_id,
+      total_restored: restoredTotal,
+      table_errors: restoreErrors,
+      preserved_super_admins: [...superIds],
+    },
+  }).then(() => {}, () => {});
 
   return json({ ok: true, pre_restore_backup_id: preBody.backup_id, results, preserved_super_admins: [...superIds] });
 }
