@@ -60,7 +60,7 @@ export function useSettingsLists(): SettingsLists {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    const ch = supabase.channel("settings-lists-live")
+    const ch = supabase.channel("settings-lists-live" + "-" + Math.random().toString(36).slice(2))
       .on("postgres_changes", { event: "*", schema: "public", table: "meat_types" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "units" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "payment_methods" }, load)
