@@ -142,7 +142,7 @@ export default function MonitoringPage() {
   useEffect(() => { loadErrors(); }, [errStatus, errSeverity, loadErrors]);
 
   useEffect(() => {
-    const ch = supabase.channel("monitoring-live")
+    const ch = supabase.channel("monitoring-live" + "-" + Math.random().toString(36).slice(2))
       .on("postgres_changes", { event: "*", schema: "public", table: "system_health_snapshots" }, () => { loadHealth(); loadLive(); })
       .on("postgres_changes", { event: "*", schema: "public", table: "system_errors" }, loadErrors)
       .on("postgres_changes", { event: "*", schema: "public", table: "alert_incidents" }, loadAlerts)

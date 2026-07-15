@@ -63,11 +63,12 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     if (!user) return;
-    const ch = supabase.channel(`notif-page-${user.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` }, load)
+    const ch = supabase
+      .channel(`notif-page-${user.id}-${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [user, tab, module, priority]);
+  }, [user?.id]);
 
   const filtered = useMemo(() => {
     if (!q) return items;

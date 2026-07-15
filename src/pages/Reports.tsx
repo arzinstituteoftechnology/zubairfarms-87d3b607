@@ -690,7 +690,7 @@ const Reports = () => {
 
   // Realtime: refresh on any change to relevant tables
   useEffect(() => {
-    const ch = supabase.channel("reports-live")
+    const ch = supabase.channel("reports-live" + "-" + Math.random().toString(36).slice(2))
       .on("postgres_changes", { event: "*", schema: "public", table: "purchases" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "supplies" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "shop_recoveries" }, load)

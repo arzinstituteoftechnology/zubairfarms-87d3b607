@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -57,18 +57,21 @@ export function useNotifications(pageSize = 20) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  const refreshRef = useRef(refresh);
+  useEffect(() => { refreshRef.current = refresh; }, [refresh]);
+
   useEffect(() => {
     if (!user) return;
     const ch = supabase
-      .channel(`notif-${user.id}`)
+      .channel(`notif-${user.id}-${Math.random().toString(36).slice(2)}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
-        () => refresh()
+        () => refreshRef.current()
       )
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [user, refresh]);
+  }, [user?.id]);
 
   const markRead = useCallback(async (id: string) => {
     await supabase.rpc("mark_notification_read", { _id: id });

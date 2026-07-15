@@ -63,7 +63,7 @@ export default function BackgroundJobsPage() {
   useEffect(() => { load(); }, [status, type]);
 
   useEffect(() => {
-    const ch = supabase.channel("bg-jobs-admin")
+    const ch = supabase.channel("bg-jobs-admin" + "-" + Math.random().toString(36).slice(2))
       .on("postgres_changes", { event: "*", schema: "public", table: "background_jobs" }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };

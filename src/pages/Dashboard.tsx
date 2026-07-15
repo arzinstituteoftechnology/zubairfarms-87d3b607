@@ -257,7 +257,7 @@ const Dashboard = () => {
   // (purchases, supplies, adjustments, closings, recoveries). This ensures
   // reversing a Daily Closing adjustment immediately updates stock & loss KPIs.
   useEffect(() => {
-    const ch = supabase.channel("dashboard-live")
+    const ch = supabase.channel("dashboard-live" + "-" + Math.random().toString(36).slice(2))
       .on("postgres_changes", { event: "*", schema: "public", table: "stock_adjustments" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "stock_closings" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "purchases" }, () => load())
