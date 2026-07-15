@@ -7,8 +7,19 @@ const corsHeaders = {
 };
 
 // Tables that hold business data — included in every backup snapshot.
+// NOTE: keep this list in sync with the reset function's table sets. Every
+// tenant-scoped table in `public` must be listed here or a tenant backup will
+// silently omit user-customized data (units, meat types, business profile, …)
+// and a restore will leave that data behind.
 const BUSINESS_TABLES = [
+  // Master data
   "shops", "farms", "customers", "trucks",
+  // Per-tenant configuration / lookups
+  "business_profiles",
+  "meat_types", "units", "payment_methods",
+  "expense_categories", "stock_adjustment_reasons",
+  "user_permission_overrides",
+  // Transactions
   "purchases", "supplies", "deliveries",
   "supplier_ledger_entries", "shop_ledger_entries",
   "shop_recoveries", "farm_payments", "customer_payments", "payments",
@@ -260,6 +271,9 @@ async function handleCleanup(admin: any) {
   // emergency + pre_restore: keep last 10
   await trim("emergency", 10);
   await trim("pre_restore", 10);
+  // pre_reset backups are generated before every Business/Factory Reset. Without
+  // trimming they accumulate forever and fill storage.
+  await trim("pre_reset", 10);
 
   return json({ ok: true, deleted: deleted.length });
 }
@@ -312,6 +326,9 @@ async function handleRestore(admin: any, body: any, userId: string | null) {
 
   // Order: parents first
   const parents = ["tenants", "subscription_plans", "subscriptions", "tenant_users", "profiles", "user_roles", "system_settings", "settings",
+    "business_profiles",
+    "meat_types", "units", "payment_methods", "expense_categories", "stock_adjustment_reasons",
+    "user_permission_overrides",
     "shops", "farms", "customers", "trucks"];
   const children = ["purchases", "supplies", "deliveries", "supplier_ledger_entries", "shop_ledger_entries",
     "shop_recoveries", "farm_payments", "customer_payments", "payments", "expenses", "pos_sales", "pos_sale_items", "activity_logs"];
