@@ -348,6 +348,17 @@ const Dashboard = () => {
         <KpiCard icon={PackageMinus} label="Today's Inventory Loss" value={fmtKg(kpi.inventoryLossToday)} sub="All negative adjustments" tone={kpi.inventoryLossToday > 0 ? "danger" : "default"} />
       </div>
 
+      {reconcile && (
+        <div className={`flex items-center gap-2 text-xs rounded-md border px-3 py-2 ${reconcile.ok ? "border-success/40 bg-success/5 text-success" : "border-destructive/40 bg-destructive/5 text-destructive"}`}>
+          {reconcile.ok
+            ? <><CheckCircle2 className="h-4 w-4" /><span>Receivable from Shops = Σ Shop Ledger closing balances — Verified</span></>
+            : <><AlertTriangle className="h-4 w-4" /><span>Reconciliation mismatch: delta {fmtMoney(reconcile.delta)} — review Shop Ledger balances.</span></>
+          }
+        </div>
+      )}
+
+      <ShopReceivableDialog open={receivableOpen} onOpenChange={setReceivableOpen} asOf={selectedDate} />
+
       <Card>
         <CardHeader><CardTitle className="text-base">Inventory Loss Breakdown by Reason</CardTitle></CardHeader>
         <CardContent>
