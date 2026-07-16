@@ -416,29 +416,49 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
           </div>
         </div>
 
-        {/* Health + Projection strip */}
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-lg border p-4 flex items-start justify-between gap-3">
+        {/* Health gauge + Largest Debtor/Creditor + Projection */}
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className="rounded-lg border p-4">
+            <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Financial Health</div>
+            <HealthGauge score={score} status={health} />
+            <div className="text-[11px] text-muted-foreground mt-2 text-center">{health.desc}</div>
+          </div>
+          <div className="rounded-lg border p-4 space-y-3">
             <div>
-              <div className="text-xs uppercase tracking-wider text-muted-foreground">Financial Health</div>
-              <div className="mt-2"><Badge className={`text-sm px-3 py-1 ${TONE_BADGE[health.tone]}`} variant="outline">{health.label}</Badge></div>
-              <div className="text-xs text-muted-foreground mt-2">{health.desc}</div>
+              <div className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><Crown className="h-3.5 w-3.5 text-primary" />Largest Debtor</div>
+              {largestDebtor ? (
+                <button onClick={() => navigate(`/shop-ledger?shop=${largestDebtor.id}`)} className="mt-1 text-left w-full group">
+                  <div className="font-semibold group-hover:text-primary transition-colors">{largestDebtor.name}</div>
+                  <div className="text-lg font-bold text-primary">{fmtMoney(largestDebtor.balance)}</div>
+                  <div className="text-[11px] text-muted-foreground">Avg age {largestDebtor.ageDays}d — click to open ledger</div>
+                </button>
+              ) : <div className="text-xs text-muted-foreground mt-1">No outstanding shops.</div>}
+            </div>
+            <div className="border-t pt-3">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><AlertOctagon className="h-3.5 w-3.5 text-destructive" />Largest Creditor</div>
+              {largestCreditor ? (
+                <button onClick={() => navigate("/suppliers")} className="mt-1 text-left w-full group">
+                  <div className="font-semibold group-hover:text-destructive transition-colors">{largestCreditor.name}</div>
+                  <div className="text-lg font-bold text-destructive">{fmtMoney(largestCreditor.balance)}</div>
+                  <div className="text-[11px] text-muted-foreground">Last purchase {largestCreditor.lastPurchase ?? "—"} — pay first</div>
+                </button>
+              ) : <div className="text-xs text-muted-foreground mt-1">No pending farm payables.</div>}
             </div>
           </div>
           <div className="rounded-lg border p-4">
             <div className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Cash Projection</div>
-            <div className="grid grid-cols-3 gap-2 text-sm">
-              <div>
-                <div className="text-xs text-muted-foreground">Expected In</div>
-                <div className="font-semibold text-success flex items-center gap-1"><TrendingUp className="h-3.5 w-3.5" />{fmtMoney(kpis.receivable)}</div>
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground flex items-center gap-1"><TrendingUp className="h-3.5 w-3.5 text-success" />Expected In</span>
+                <span className="font-semibold text-success">{fmtMoney(kpis.receivable)}</span>
               </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Expected Out</div>
-                <div className="font-semibold text-destructive flex items-center gap-1"><TrendingDown className="h-3.5 w-3.5" />{fmtMoney(kpis.payable)}</div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground flex items-center gap-1"><TrendingDown className="h-3.5 w-3.5 text-destructive" />Expected Out</span>
+                <span className="font-semibold text-destructive">{fmtMoney(kpis.payable)}</span>
               </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Net Expected</div>
-                <div className={`font-semibold ${kpis.nwc > 0 ? "text-success" : kpis.nwc < 0 ? "text-destructive" : ""}`}>{fmtMoney(kpis.nwc)}</div>
+              <div className="flex items-center justify-between border-t pt-3">
+                <span className="text-xs font-medium">Net Expected</span>
+                <span className={`font-bold text-base ${kpis.nwc > 0 ? "text-success" : kpis.nwc < 0 ? "text-destructive" : ""}`}>{fmtMoney(kpis.nwc)}</span>
               </div>
             </div>
           </div>
