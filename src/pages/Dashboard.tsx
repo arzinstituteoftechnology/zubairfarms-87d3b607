@@ -17,6 +17,7 @@ import { useSettingsLists, activeOnly } from "@/hooks/useSettingsLists";
 import { calcRealizedProfit } from "@/lib/profit";
 import { computeShopBalances, totalReceivableFromShops } from "@/lib/shopReceivable";
 import { ShopReceivableDialog } from "@/components/ShopReceivableDialog";
+import { FinancialHealthSection } from "@/components/FinancialHealthSection";
 
 interface KPI {
   purchaseKg: number; purchaseAmt: number;
@@ -358,6 +359,8 @@ const Dashboard = () => {
       )}
 
       <ShopReceivableDialog open={receivableOpen} onOpenChange={setReceivableOpen} asOf={selectedDate} />
+
+      <FinancialHealthSection asOf={selectedDate} />
 
       <Card>
         <CardHeader><CardTitle className="text-base">Inventory Loss Breakdown by Reason</CardTitle></CardHeader>
