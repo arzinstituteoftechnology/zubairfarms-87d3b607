@@ -37,21 +37,24 @@ interface TopFarm { id: string; name: string; balance: number; lastPurchase: str
 interface ChartPoint { date: string; label: string; receivable: number; payable: number; nwc: number }
 interface TrendPoint { date: string; label: string; receivable: number; recovery: number; outstanding: number }
 
-type HealthStatus = { label: string; tone: "excellent" | "good" | "warning" | "critical"; desc: string };
+type HealthTone = "excellent" | "healthy" | "monitor" | "warning" | "critical";
+type HealthStatus = { label: string; tone: HealthTone; desc: string };
 
-function computeHealth(receivable: number, payable: number): HealthStatus {
-  if (receivable >= payable) return { label: "Excellent", tone: "excellent", desc: "Receivables cover payables." };
-  const gap = payable > 0 ? (payable - receivable) / payable : 0;
-  if (gap <= 0.10) return { label: "Good", tone: "good", desc: "Receivable within 10% of payable." };
-  if (gap <= 0.25) return { label: "Warning", tone: "warning", desc: "Payable exceeds receivable by 10–25%." };
-  return { label: "Critical", tone: "critical", desc: "Payable exceeds receivable by more than 25%." };
+/** Threshold-based status from coverage ratio (%). */
+function statusFromRatio(ratio: number): HealthStatus {
+  if (ratio >= 120) return { label: "Excellent", tone: "excellent", desc: "Coverage ≥ 120% — strong liquidity." };
+  if (ratio >= 100) return { label: "Healthy",   tone: "healthy",   desc: "Coverage 100–119% — receivables cover payables." };
+  if (ratio >= 90)  return { label: "Monitor",   tone: "monitor",   desc: "Coverage 90–99% — watch closely." };
+  if (ratio >= 75)  return { label: "Warning",   tone: "warning",   desc: "Coverage 75–89% — action needed." };
+  return              { label: "Critical",  tone: "critical",  desc: "Coverage < 75% — urgent recovery required." };
 }
 
-const TONE_BADGE: Record<HealthStatus["tone"], string> = {
+const TONE_BADGE: Record<HealthTone, string> = {
   excellent: "bg-success/15 text-success border-success/30",
-  good: "bg-primary/15 text-primary border-primary/30",
-  warning: "bg-orange-500/15 text-orange-600 border-orange-500/30",
-  critical: "bg-destructive/15 text-destructive border-destructive/30",
+  healthy:   "bg-success/15 text-success border-success/30",
+  monitor:   "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30",
+  warning:   "bg-orange-500/15 text-orange-600 border-orange-500/30",
+  critical:  "bg-destructive/15 text-destructive border-destructive/30",
 };
 
 /** Health score 0–150 = receivable ÷ payable × 100 (200 max when payable is 0). */
@@ -68,12 +71,13 @@ function HealthGauge({ score, status }: { score: number; status: HealthStatus })
   const cx = 110, cy = 100, r = 82;
   const nx = cx + Math.cos(rad) * (r - 8);
   const ny = cy - Math.sin(rad) * (r - 8);
-  // Zones (percent → color). Boundaries in the 0..150 space, converted to fractions of the 180° arc.
+  // Zones aligned to enterprise thresholds (0–150% coverage arc).
   const zones = [
-    { from: 0, to: 60, color: "hsl(var(--destructive))" },   // Critical
-    { from: 60, to: 90, color: "hsl(24 95% 53%)" },          // Warning (orange)
-    { from: 90, to: 100, color: "hsl(var(--primary))" },     // Good
-    { from: 100, to: 150, color: "hsl(var(--success))" },    // Excellent
+    { from: 0,   to: 75,  color: "hsl(var(--destructive))" },      // Critical
+    { from: 75,  to: 90,  color: "hsl(24 95% 53%)" },              // Warning (orange)
+    { from: 90,  to: 100, color: "hsl(48 96% 53%)" },              // Monitor (yellow)
+    { from: 100, to: 120, color: "hsl(var(--success))" },          // Healthy
+    { from: 120, to: 150, color: "hsl(var(--success))" },          // Excellent
   ];
   const arc = (from: number, to: number) => {
     const a1 = ((150 - from) / 150) * 180;
@@ -89,10 +93,11 @@ function HealthGauge({ score, status }: { score: number; status: HealthStatus })
           <path key={i} d={arc(z.from, z.to)} stroke={z.color} strokeWidth={16} fill="none" strokeLinecap="butt" />
         ))}
         {/* Tick labels */}
-        <text x="18"  y="118" fontSize="9" fill="hsl(var(--muted-foreground))">Critical</text>
-        <text x="70"  y="24"  fontSize="9" fill="hsl(var(--muted-foreground))">Warning</text>
-        <text x="130" y="24"  fontSize="9" fill="hsl(var(--muted-foreground))">Good</text>
-        <text x="172" y="118" fontSize="9" fill="hsl(var(--muted-foreground))">Excellent</text>
+        <text x="14"  y="118" fontSize="9" fill="hsl(var(--muted-foreground))">Critical</text>
+        <text x="62"  y="24"  fontSize="9" fill="hsl(var(--muted-foreground))">Warning</text>
+        <text x="102" y="18"  fontSize="9" fill="hsl(var(--muted-foreground))">Monitor</text>
+        <text x="140" y="24"  fontSize="9" fill="hsl(var(--muted-foreground))">Healthy</text>
+        <text x="170" y="118" fontSize="9" fill="hsl(var(--muted-foreground))">Excellent</text>
         {/* Needle */}
         <line x1={cx} y1={cy} x2={nx} y2={ny} stroke="hsl(var(--foreground))" strokeWidth={3} strokeLinecap="round" />
         <circle cx={cx} cy={cy} r={6} fill="hsl(var(--foreground))" />
@@ -457,9 +462,13 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
         <div>
           <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Cash Flow Summary</div>
           <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-            <Kpi icon={Store} label="Receivable from Shops" value={fmtMoney(kpis.receivable)} tone="info" />
+            <Kpi icon={Store} label="Receivable from Shops" value={fmtMoney(kpis.receivable)} tone="success" />
             <Kpi icon={Wallet} label="Payable to Farms" value={fmtMoney(kpis.payable)} tone="danger" />
-            <Kpi icon={Scale} label="Net Working Capital" value={fmtMoney(kpis.nwc)} tone={kpis.nwc > 0 ? "success" : kpis.nwc < 0 ? "danger" : "default"} />
+            <Kpi icon={Scale} label="Net Working Capital" value={fmtMoney(kpis.nwc)} tone={(() => {
+              const scale = Math.max(kpis.receivable, kpis.payable, 1);
+              if (Math.abs(kpis.nwc) < scale * 0.05) return "warning";
+              return kpis.nwc > 0 ? "success" : "danger";
+            })()} />
             <Kpi icon={Percent} label="Cash Collection %" value={`${kpis.collectionPct.toFixed(1)}%`} tone={kpis.collectionPct >= 80 ? "success" : kpis.collectionPct >= 50 ? "info" : "danger"} sub={`Recovery ${fmtMoney(kpis.totalRecovery)} / Supply ${fmtMoney(kpis.totalSupplyValue)}`} />
           </div>
         </div>
