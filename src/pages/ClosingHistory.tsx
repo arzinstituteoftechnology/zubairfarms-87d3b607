@@ -48,6 +48,9 @@ type Row = {
   finalized_at?: string | null;
   finalized_by?: string | null;
   finalizer_name?: string | null;
+  reversed_by?: string | null;
+  reverser_name?: string | null;
+  surplus_value?: number | null;
 };
 
 const ClosingHistory = () => {
@@ -64,7 +67,7 @@ const ClosingHistory = () => {
       setLoading(true);
       let q = supabase
         .from("stock_closings")
-        .select("id, closing_date, meat_type, opening_stock, system_stock, physical_stock, difference, reason, created_by, created_at, variance_type, status, reversed_at, reversal_reason, mortality_weight, positive_adjustments_kg, negative_adjustments_kg, expected_closing_stock, variance_weight, shortage_cost, finalized_at, finalized_by")
+        .select("id, closing_date, meat_type, opening_stock, system_stock, physical_stock, difference, reason, created_by, created_at, variance_type, status, reversed_at, reversed_by, reversal_reason, mortality_weight, positive_adjustments_kg, negative_adjustments_kg, expected_closing_stock, variance_weight, shortage_cost, finalized_at, finalized_by, tenant_id")
         .gte("closing_date", from).lte("closing_date", to)
         .order("closing_date", { ascending: false }).order("meat_type");
       if (meatType !== "all") q = q.eq("meat_type", meatType);
@@ -78,6 +81,7 @@ const ClosingHistory = () => {
       const ids = Array.from(new Set([
         ...list.map((r) => r.created_by).filter(Boolean) as string[],
         ...list.map((r) => r.finalized_by).filter(Boolean) as string[],
+        ...list.map((r) => r.reversed_by).filter(Boolean) as string[],
       ]));
       if (ids.length) {
         const { data: profs } = await supabase.from("profiles").select("id, full_name").in("id", ids);
@@ -86,8 +90,19 @@ const ClosingHistory = () => {
         list.forEach((r) => {
           r.creator_name = r.created_by ? map.get(r.created_by) ?? null : null;
           r.finalizer_name = r.finalized_by ? map.get(r.finalized_by) ?? null : null;
+          r.reverser_name = r.reversed_by ? map.get(r.reversed_by) ?? null : null;
         });
       }
+      // Surplus value valuation using rolling 30-day weighted-average purchase rate
+      const surplusRows = list.filter((r) => Number(r.variance_weight ?? r.difference ?? 0) > 0 && !r.reversed_at);
+      await Promise.all(surplusRows.map(async (r: any) => {
+        const { data } = await supabase.rpc("compute_closing_war", {
+          p_tenant: r.tenant_id, p_meat: r.meat_type, p_date: r.closing_date,
+        });
+        const war = Number(data ?? 0);
+        const varKg = Number(r.variance_weight ?? r.difference ?? 0);
+        r.surplus_value = Math.round(Math.max(0, varKg) * war * 100) / 100;
+      }));
       setRows(list); setLoading(false);
     })();
   }, [from, to, meatType, varianceFilter]);
@@ -99,7 +114,8 @@ const ClosingHistory = () => {
       physical: a.physical + Number(r.physical_stock),
       diff: a.diff + Number(r.difference),
       shortageCost: a.shortageCost + Number(r.shortage_cost ?? 0),
-    }), { opening: 0, system: 0, physical: 0, diff: 0, shortageCost: 0 });
+      surplusValue: a.surplusValue + Number(r.surplus_value ?? 0),
+    }), { opening: 0, system: 0, physical: 0, diff: 0, shortageCost: 0, surplusValue: 0 });
   }, [rows]);
 
   return (
