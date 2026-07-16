@@ -125,6 +125,7 @@ const StockClosing = () => {
   const [audit, setAudit] = useState<Adjustment[]>([]);
   const [reverseTarget, setReverseTarget] = useState<Adjustment | null>(null);
   const [confirmIdx, setConfirmIdx] = useState<number | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<"draft" | "finalized">("draft");
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
   const [shops, setShops] = useState<{ id: string; name: string }[]>([]);
 
