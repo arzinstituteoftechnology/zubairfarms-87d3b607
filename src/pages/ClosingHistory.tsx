@@ -12,7 +12,15 @@ import { SeoHead } from "@/components/SeoHead";
 
 const REASON_LABELS: Record<string, string> = {
   weight_loss: "Weight Loss", mortality: "Mortality", wastage: "Wastage",
-  damage: "Damage", theft: "Theft", other: "Other",
+  damage: "Damage", theft: "Theft", other: "Other", leakage: "Leakage",
+  scale_difference: "Scale Difference", counting_difference: "Counting Difference",
+  purchase_entry_error: "Purchase Entry Error", supply_entry_error: "Supply Entry Error",
+  opening_stock_correction: "Opening Stock Correction",
+  weight_gain: "Weight Gain", moisture_gain: "Moisture Gain",
+  purchase_under_recorded: "Purchase Under-recorded",
+  supply_over_recorded: "Supply Over-recorded",
+  measurement_correction: "Measurement Correction",
+  previous_closing_correction: "Previous Closing Correction",
 };
 
 type Row = {
@@ -27,6 +35,13 @@ type Row = {
   created_by: string | null;
   created_at: string;
   creator_name?: string | null;
+  variance_type?: "balanced" | "shortage" | "surplus" | null;
+  status?: "draft" | "finalized" | null;
+  reversed_at?: string | null;
+  reversal_reason?: string | null;
+  mortality_weight?: number | null;
+  positive_adjustments_kg?: number | null;
+  negative_adjustments_kg?: number | null;
 };
 
 const ClosingHistory = () => {
@@ -34,6 +49,7 @@ const ClosingHistory = () => {
   const [from, setFrom] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [to, setTo] = useState(today);
   const [meatType, setMeatType] = useState<string>("all");
+  const [varianceFilter, setVarianceFilter] = useState<string>("all"); // all|balanced|shortage|surplus|reversed
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -42,10 +58,12 @@ const ClosingHistory = () => {
       setLoading(true);
       let q = supabase
         .from("stock_closings")
-        .select("id, closing_date, meat_type, opening_stock, system_stock, physical_stock, difference, reason, created_by, created_at")
+        .select("id, closing_date, meat_type, opening_stock, system_stock, physical_stock, difference, reason, created_by, created_at, variance_type, status, reversed_at, reversal_reason, mortality_weight, positive_adjustments_kg, negative_adjustments_kg")
         .gte("closing_date", from).lte("closing_date", to)
         .order("closing_date", { ascending: false }).order("meat_type");
       if (meatType !== "all") q = q.eq("meat_type", meatType);
+      if (varianceFilter === "reversed") q = q.not("reversed_at", "is", null);
+      else if (varianceFilter !== "all") q = q.eq("variance_type", varianceFilter as any);
       const { data } = await q;
       const list = (data ?? []) as Row[];
 
@@ -58,7 +76,7 @@ const ClosingHistory = () => {
       }
       setRows(list); setLoading(false);
     })();
-  }, [from, to, meatType]);
+  }, [from, to, meatType, varianceFilter]);
 
   const totals = useMemo(() => {
     return rows.reduce((a, r) => ({
@@ -98,6 +116,19 @@ const ClosingHistory = () => {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground block mb-1">Variance</label>
+              <Select value={varianceFilter} onValueChange={setVarianceFilter}>
+                <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="balanced">Balanced</SelectItem>
+                  <SelectItem value="shortage">Shortage</SelectItem>
+                  <SelectItem value="surplus">Surplus</SelectItem>
+                  <SelectItem value="reversed">Reversed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <Button variant="outline" size="sm" onClick={() => window.print()}>
             <Printer className="h-4 w-4 mr-1" /> Print
@@ -114,6 +145,7 @@ const ClosingHistory = () => {
                   <TableHead className="text-end">System</TableHead>
                   <TableHead className="text-end">Physical</TableHead>
                   <TableHead className="text-end">Difference</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Reason</TableHead>
                   <TableHead>Created By</TableHead>
                   <TableHead>Created At</TableHead>
@@ -121,11 +153,11 @@ const ClosingHistory = () => {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">No closing records in this range.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">No closing records in this range.</TableCell></TableRow>
                 ) : rows.map((r) => (
-                  <TableRow key={r.id}>
+                  <TableRow key={r.id} className={r.reversed_at ? "opacity-60" : ""}>
                     <TableCell className="force-ltr">{r.closing_date}</TableCell>
                     <TableCell className="font-medium">{r.meat_type}</TableCell>
                     <TableCell className="text-end">{fmtKg(r.opening_stock)}</TableCell>
@@ -133,6 +165,22 @@ const ClosingHistory = () => {
                     <TableCell className="text-end">{fmtKg(r.physical_stock)}</TableCell>
                     <TableCell className={`text-end font-semibold ${Number(r.difference) < 0 ? "text-destructive" : Number(r.difference) > 0 ? "text-success" : ""}`}>
                       {Number(r.difference) > 0 ? "+" : ""}{fmtKg(r.difference)}
+                    </TableCell>
+                    <TableCell>
+                      {r.reversed_at ? (
+                        <span className="text-xs uppercase tracking-wider text-destructive">Reversed</span>
+                      ) : r.variance_type === "shortage" ? (
+                        <span className="text-xs uppercase tracking-wider text-destructive">Shortage</span>
+                      ) : r.variance_type === "surplus" ? (
+                        <span className="text-xs uppercase tracking-wider text-warning">Surplus</span>
+                      ) : r.variance_type === "balanced" ? (
+                        <span className="text-xs uppercase tracking-wider text-success">Balanced</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                      {r.status === "draft" && !r.reversed_at && (
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">draft</div>
+                      )}
                     </TableCell>
                     <TableCell>{r.reason ? REASON_LABELS[r.reason] ?? r.reason : "—"}</TableCell>
                     <TableCell className="text-sm">{r.creator_name ?? "—"}</TableCell>
@@ -148,7 +196,7 @@ const ClosingHistory = () => {
                     <TableCell className={`text-end ${totals.diff < 0 ? "text-destructive" : totals.diff > 0 ? "text-success" : ""}`}>
                       {totals.diff > 0 ? "+" : ""}{fmtKg(totals.diff)}
                     </TableCell>
-                    <TableCell colSpan={3} />
+                    <TableCell colSpan={4} />
                   </TableRow>
                 )}
               </TableBody>

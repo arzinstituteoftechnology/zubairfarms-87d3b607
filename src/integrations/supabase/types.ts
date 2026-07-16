@@ -1758,18 +1758,34 @@ export type Database = {
           created_at: string
           created_by: string | null
           difference: number
+          expected_closing_stock: number | null
+          finalized_at: string | null
+          finalized_by: string | null
           id: string
           meat_type: string
+          mortality_weight: number
+          negative_adjustments_kg: number
           notes: string | null
           opening_stock: number
           physical_stock: number
+          positive_adjustments_kg: number
           purchases_kg: number
           reason: string | null
           reason_id: string | null
+          reversal_notes: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by: string | null
+          shortage_cost: number
+          status: Database["public"]["Enums"]["stock_closing_status"]
           supplies_kg: number
           system_stock: number
           tenant_id: string
           updated_at: string
+          variance_type:
+            | Database["public"]["Enums"]["stock_variance_type"]
+            | null
+          variance_weight: number | null
         }
         Insert: {
           adjustments_kg?: number
@@ -1777,18 +1793,34 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           difference?: number
+          expected_closing_stock?: number | null
+          finalized_at?: string | null
+          finalized_by?: string | null
           id?: string
           meat_type: string
+          mortality_weight?: number
+          negative_adjustments_kg?: number
           notes?: string | null
           opening_stock?: number
           physical_stock?: number
+          positive_adjustments_kg?: number
           purchases_kg?: number
           reason?: string | null
           reason_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
+          shortage_cost?: number
+          status?: Database["public"]["Enums"]["stock_closing_status"]
           supplies_kg?: number
           system_stock?: number
           tenant_id: string
           updated_at?: string
+          variance_type?:
+            | Database["public"]["Enums"]["stock_variance_type"]
+            | null
+          variance_weight?: number | null
         }
         Update: {
           adjustments_kg?: number
@@ -1796,18 +1828,34 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           difference?: number
+          expected_closing_stock?: number | null
+          finalized_at?: string | null
+          finalized_by?: string | null
           id?: string
           meat_type?: string
+          mortality_weight?: number
+          negative_adjustments_kg?: number
           notes?: string | null
           opening_stock?: number
           physical_stock?: number
+          positive_adjustments_kg?: number
           purchases_kg?: number
           reason?: string | null
           reason_id?: string | null
+          reversal_notes?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
+          shortage_cost?: number
+          status?: Database["public"]["Enums"]["stock_closing_status"]
           supplies_kg?: number
           system_stock?: number
           tenant_id?: string
           updated_at?: string
+          variance_type?:
+            | Database["public"]["Enums"]["stock_variance_type"]
+            | null
+          variance_weight?: number | null
         }
         Relationships: [
           {
@@ -2585,6 +2633,10 @@ export type Database = {
         Args: { p_id: string; p_notes?: string; p_reason: string }
         Returns: string
       }
+      reverse_stock_closing: {
+        Args: { p_id: string; p_notes?: string; p_reason: string }
+        Returns: string
+      }
       reverse_supplier_ledger_entry: {
         Args: { p_id: string; p_notes?: string; p_reason: string }
         Returns: string
@@ -2659,6 +2711,8 @@ export type Database = {
         | "reversed_adjustment_increase"
         | "reversed_adjustment_decrease"
         | "reversed_opening_balance"
+      stock_closing_status: "draft" | "finalized"
+      stock_variance_type: "balanced" | "shortage" | "surplus"
       supplier_ledger_type:
         | "opening_balance"
         | "manual_purchase"
@@ -2858,6 +2912,8 @@ export const Constants = {
         "reversed_adjustment_decrease",
         "reversed_opening_balance",
       ],
+      stock_closing_status: ["draft", "finalized"],
+      stock_variance_type: ["balanced", "shortage", "surplus"],
       supplier_ledger_type: [
         "opening_balance",
         "manual_purchase",

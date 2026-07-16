@@ -17,17 +17,39 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Info } from "lucide-react";
+import { Info, CheckCircle2, Lock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 type Reason = string;
-const DEFAULT_REASONS: { value: string; label: string }[] = [
-  { value: "weight_loss", label: "Weight Loss" },
+// Reasons available when Physical < Expected (stock is missing)
+const SHORTAGE_REASONS: { value: string; label: string }[] = [
   { value: "mortality", label: "Mortality" },
+  { value: "weight_loss", label: "Weight Loss" },
   { value: "wastage", label: "Wastage" },
+  { value: "leakage", label: "Leakage" },
   { value: "damage", label: "Damage" },
   { value: "theft", label: "Theft" },
+  { value: "scale_difference", label: "Scale Difference" },
+  { value: "counting_difference", label: "Counting Difference" },
+  { value: "purchase_entry_error", label: "Purchase Entry Error" },
+  { value: "supply_entry_error", label: "Supply Entry Error" },
+  { value: "opening_stock_correction", label: "Opening Stock Correction" },
   { value: "other", label: "Other" },
 ];
+// Reasons available when Physical > Expected (extra stock)
+const SURPLUS_REASONS: { value: string; label: string }[] = [
+  { value: "weight_gain", label: "Weight Gain" },
+  { value: "scale_difference", label: "Scale Difference" },
+  { value: "moisture_gain", label: "Moisture Gain" },
+  { value: "purchase_under_recorded", label: "Purchase Under-recorded" },
+  { value: "supply_over_recorded", label: "Supply Over-recorded" },
+  { value: "counting_difference", label: "Counting Difference" },
+  { value: "measurement_correction", label: "Measurement Correction" },
+  { value: "opening_stock_correction", label: "Opening Stock Correction" },
+  { value: "previous_closing_correction", label: "Previous Closing Correction" },
+  { value: "other", label: "Other" },
+];
+const ALL_REASONS = [...SHORTAGE_REASONS, ...SURPLUS_REASONS];
 
 type Row = {
   meat_type: string;
@@ -36,6 +58,9 @@ type Row = {
   purchases: number;
   supplies: number;
   adjustments: number;
+  mortality: number;             // absolute kg (from mortality adjustments)
+  positiveAdjustments: number;   // sum of quantity_kg > 0 (excluding mortality)
+  negativeAdjustments: number;   // sum of quantity_kg < 0 (absolute, excluding mortality)
   system: number;
   physical: string; // input
   reason: Reason | "";
@@ -44,6 +69,8 @@ type Row = {
   shop_id?: string | null;
   bird_count?: string; // input as string
   closingId?: string;
+  status?: "draft" | "finalized";
+  reversed?: boolean;
   saving?: boolean;
 };
 
@@ -67,13 +94,30 @@ const StockClosing = () => {
   const { selectedDate } = useLedgerDate();
   const { user, tenant, role, isSuperAdmin } = useAuth();
   const { meatTypes, adjustmentReasons } = useSettingsLists();
-  const REASONS = (adjustmentReasons.length
-    ? activeOnly(adjustmentReasons).map(r => ({ value: r.code, label: r.name, id: r.id }))
-    : DEFAULT_REASONS.map(r => ({ ...r, id: undefined as string | undefined })));
-  // Include archived reasons so historical rows still resolve a label
-  const REASON_LABEL: Record<string, string> = Object.fromEntries(
-    (adjustmentReasons ?? []).map(r => [r.code, r.name])
-  );
+  // Custom tenant-defined reasons (if any) are merged so both the shortage/surplus
+  // curated lists AND any tenant-specific reasons remain available.
+  const CUSTOM_REASONS = activeOnly(adjustmentReasons).map(r => ({ value: r.code, label: r.name, id: r.id }));
+  const REASON_LABEL: Record<string, string> = {
+    ...Object.fromEntries(ALL_REASONS.map(r => [r.value, r.label])),
+    ...Object.fromEntries((adjustmentReasons ?? []).map(r => [r.code, r.name])),
+  };
+  const reasonIdFor = (code: string) =>
+    CUSTOM_REASONS.find(x => x.value === code)?.id ?? null;
+  // Backwards-compat merged reasons list used for lookups and legacy dropdowns
+  const REASONS: { value: string; label: string; id?: string | null }[] = [
+    ...CUSTOM_REASONS,
+    ...ALL_REASONS.filter(r => !CUSTOM_REASONS.some(c => c.value === r.value)),
+  ];
+  // Diff-aware reason picker: shortage list when Physical < Expected, surplus list when >
+  const reasonsForDiff = (diff: number | null): { value: string; label: string }[] => {
+    if (diff == null || Math.abs(diff) < 0.001) return [];
+    const base = diff < 0 ? SHORTAGE_REASONS : SURPLUS_REASONS;
+    // Append any tenant-custom reasons the base list doesn't already include
+    const extras = CUSTOM_REASONS
+      .filter(c => !base.some(b => b.value === c.value))
+      .map(c => ({ value: c.value, label: c.label }));
+    return [...base, ...extras];
+  };
   const ACTIVE_MEATS = activeOnly(meatTypes).map(m => m.name);
   const canReverse = role === "admin" || isSuperAdmin;
   const [rows, setRows] = useState<Row[]>([]);
@@ -81,6 +125,7 @@ const StockClosing = () => {
   const [audit, setAudit] = useState<Adjustment[]>([]);
   const [reverseTarget, setReverseTarget] = useState<Adjustment | null>(null);
   const [confirmIdx, setConfirmIdx] = useState<number | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<"draft" | "finalized">("draft");
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
   const [shops, setShops] = useState<{ id: string; name: string }[]>([]);
 
@@ -117,7 +162,7 @@ const StockClosing = () => {
     const [{ data: p }, { data: s }, { data: adj }, { data: existing }, { data: pPrior }, { data: sPrior }, { data: adjPrior }] = await Promise.all([
       supabase.from("purchases").select("meat_type, weight_kg").eq("purchase_date", selectedDate).is("reversed_at", null),
       supabase.from("supplies").select("meat_type, weight_kg").eq("supply_date", selectedDate).is("reversed_at", null),
-      supabase.from("stock_adjustments").select("meat_type, quantity_kg").eq("adjustment_date", selectedDate).is("reversed_at", null).is("original_adjustment_id", null).is("closing_id", null),
+      supabase.from("stock_adjustments").select("meat_type, quantity_kg, reason").eq("adjustment_date", selectedDate).is("reversed_at", null).is("original_adjustment_id", null).is("closing_id", null),
       supabase.from("stock_closings").select("*").eq("closing_date", selectedDate),
       // Fallback opening: cumulative purchases/supplies/adjustments BEFORE selectedDate
       // (reversed rows must NOT contribute to stock — audit only)
@@ -134,6 +179,21 @@ const StockClosing = () => {
     const pMap = sumBy(p ?? null, "meat_type", "weight_kg");
     const sMap = sumBy(s ?? null, "meat_type", "weight_kg");
     const aMap = sumBy(adj ?? null, "meat_type", "quantity_kg");
+    // Split day's adjustments (excluding those already linked to a closing) into mortality / positive / negative
+    const mortalityMap = new Map<string, number>();
+    const posAdjMap = new Map<string, number>();
+    const negAdjMap = new Map<string, number>();
+    (adj ?? []).forEach((r: any) => {
+      const mt = r.meat_type as string;
+      const q = num(r.quantity_kg);
+      if ((r.reason ?? "").toLowerCase() === "mortality") {
+        mortalityMap.set(mt, num(mortalityMap.get(mt)) + Math.abs(q));
+      } else if (q > 0) {
+        posAdjMap.set(mt, num(posAdjMap.get(mt)) + q);
+      } else if (q < 0) {
+        negAdjMap.set(mt, num(negAdjMap.get(mt)) + Math.abs(q));
+      }
+    });
     const pPriorMap = sumBy(pPrior ?? null, "meat_type", "weight_kg");
     const sPriorMap = sumBy(sPrior ?? null, "meat_type", "weight_kg");
     const aPriorMap = sumBy(adjPrior ?? null, "meat_type", "quantity_kg");
@@ -168,10 +228,15 @@ const StockClosing = () => {
       return {
         meat_type: mt,
         opening, openingSource, purchases, supplies, adjustments, system,
+        mortality: round2(mortalityMap.get(mt) ?? 0),
+        positiveAdjustments: round2(posAdjMap.get(mt) ?? 0),
+        negativeAdjustments: round2(negAdjMap.get(mt) ?? 0),
         physical: ex ? String(num(ex.physical_stock)) : "",
         reason: (ex?.reason as Reason) ?? "",
         notes: ex?.notes ?? "",
         closingId: ex?.id,
+        status: (ex?.status as "draft" | "finalized") ?? undefined,
+        reversed: !!ex?.reversed_at,
       };
     });
     setRows(nextRows);
@@ -192,8 +257,9 @@ const StockClosing = () => {
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   };
 
-  const requestSave = (i: number) => {
+  const requestSave = (i: number, targetStatus: "draft" | "finalized" = "draft") => {
     const r = rows[i];
+    if (r.status === "finalized" || r.reversed) { toast.error("Closing is finalized/reversed — cannot edit"); return; }
     if (r.physical === "" || isNaN(Number(r.physical))) {
       toast.error("Enter physical stock");
       return;
@@ -204,10 +270,15 @@ const StockClosing = () => {
       toast.error("Select an adjustment reason for the difference");
       return;
     }
+    if (r.reason === "other" && !r.notes.trim()) {
+      toast.error("Notes are required when reason is 'Other'");
+      return;
+    }
+    setPendingStatus(targetStatus);
     setConfirmIdx(i);
   };
 
-  const saveRow = async (i: number) => {
+  const saveRow = async (i: number, targetStatus: "draft" | "finalized" = "draft") => {
     const r = rows[i];
     if (r.physical === "" || isNaN(Number(r.physical))) {
       toast.error("Enter physical stock");
@@ -221,7 +292,9 @@ const StockClosing = () => {
     }
     updateRow(i, { saving: true });
 
-    const payload = {
+    const varianceType: "balanced" | "shortage" | "surplus" =
+      Math.abs(difference) < 0.001 ? "balanced" : difference < 0 ? "shortage" : "surplus";
+    const payload: any = {
       tenant_id: tenant?.id,
       closing_date: selectedDate,
       meat_type: r.meat_type,
@@ -229,9 +302,18 @@ const StockClosing = () => {
       purchases_kg: r.purchases,
       supplies_kg: r.supplies,
       adjustments_kg: r.adjustments,
+      mortality_weight: r.mortality,
+      positive_adjustments_kg: r.positiveAdjustments,
+      negative_adjustments_kg: r.negativeAdjustments,
+      expected_closing_stock: r.system,
+      variance_weight: difference,
+      variance_type: varianceType,
       system_stock: r.system,
       physical_stock: physical,
       difference,
+      status: targetStatus,
+      finalized_at: targetStatus === "finalized" ? new Date().toISOString() : null,
+      finalized_by: targetStatus === "finalized" ? (user?.id ?? null) : null,
       reason: Math.abs(difference) > 0.001 && r.reason ? (r.reason as any) : null,
       reason_id: Math.abs(difference) > 0.001 && r.reason
         ? (REASONS.find(x => x.value === r.reason)?.id ?? null)
@@ -317,6 +399,7 @@ const StockClosing = () => {
                   <TableHead className="text-end">System Stock</TableHead>
                   <TableHead className="text-end">Physical Stock</TableHead>
                   <TableHead className="text-end">Difference</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
                   <TableHead>Reason</TableHead>
                   <TableHead>Notes</TableHead>
                   <TableHead />
@@ -324,9 +407,9 @@ const StockClosing = () => {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">No meat types configured.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center py-10 text-muted-foreground">No meat types configured.</TableCell></TableRow>
                 ) : rows.map((r, i) => {
                   const physicalNum = r.physical === "" ? null : Number(r.physical);
                   const diff = physicalNum == null || isNaN(physicalNum) ? null : round2(physicalNum - r.system);
@@ -359,18 +442,32 @@ const StockClosing = () => {
                         />
                       </TableCell>
                       <TableCell className={`text-end ${diffClass}`}>{diff == null ? "—" : fmtKg(diff)}</TableCell>
+                      <TableCell className="text-center">
+                        {diff == null ? (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        ) : Math.abs(diff) < 0.001 ? (
+                          <Badge variant="outline" className="text-success border-success/40">Balanced</Badge>
+                        ) : diff < 0 ? (
+                          <Badge variant="outline" className="text-destructive border-destructive/40">Shortage</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-warning border-warning/40">Surplus</Badge>
+                        )}
+                        {r.status === "finalized" && (
+                          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 inline-flex items-center gap-1"><Lock className="h-2.5 w-2.5" /> finalized</div>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Select
                           value={isZero ? "__none__" : (r.reason || undefined)}
                           onValueChange={(v) => updateRow(i, { reason: v as Reason })}
-                          disabled={isZero}
+                          disabled={isZero || r.status === "finalized" || r.reversed}
                         >
-                          <SelectTrigger className="h-8 w-[140px]">
+                          <SelectTrigger className="h-8 w-[160px]">
                             <SelectValue placeholder={isZero ? "None" : "Select reason"} />
                           </SelectTrigger>
                           <SelectContent>
                             {isZero && <SelectItem value="__none__">None</SelectItem>}
-                            {REASONS.map((x) => <SelectItem key={x.value} value={x.value}>{x.label}</SelectItem>)}
+                            {reasonsForDiff(diff).map((x) => <SelectItem key={x.value} value={x.value}>{x.label}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </TableCell>
@@ -380,13 +477,26 @@ const StockClosing = () => {
                           value={r.notes}
                           onChange={(e) => updateRow(i, { notes: e.target.value })}
                           placeholder="Optional"
+                          disabled={r.status === "finalized" || r.reversed}
                         />
                       </TableCell>
                       <TableCell className="text-end">
-                        <Button size="sm" onClick={() => requestSave(i)} disabled={!!r.saving}>
-                          <Save className="h-4 w-4 mr-1" />
-                          {r.closingId ? "Update" : "Save"}
-                        </Button>
+                        <div className="flex items-center gap-2 justify-end">
+                          {r.status !== "finalized" && !r.reversed && (
+                            <Button size="sm" variant="outline" onClick={() => requestSave(i, "draft")} disabled={!!r.saving}>
+                              <Save className="h-4 w-4 mr-1" />
+                              {r.closingId ? "Update" : "Save Draft"}
+                            </Button>
+                          )}
+                          {r.status !== "finalized" && !r.reversed && r.closingId && (
+                            <Button size="sm" onClick={() => requestSave(i, "finalized")} disabled={!!r.saving}>
+                              <CheckCircle2 className="h-4 w-4 mr-1" /> Finalize
+                            </Button>
+                          )}
+                          {r.status === "finalized" && (
+                            <span className="text-xs text-muted-foreground inline-flex items-center gap-1"><Lock className="h-3 w-3" /> Reverse to edit</span>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -534,8 +644,8 @@ const StockClosing = () => {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={(e) => { e.preventDefault(); const idx = confirmIdx; setConfirmIdx(null); if (idx !== null) saveRow(idx); }}>
-                    Save Closing
+                  <AlertDialogAction onClick={(e) => { e.preventDefault(); const idx = confirmIdx; const ts = pendingStatus; setConfirmIdx(null); if (idx !== null) saveRow(idx, ts); }}>
+                    {pendingStatus === "finalized" ? "Finalize Closing" : "Save Draft"}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </>
