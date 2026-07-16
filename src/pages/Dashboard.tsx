@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtKg, fmtMoney } from "@/lib/constants";
-import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull, PackageMinus, Store } from "lucide-react";
+import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull, PackageMinus, Store, Scale, CheckCircle2, AlertTriangle } from "lucide-react";
 import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
@@ -16,6 +16,7 @@ import { SeoHead } from "@/components/SeoHead";
 import { useSettingsLists, activeOnly } from "@/hooks/useSettingsLists";
 import { calcRealizedProfit } from "@/lib/profit";
 import { computeShopBalances, totalReceivableFromShops } from "@/lib/shopReceivable";
+import { ShopReceivableDialog } from "@/components/ShopReceivableDialog";
 
 interface KPI {
   purchaseKg: number; purchaseAmt: number;
@@ -64,6 +65,8 @@ const Dashboard = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [kpi, setKpi] = useState<KPI>(emptyKpi);
+  const [receivableOpen, setReceivableOpen] = useState(false);
+  const [reconcile, setReconcile] = useState<{ ok: boolean; delta: number } | null>(null);
   const [chart, setChart] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { selectedDate, setSelectedDate, today: currentDate, isToday } = useLedgerDate();
@@ -142,6 +145,9 @@ const Dashboard = () => {
       ]);
       const shopBalances = computeShopBalances(shopsRows as any, suForShops as any, shopLe as any, revRecov as any, today);
       const receivableFromShops = totalReceivableFromShops(shopBalances);
+      // Reconciliation: sum of positive balances should equal the KPI value.
+      const sumPositive = shopBalances.reduce((a, b) => a + Math.max(0, b.balance), 0);
+      setReconcile({ ok: Math.abs(sumPositive - receivableFromShops) < 0.01, delta: sumPositive - receivableFromShops });
       const weekStart = format(startOfWeek(new Date(selectedDate), { weekStartsOn: 1 }), "yyyy-MM-dd");
       const monthStart = format(startOfMonth(new Date(selectedDate)), "yyyy-MM-dd");
       const { data: recAll } = await supabase
@@ -317,7 +323,15 @@ const Dashboard = () => {
           value={fmtMoney(kpi.receivableFromShops)}
           sub="Total outstanding"
           tone="info"
-          onClick={() => navigate("/shop-ledger")}
+          onClick={() => setReceivableOpen(true)}
+        />
+        <KpiCard
+          icon={Scale}
+          label="Net Working Capital"
+          value={fmtMoney(kpi.receivableFromShops - kpi.payableToFarms)}
+          sub="Net Cash Position"
+          tone={(kpi.receivableFromShops - kpi.payableToFarms) > 0 ? "success" : (kpi.receivableFromShops - kpi.payableToFarms) < 0 ? "danger" : "default"}
+          onClick={() => navigate("/reports")}
         />
         {customersEnabled && (
           <KpiCard icon={Users} label={t("dashboard.receivable")} value={fmtMoney(kpi.receivableFromCustomers)} sub={t("dashboard.customer_dues")} tone="danger" />
