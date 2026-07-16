@@ -473,6 +473,88 @@ const Dashboard = () => {
 
       <ShopReceivableDialog open={receivableOpen} onOpenChange={setReceivableOpen} asOf={selectedDate} />
 
+      {/* Daily Closing status banner */}
+      {kpi.closingStatus === "draft" || kpi.closingStatus === "mixed" ? (
+        <div className="flex items-start gap-2 rounded-md border border-orange-500/40 bg-orange-500/5 px-3 py-2 text-sm">
+          <FileWarning className="h-4 w-4 mt-0.5 text-orange-600 shrink-0" />
+          <div className="flex-1">
+            <div className="font-semibold text-orange-700">Daily Closing for {selectedDate} is still Draft.</div>
+            <div className="text-xs text-muted-foreground">Profit and next-day opening stock are provisional until Finalized.</div>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => navigate("/stock-closing")}>Open Closing</Button>
+        </div>
+      ) : kpi.closingStatus === "finalized" ? (
+        <div className="flex items-center gap-2 rounded-md border border-success/40 bg-success/5 px-3 py-2 text-xs text-success">
+          <CheckCircle2 className="h-4 w-4" />
+          <span>Closing finalized — variance posted and next-day opening stock generated.</span>
+        </div>
+      ) : kpi.closingStatus === "reversed" ? (
+        <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <span>Closing reversed — linked stock adjustment and financial effect removed.</span>
+        </div>
+      ) : kpi.hasActivityWithoutClosing ? (
+        <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/5 px-3 py-2 text-sm">
+          <AlertTriangle className="h-4 w-4 mt-0.5 text-warning shrink-0" />
+          <div className="flex-1">
+            <div className="font-semibold text-warning">Daily Closing is missing for this date.</div>
+            <div className="text-xs text-muted-foreground">Transactions exist for {selectedDate} but no closing has been recorded.</div>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => navigate("/stock-closing")}>Open Closing</Button>
+        </div>
+      ) : null}
+
+      {/* Closing variance cards */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <KpiCard
+          icon={ClipboardCheck}
+          label="Closing Status"
+          value={
+            kpi.closingStatus === "none" ? "Not Created"
+            : kpi.closingStatus === "draft" ? "Draft"
+            : kpi.closingStatus === "finalized" ? "Finalized"
+            : kpi.closingStatus === "reversed" ? "Reversed"
+            : "Mixed"
+          }
+          sub={selectedDate}
+          tone={kpi.closingStatus === "finalized" ? "success" : kpi.closingStatus === "reversed" ? "danger" : kpi.closingStatus === "draft" || kpi.closingStatus === "mixed" ? "warning" : "default"}
+          onClick={() => navigate("/stock-closing")}
+        />
+        <KpiCard
+          icon={TrendingDown}
+          label={`Shortage on ${selectedDate}`}
+          value={fmtKg(kpi.shortageKg)}
+          sub="Physical stock below expected"
+          tone={kpi.shortageKg > 0 ? "danger" : "default"}
+          onClick={() => navigate("/closing-history")}
+        />
+        <KpiCard
+          icon={TrendingUp}
+          label={`Surplus on ${selectedDate}`}
+          value={fmtKg(kpi.surplusKg)}
+          sub="Physical stock above expected"
+          tone={kpi.surplusKg > 0 ? "warning" : "default"}
+          onClick={() => navigate("/closing-history")}
+        />
+        <KpiCard
+          icon={Wallet}
+          label={`Shortage Cost on ${selectedDate}`}
+          value={fmtMoney(kpi.shortageCostAll)}
+          sub={kpi.finalizedShortageCost < kpi.shortageCostAll ? "Provisional — closing not finalized" : "Deducted from Net Profit"}
+          tone={kpi.shortageCostAll > 0 ? "danger" : "default"}
+          onClick={() => navigate("/stock-closing")}
+        />
+        <KpiCard
+          icon={Wallet}
+          label="Surplus Est. Value"
+          value={fmtMoney(kpi.surplusEstValue)}
+          sub="Estimated — not recognized as profit"
+          tone={kpi.surplusEstValue > 0 ? "warning" : "default"}
+        />
+        <KpiCard icon={Boxes} label={`Expected Closing on ${selectedDate}`} value={fmtKg(kpi.expectedClosingKg)} sub="Opening + Purchases − Supplies + Adj − Mortality" />
+        <KpiCard icon={Boxes} label={`Physical Closing on ${selectedDate}`} value={fmtKg(kpi.physicalClosingKg)} sub="Entered on closing sheet" tone={kpi.closingStatus === "finalized" ? "success" : "default"} />
+      </div>
+
       <FinancialHealthSection asOf={selectedDate} />
 
       <Card>
