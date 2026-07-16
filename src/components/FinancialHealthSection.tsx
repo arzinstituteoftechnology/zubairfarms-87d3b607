@@ -299,8 +299,8 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
     return () => { supabase.removeChannel(ch); };
   }, [load]);
 
-  const health = computeHealth(kpis.receivable, kpis.payable);
   const score = healthScore(kpis.receivable, kpis.payable);
+  const health = statusFromRatio(score);
   const largestDebtor = topShops[0] ?? null;
   const largestCreditor = topFarms[0] ?? null;
 
