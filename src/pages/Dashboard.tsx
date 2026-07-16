@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtKg, fmtMoney } from "@/lib/constants";
-import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull, PackageMinus, Store, Scale, CheckCircle2, AlertTriangle, Fuel, Receipt } from "lucide-react";
+import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull, PackageMinus, Store, Scale, CheckCircle2, AlertTriangle, Fuel, Receipt, ClipboardCheck, TrendingDown, Lock, FileWarning } from "lucide-react";
 import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
@@ -27,6 +27,17 @@ interface KPI {
   grossProfit: number;
   generalExpense: number;
   deliveryExpense: number;
+  finalizedShortageCost: number;
+  // Closing variance KPIs for the selected date (all meat types aggregated)
+  closingStatus: "none" | "draft" | "finalized" | "reversed" | "mixed";
+  expectedClosingKg: number;
+  physicalClosingKg: number;
+  shortageKg: number;
+  surplusKg: number;
+  shortageCostAll: number;      // finalized + draft (for KPI card display)
+  surplusEstValue: number;
+  hasActivityWithoutClosing: boolean;
+  closingCount: number;
   payableToFarms: number; receivableFromCustomers: number;
   receivableFromShops: number;
   recoveryToday: number; recoveryWeek: number; recoveryMonth: number;
@@ -46,7 +57,7 @@ const DEFAULT_REASONS: { value: string; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 const emptyBreakdown = (): Record<string, number> => Object.fromEntries(DEFAULT_REASONS.map(r => [r.value, 0]));
-const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, grossProfit: 0, generalExpense: 0, deliveryExpense: 0, payableToFarms: 0, receivableFromCustomers: 0, receivableFromShops: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0, inventoryLossToday: 0, breakdownToday: emptyBreakdown(), breakdownWeek: emptyBreakdown(), breakdownMonth: emptyBreakdown() };
+const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, grossProfit: 0, generalExpense: 0, deliveryExpense: 0, finalizedShortageCost: 0, closingStatus: "none", expectedClosingKg: 0, physicalClosingKg: 0, shortageKg: 0, surplusKg: 0, shortageCostAll: 0, surplusEstValue: 0, hasActivityWithoutClosing: false, closingCount: 0, payableToFarms: 0, receivableFromCustomers: 0, receivableFromShops: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0, inventoryLossToday: 0, breakdownToday: emptyBreakdown(), breakdownWeek: emptyBreakdown(), breakdownMonth: emptyBreakdown() };
 
 const KpiCard = ({ icon: Icon, label, value, sub, tone = "default", onClick }: any) => (
   <Card onClick={onClick} className={onClick ? "cursor-pointer hover:border-primary/50 transition-colors" : undefined}>
@@ -176,8 +187,54 @@ const Dashboard = () => {
       const purchaseAmt = sum(pAll, "total_amount");
       const supplyKg = sum(sAll, "weight_kg");
       const supplyAmt = sum(sAll, "total_amount");
+      // ---- Daily Closing Variance for the selected date ------------------
+      // Load all closings for the selected date to compute variance KPIs and
+      // finalized shortage cost (only finalized-unreversed contributes to Net Profit).
+      const { data: closingsToday } = await supabase
+        .from("stock_closings")
+        .select("id, meat_type, opening_stock, purchases_kg, supplies_kg, positive_adjustments_kg, negative_adjustments_kg, mortality_weight, expected_closing_stock, physical_stock, variance_weight, variance_type, shortage_cost, status, reversed_at, closing_date")
+        .eq("closing_date", today);
+      const closingRows = (closingsToday ?? []) as any[];
+      // WAR per meat_type (batched) for KPI display of the "provisional" draft cost
+      const closingMeats = Array.from(new Set(closingRows.map((c) => c.meat_type)));
+      const warMap = new Map<string, number>();
+      await Promise.all(closingMeats.map(async (mt) => {
+        const tenantId = (closingRows.find((c) => c.meat_type === mt) as any)?.tenant_id;
+        const { data } = await supabase.rpc("compute_closing_war", { p_tenant: tenantId ?? null, p_meat: mt, p_date: today });
+        warMap.set(mt, Number(data ?? 0));
+      }));
+      let expectedClosingKg = 0, physicalClosingKg = 0, shortageKg = 0, surplusKg = 0;
+      let shortageCostAll = 0, surplusEstValue = 0, finalizedShortageCost = 0;
+      let draftCount = 0, finalCount = 0, reversedCount = 0;
+      closingRows.forEach((c) => {
+        if (c.reversed_at) { reversedCount++; return; }
+        if (c.status === "finalized") finalCount++;
+        else draftCount++;
+        const exp = Number(c.expected_closing_stock ?? c.system_stock ?? 0);
+        const phys = Number(c.physical_stock ?? 0);
+        const vw = Number(c.variance_weight ?? (phys - exp));
+        expectedClosingKg += exp;
+        physicalClosingKg += phys;
+        if (vw < 0) shortageKg += Math.abs(vw);
+        else if (vw > 0) surplusKg += vw;
+        const war = warMap.get(c.meat_type) ?? 0;
+        const sCost = Number(c.shortage_cost ?? 0) || (vw < 0 ? Math.abs(vw) * war : 0);
+        shortageCostAll += sCost;
+        if (vw > 0) surplusEstValue += vw * war;
+        if (c.status === "finalized" && !c.reversed_at) finalizedShortageCost += sCost;
+      });
+      const closingStatus: KPI["closingStatus"] =
+        closingRows.length === 0 ? "none"
+        : reversedCount === closingRows.length ? "reversed"
+        : draftCount > 0 && finalCount > 0 ? "mixed"
+        : finalCount > 0 ? "finalized"
+        : "draft";
+      const hasActivityWithoutClosing =
+        closingRows.length === 0 &&
+        (((pAll ?? []).length + (sAll ?? []).length) > 0);
+
       // Net Profit (single source of truth: src/lib/netProfit.ts):
-      //   Gross Profit (per-supply-line) − General Expense − Delivery Expense
+      //   Gross Profit − General Expense − Delivery Expense − Finalized Shortage Cost
       // Gross Profit stays PER SUPPLY LINE: Σ supplied_weight × (sale_rate − cost_per_kg).
       // Remaining stock is inventory, not loss — we do NOT subtract full purchase value.
       // Delivery costs live on the delivery record; the expenses table does NOT
@@ -186,6 +243,7 @@ const Dashboard = () => {
         supplies: sAll ?? [],
         expenses: dayExpenses ?? [],
         deliveries: dayDeliveries ?? [],
+        finalizedShortageCost,
       });
       const profit = np.netProfit;
       const grossProfit = np.grossProfit;
@@ -277,7 +335,7 @@ const Dashboard = () => {
       });
       const inventoryLossToday = Object.values(breakdownToday).reduce((a, v) => a + v, 0);
 
-      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, grossProfit, generalExpense, deliveryExpense, payableToFarms, receivableFromCustomers, receivableFromShops, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost, inventoryLossToday, breakdownToday, breakdownWeek, breakdownMonth });
+      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, grossProfit, generalExpense, deliveryExpense, finalizedShortageCost, closingStatus, expectedClosingKg, physicalClosingKg, shortageKg, surplusKg, shortageCostAll, surplusEstValue, hasActivityWithoutClosing, closingCount: closingRows.length, payableToFarms, receivableFromCustomers, receivableFromShops, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost, inventoryLossToday, breakdownToday, breakdownWeek, breakdownMonth });
 
       // 7-day chart ending at selected date
       const days: any[] = [];
@@ -345,7 +403,11 @@ const Dashboard = () => {
           label={isToday ? t("dashboard.todays_profit") : t("dashboard.profit_on")}
           value={fmtMoney(kpi.profit)}
           tone={kpi.profit >= 0 ? "success" : "danger"}
-          sub={`Gross ${fmtMoney(kpi.grossProfit)} − Exp ${fmtMoney(kpi.generalExpense)} − Del ${fmtMoney(kpi.deliveryExpense)}`}
+          sub={
+            (kpi.closingStatus === "draft" || kpi.closingStatus === "mixed")
+              ? `Gross ${fmtMoney(kpi.grossProfit)} − Exp ${fmtMoney(kpi.generalExpense)} − Del ${fmtMoney(kpi.deliveryExpense)} · Provisional (closing not finalized)`
+              : `Gross ${fmtMoney(kpi.grossProfit)} − Exp ${fmtMoney(kpi.generalExpense)} − Del ${fmtMoney(kpi.deliveryExpense)}${kpi.finalizedShortageCost > 0 ? ` − Shortage ${fmtMoney(kpi.finalizedShortageCost)}` : ""}`
+          }
         />
         <KpiCard
           icon={Fuel}
