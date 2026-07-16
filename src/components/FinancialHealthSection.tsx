@@ -13,7 +13,7 @@ import { allocateAging } from "@/lib/shopAging";
 import { printReport } from "@/lib/printReport";
 import * as XLSX from "xlsx";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
 import {
   Wallet, Store, Scale, Percent, TrendingUp, TrendingDown,
   FileText, FileSpreadsheet, Printer, Download, Activity, ArrowRight,
@@ -440,8 +440,7 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
             }}
             className="h-[280px] w-full force-ltr"
           >
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chart} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
+            <LineChart data={chart} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
@@ -450,8 +449,7 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
                 <Line type="monotone" dataKey="receivable" stroke="var(--color-receivable)" strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="payable" stroke="var(--color-payable)" strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="nwc" stroke="var(--color-nwc)" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
+            </LineChart>
           </ChartContainer>
         </div>
       </CardContent>
