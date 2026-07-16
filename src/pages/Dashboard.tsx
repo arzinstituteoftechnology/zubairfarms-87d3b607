@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtKg, fmtMoney } from "@/lib/constants";
-import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull, PackageMinus } from "lucide-react";
+import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull, PackageMinus, Store } from "lucide-react";
 import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
@@ -14,6 +15,7 @@ import { useModuleFlags } from "@/hooks/useModuleFlags";
 import { SeoHead } from "@/components/SeoHead";
 import { useSettingsLists, activeOnly } from "@/hooks/useSettingsLists";
 import { calcRealizedProfit } from "@/lib/profit";
+import { computeShopBalances, totalReceivableFromShops } from "@/lib/shopReceivable";
 
 interface KPI {
   purchaseKg: number; purchaseAmt: number;
@@ -21,6 +23,7 @@ interface KPI {
   stockKg: number;
   profit: number;
   payableToFarms: number; receivableFromCustomers: number;
+  receivableFromShops: number;
   recoveryToday: number; recoveryWeek: number; recoveryMonth: number;
   mortalityToday: number; mortalityWeek: number; mortalityMonth: number; mortalityCost: number;
   inventoryLossToday: number;
@@ -38,18 +41,18 @@ const DEFAULT_REASONS: { value: string; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 const emptyBreakdown = (): Record<string, number> => Object.fromEntries(DEFAULT_REASONS.map(r => [r.value, 0]));
-const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0, inventoryLossToday: 0, breakdownToday: emptyBreakdown(), breakdownWeek: emptyBreakdown(), breakdownMonth: emptyBreakdown() };
+const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0, receivableFromShops: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0, inventoryLossToday: 0, breakdownToday: emptyBreakdown(), breakdownWeek: emptyBreakdown(), breakdownMonth: emptyBreakdown() };
 
-const KpiCard = ({ icon: Icon, label, value, sub, tone = "default" }: any) => (
-  <Card>
+const KpiCard = ({ icon: Icon, label, value, sub, tone = "default", onClick }: any) => (
+  <Card onClick={onClick} className={onClick ? "cursor-pointer hover:border-primary/50 transition-colors" : undefined}>
     <CardContent className="p-5">
       <div className="flex items-start justify-between">
         <div>
           <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
-          <div className={`mt-1 text-2xl font-bold ${tone === "danger" ? "text-destructive" : tone === "success" ? "text-success" : ""}`}>{value}</div>
+          <div className={`mt-1 text-2xl font-bold ${tone === "danger" ? "text-destructive" : tone === "success" ? "text-success" : tone === "info" ? "text-primary" : ""}`}>{value}</div>
           {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
         </div>
-        <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${tone === "danger" ? "bg-destructive/10 text-destructive" : tone === "success" ? "bg-success/10 text-success" : "bg-primary/10 text-primary"}`}>
+        <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${tone === "danger" ? "bg-destructive/10 text-destructive" : tone === "success" ? "bg-success/10 text-success" : tone === "info" ? "bg-primary/10 text-primary" : "bg-primary/10 text-primary"}`}>
           <Icon className="h-5 w-5" />
         </div>
       </div>
@@ -59,6 +62,7 @@ const KpiCard = ({ icon: Icon, label, value, sub, tone = "default" }: any) => (
 
 const Dashboard = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [kpi, setKpi] = useState<KPI>(emptyKpi);
   const [chart, setChart] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,6 +133,15 @@ const Dashboard = () => {
         supabase.from("pos_sales").select("due, sale_date").lte("sale_date", today),
         supabase.from("customer_payments").select("amount, payment_date").lte("payment_date", today),
       ]);
+      // Receivable from Shops — mirrors ShopLedger balance math, as-of `today`.
+      const [{ data: shopsRows }, { data: suForShops }, { data: shopLe }, { data: revRecov }] = await Promise.all([
+        supabase.from("shops").select("id, opening_balance").is("deleted_at", null),
+        supabase.from("supplies").select("shop_id, total_amount, reversed_at, supply_date").lte("supply_date", today),
+        supabase.from("shop_ledger_entries").select("id, shop_id, entry_type, amount, entry_date, reversed_at, reversal_entry_id, original_entry_id").lte("entry_date", today),
+        supabase.from("shop_recoveries").select("ledger_entry_id, reversed_at").not("reversed_at", "is", null),
+      ]);
+      const shopBalances = computeShopBalances(shopsRows as any, suForShops as any, shopLe as any, revRecov as any, today);
+      const receivableFromShops = totalReceivableFromShops(shopBalances);
       const weekStart = format(startOfWeek(new Date(selectedDate), { weekStartsOn: 1 }), "yyyy-MM-dd");
       const monthStart = format(startOfMonth(new Date(selectedDate)), "yyyy-MM-dd");
       const { data: recAll } = await supabase
@@ -235,7 +248,7 @@ const Dashboard = () => {
       });
       const inventoryLossToday = Object.values(breakdownToday).reduce((a, v) => a + v, 0);
 
-      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, payableToFarms, receivableFromCustomers, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost, inventoryLossToday, breakdownToday, breakdownWeek, breakdownMonth });
+      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, payableToFarms, receivableFromCustomers, receivableFromShops, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost, inventoryLossToday, breakdownToday, breakdownWeek, breakdownMonth });
 
       // 7-day chart ending at selected date
       const days: any[] = [];
@@ -265,6 +278,8 @@ const Dashboard = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "shop_recoveries" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "farm_payments" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "pos_sales" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "shop_ledger_entries" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "shops" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [load]);
@@ -296,6 +311,14 @@ const Dashboard = () => {
         <KpiCard icon={Boxes} label={isToday ? t("dashboard.current_stock") : t("dashboard.stock_on")} value={fmtKg(kpi.stockKg)} tone={kpi.stockKg < 0 ? "danger" : "default"} sub={selectedDate} />
         <KpiCard icon={TrendingUp} label={isToday ? t("dashboard.todays_profit") : t("dashboard.profit_on")} value={fmtMoney(kpi.profit)} tone={kpi.profit >= 0 ? "success" : "danger"} sub={t("dashboard.revenue_minus_cost")} />
         <KpiCard icon={Wallet} label={t("dashboard.payable_to_farms")} value={fmtMoney(kpi.payableToFarms)} sub={t("dashboard.total_udhaar")} tone="danger" />
+        <KpiCard
+          icon={Store}
+          label="Receivable from Shops"
+          value={fmtMoney(kpi.receivableFromShops)}
+          sub="Total outstanding"
+          tone="info"
+          onClick={() => navigate("/shop-ledger")}
+        />
         {customersEnabled && (
           <KpiCard icon={Users} label={t("dashboard.receivable")} value={fmtMoney(kpi.receivableFromCustomers)} sub={t("dashboard.customer_dues")} tone="danger" />
         )}
