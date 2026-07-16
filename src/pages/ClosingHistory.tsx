@@ -179,18 +179,22 @@ const ClosingHistory = () => {
                   <TableHead className="text-end">Physical</TableHead>
                   <TableHead className="text-end">Variance</TableHead>
                   <TableHead className="text-end">Shortage Cost</TableHead>
+                  <TableHead className="text-end">Surplus Value</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Reason</TableHead>
+                  <TableHead>Created By</TableHead>
                   <TableHead>Finalized By</TableHead>
                   <TableHead>Finalized At</TableHead>
+                  <TableHead>Reversed By</TableHead>
+                  <TableHead>Reversed At</TableHead>
                   <TableHead>Created At</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={12} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={16} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={12} className="text-center py-10 text-muted-foreground">No closing records in this range.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={16} className="text-center py-10 text-muted-foreground">No closing records in this range.</TableCell></TableRow>
                 ) : rows.map((r) => (
                   <TableRow key={r.id} className={r.reversed_at ? "opacity-60" : ""}>
                     <TableCell className="force-ltr">{r.closing_date}</TableCell>
@@ -202,6 +206,7 @@ const ClosingHistory = () => {
                       {Number(r.variance_weight ?? r.difference) > 0 ? "+" : ""}{fmtKg(r.variance_weight ?? r.difference)}
                     </TableCell>
                     <TableCell className={`text-end ${Number(r.shortage_cost ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"}`}>{fmtMoney(r.shortage_cost ?? 0)}</TableCell>
+                    <TableCell className={`text-end ${Number(r.surplus_value ?? 0) > 0 ? "text-success" : "text-muted-foreground"}`}>{fmtMoney(r.surplus_value ?? 0)}</TableCell>
                     <TableCell>
                       {r.reversed_at ? (
                         <span className="text-xs uppercase tracking-wider text-destructive">Reversed</span>
@@ -222,8 +227,11 @@ const ClosingHistory = () => {
                       )}
                     </TableCell>
                     <TableCell>{r.reason ? REASON_LABELS[r.reason] ?? r.reason : "—"}</TableCell>
+                    <TableCell className="text-sm">{r.creator_name ?? "—"}</TableCell>
                     <TableCell className="text-sm">{r.finalizer_name ?? "—"}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{r.finalized_at ? new Date(r.finalized_at).toLocaleString() : "—"}</TableCell>
+                    <TableCell className="text-sm">{r.reverser_name ?? "—"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{r.reversed_at ? new Date(r.reversed_at).toLocaleString() : "—"}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString()}</TableCell>
                   </TableRow>
                 ))}
@@ -237,7 +245,8 @@ const ClosingHistory = () => {
                       {totals.diff > 0 ? "+" : ""}{fmtKg(totals.diff)}
                     </TableCell>
                     <TableCell className="text-end text-destructive">{fmtMoney(totals.shortageCost)}</TableCell>
-                    <TableCell colSpan={5} />
+                    <TableCell className="text-end text-success">{fmtMoney(totals.surplusValue)}</TableCell>
+                    <TableCell colSpan={8} />
                   </TableRow>
                 )}
               </TableBody>
