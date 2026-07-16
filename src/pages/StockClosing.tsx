@@ -423,18 +423,32 @@ const StockClosing = () => {
                         />
                       </TableCell>
                       <TableCell className={`text-end ${diffClass}`}>{diff == null ? "—" : fmtKg(diff)}</TableCell>
+                      <TableCell className="text-center">
+                        {diff == null ? (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        ) : Math.abs(diff) < 0.001 ? (
+                          <Badge variant="outline" className="text-success border-success/40">Balanced</Badge>
+                        ) : diff < 0 ? (
+                          <Badge variant="outline" className="text-destructive border-destructive/40">Shortage</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-warning border-warning/40">Surplus</Badge>
+                        )}
+                        {r.status === "finalized" && (
+                          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 inline-flex items-center gap-1"><Lock className="h-2.5 w-2.5" /> finalized</div>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Select
                           value={isZero ? "__none__" : (r.reason || undefined)}
                           onValueChange={(v) => updateRow(i, { reason: v as Reason })}
-                          disabled={isZero}
+                          disabled={isZero || r.status === "finalized" || r.reversed}
                         >
-                          <SelectTrigger className="h-8 w-[140px]">
+                          <SelectTrigger className="h-8 w-[160px]">
                             <SelectValue placeholder={isZero ? "None" : "Select reason"} />
                           </SelectTrigger>
                           <SelectContent>
                             {isZero && <SelectItem value="__none__">None</SelectItem>}
-                            {REASONS.map((x) => <SelectItem key={x.value} value={x.value}>{x.label}</SelectItem>)}
+                            {reasonsForDiff(diff).map((x) => <SelectItem key={x.value} value={x.value}>{x.label}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       </TableCell>
@@ -444,13 +458,26 @@ const StockClosing = () => {
                           value={r.notes}
                           onChange={(e) => updateRow(i, { notes: e.target.value })}
                           placeholder="Optional"
+                          disabled={r.status === "finalized" || r.reversed}
                         />
                       </TableCell>
                       <TableCell className="text-end">
-                        <Button size="sm" onClick={() => requestSave(i)} disabled={!!r.saving}>
-                          <Save className="h-4 w-4 mr-1" />
-                          {r.closingId ? "Update" : "Save"}
-                        </Button>
+                        <div className="flex items-center gap-2 justify-end">
+                          {r.status !== "finalized" && !r.reversed && (
+                            <Button size="sm" variant="outline" onClick={() => requestSave(i, "draft")} disabled={!!r.saving}>
+                              <Save className="h-4 w-4 mr-1" />
+                              {r.closingId ? "Update" : "Save Draft"}
+                            </Button>
+                          )}
+                          {r.status !== "finalized" && !r.reversed && r.closingId && (
+                            <Button size="sm" onClick={() => requestSave(i, "finalized")} disabled={!!r.saving}>
+                              <CheckCircle2 className="h-4 w-4 mr-1" /> Finalize
+                            </Button>
+                          )}
+                          {r.status === "finalized" && (
+                            <span className="text-xs text-muted-foreground inline-flex items-center gap-1"><Lock className="h-3 w-3" /> Reverse to edit</span>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
