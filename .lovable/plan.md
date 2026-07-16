@@ -1,68 +1,99 @@
-# Enterprise Receivable Analytics — Plan
+## Phase 2 — Daily Closing Variance Integration
 
-## 1. New KPI: Net Working Capital
-- Add `NET WORKING CAPITAL = receivableFromShops − payableToFarms` to Dashboard KPI grid, placed after "Receivable from Shops".
-- Colors: positive → success, negative → destructive, zero → default. Subtitle: *Net Cash Position*.
-- Uses existing `kpi.receivableFromShops` and `kpi.payableToFarms` (already realtime and date-aware — no new fetch needed).
-- Click → navigate to `/reports` (existing Financial Summary Report). Add anchor hash `#financial-summary` (best-effort scroll).
+Shipping in one pass per your answers: derived next-day opening (no new table), rolling 30-day WAR for shortage/surplus valuation, new permission keys.
 
-## 2. Receivable Breakdown Dialog
-- New component `src/components/ShopReceivableDialog.tsx` opened when user clicks "Receivable from Shops" (replacing the current direct navigation; keep a secondary "Open Shop Ledger" button inside the dialog for full-page view).
-- Reuses `computeShopBalances` from `src/lib/shopReceivable.ts`; augments per shop with:
-  - `lastSupplyDate` — max(`supplies.supply_date`) where `reversed_at IS NULL`
-  - `lastRecoveryDate` — max(`shop_ledger_entries.entry_date`) for active `recovery` / `manual_payment` rows
-  - `adjustments` — manual_supply + adjustment_increase − adjustment_decrease
-- Table columns: Shop, Opening, Supplies, Recoveries, Adjustments, **Outstanding** (bold), Last Supply, Last Recovery.
-- Sorted by Outstanding DESC. Search box (name), 10-per-page pagination (reuse existing table primitives / simple local state).
+### 1. Database migration (single file)
 
-## 3. Aging Analysis (inside the dialog)
-- Per shop, allocate outstanding balance to age buckets using FIFO against active (non-reversed) supplies + non-recovery ledger debits, ordered by date, offset by cumulative active recoveries.
-- Buckets vs `selectedDate`: 0–30, 31–60, 61–90, 90+ days.
-- Show totals row with amount + % of grand receivable, colored badges: 0–30 green, 31–60 yellow, 61–90 orange, 90+ red.
-- Per-row: small stacked bar or 4 mini-cells with the same color coding.
+- Seed `role_permissions` rows for module `stock_closing`, actions: `view`, `create`, `edit_draft`, `finalize`, `reverse`, `export` (owner=all, admin=all, staff=view/create/edit_draft/export).
+- Extend `reverse_stock_closing` RPC:
+  - Require `stock_closing.reverse` (already wired via `assert_can_reverse_module`).
+  - Refuse if a **later finalized, unreversed** closing exists for same `(tenant_id, meat_type)` — raise conflict `P0001` "Later finalized closing exists; reverse it first."
+  - Idempotent (already checks `reversed_at`).
+- Add RPC `public.finalize_stock_closing(p_id uuid)`:
+  - Perms: `assert_permission('stock_closing','finalize')`.
+  - Validates server-side: physical entered, variance_type set, sum of adjustment reasons equals |variance|, "other" requires notes.
+  - Sets `status='finalized'`, `finalized_by`, `finalized_at`.
+  - Recomputes and persists `shortage_cost` from **rolling 30-day WAR** per `meat_type` (unreversed purchases in `[closing_date-29, closing_date]`).
+  - Writes `activity_logs` events `closing_finalized`.
+- Add RPC `public.compute_closing_war(p_tenant uuid, p_meat text, p_date date) returns numeric` (SECURITY DEFINER, stable, tenant-scoped) — reused by finalize + client display.
+- Ensure realtime publication includes `stock_closings`, `stock_adjustments` (already published purchases/supplies/expenses/deliveries — add any missing).
+- Backfill safety: no data mutation to historical rows beyond what Phase 1 already did.
 
-## 4. Collection Summary strip (dialog header)
-- Total Shops, Shops with Outstanding, Shops Fully Paid.
-- Largest Outstanding Shop (name + amount, clickable → `/shop-ledger?shop=<id>`).
-- Oldest Outstanding Invoice: earliest active supply/debit date still unpaid (from FIFO calc above).
-- Average Collection Days: mean age (weighted by amount) of outstanding rows.
-- Collection Rate %: `Σ active recoveries / (Σ active supplies + opening + manual_supply + adj_inc − adj_dec)` clamped 0–100.
+### 2. Shared helpers (single source of truth)
 
-## 5. Reconciliation Line
-- Dashboard KPI area shows a small line under the receivable card:
-  `Receivable = Σ Shop Ledger balances — Verified ✓` when equal (within 0.01), else red warning with delta value.
-- Compares dashboard total to a re-computation from same data (sanity check that math is deterministic; also flags rounding drift).
+New `src/lib/closingVariance.ts`:
 
-## 6. Click Actions
-- Receivable KPI card → opens the new dialog (breakdown).
-- "Open full Shop Ledger" button inside dialog → `/shop-ledger`.
-- Net Working Capital card → `/reports`.
-- Largest Outstanding row/button → `/shop-ledger?shop=<id>` (ShopLedger already reads the row via search; deep-link is optional visual, existing page will still list all shops — no changes to ShopLedger required).
+```ts
+computeExpectedClosing({ opening, purchases, supplies, posAdj, negAdj, mortality })
+classifyVariance(physical, expected) → { varianceWeight, varianceType, shortageWeight, surplusWeight }
+valuedVariance(shortageWeight, surplusWeight, war) → { shortageCost, surplusEstimatedValue }
+```
 
-## 7. Export
-- Dialog toolbar buttons: **CSV**, **Excel**, **PDF**, **Print**.
-- CSV: build string in-browser, download via Blob.
-- Excel: reuse existing `xlsx`/`sheetjs` if present; otherwise export `.xls` HTML-table fallback (check `package.json`).
-- PDF/Print: reuse `src/lib/printReport.ts` helper (opens print window with styled HTML — user prints to PDF).
+Update `src/lib/netProfit.ts`:
 
-## 8. Security & Realtime
-- All queries go through the existing tenant-scoped Supabase client (RLS enforced). No new endpoints.
-- Realtime: dialog subscribes to `supplies`, `shop_ledger_entries`, `shop_recoveries`, `shops` on a single channel with a unique name; unsubscribes on close. Dashboard's existing subscription already covers KPI refresh — no changes there.
+```ts
+netProfit = grossProfit − generalExpense − deliveryExpense − finalizedShortageCost
+```
 
-## 10. Validation / Tests
-- Extend `src/lib/shopReceivable.test.ts` with:
-  - Aging bucket allocation (FIFO offset) test.
-  - Collection Rate math (edge: 0 supplies).
-  - Net Working Capital sign (positive/negative/zero).
-- Run `bunx vitest run` + `bunx tsgo --noEmit`.
-- SQL reconciliation: run one query totalling positive shop balances against dashboard total.
+`finalizedShortageCost` is passed in by callers; defaults to 0 so existing tests still pass. Add new tests covering shortage/surplus/draft/finalized/reversed scenarios (spec items 1–8).
 
-## Files
-- **New**: `src/components/ShopReceivableDialog.tsx`, extra cases in `src/lib/shopReceivable.test.ts`, helper `src/lib/shopAging.ts` (+ test).
-- **Edit**: `src/pages/Dashboard.tsx` — add NWC card, reconciliation line, wire dialog to KPI card.
-- **No changes** to accounting/business logic, ShopLedger page, or existing Payable calculation.
+### 3. Dashboard
 
-## Technical notes
-- Aging FIFO: sort active debits (supplies + manual_supply + adjustment_increase + opening) ascending by date; subtract active credits (recovery + manual_payment + adjustment_decrease) from oldest first; remaining unpaid slices are the aged outstanding pieces, dated at their original entry.
-- Everything as-of `selectedDate` from `useLedgerDate`.
-- Charts kept minimal (no new chart lib) — colored badges + progress bars only.
+- New query hook loads for selected date + tenant:
+  - `stock_closings` rows for that date (all meat types), status + reversed_at + variance fields.
+  - WAR per meat_type via `compute_closing_war` (batched).
+- New cards (respect selected date, tenant, realtime): Closing Status, Shortage kg, Surplus kg, Shortage Cost, Surplus Est. Value, Expected Closing, Physical Closing.
+- Warning banner logic: Draft / Missing (only if purchases|supplies|adjustments exist that date) / Finalized success line / Reversed line. Click → `/stock-closing?date=YYYY-MM-DD`.
+- Profit card subtitle shows `Gross − General − Delivery − Shortage` breakdown; "Provisional" tag when draft.
+- Current Stock: derived — pick latest finalized unreversed closing ≤ selectedDate per meat_type as baseline, add subsequent purchases − supplies + adj. Shared helper `src/lib/currentStock.ts`.
+
+### 4. Inventory page
+
+Reuse `currentStock.ts` helper so Inventory matches Dashboard exactly.
+
+### 5. Reports Center
+
+New report: **Daily Closing Variance**. Columns per spec §11. Summary cards + CSV/Excel/print export using existing patterns in `Reports.tsx`. Profit Reconciliation section uses updated `computeNetProfit` with `finalizedShortageCost`.
+
+### 6. Daily Closing form (`StockClosing.tsx`)
+
+- Live reconciliation table (Opening + Purchases − Supplies + PosAdj − NegAdj − Mortality = Expected; Physical − Expected = Variance).
+- Reason lists switch by variance type (already done in Phase 1) — extend surplus list per spec §7.
+- Client blocks Finalize when breakdown ≠ |variance| or "other" notes missing; server RPC re-validates.
+- "Finalize" button calls `finalize_stock_closing` RPC.
+- Finalized rows are read-only (already gated by status check); corrections via Reverse dialog.
+
+### 7. Closing History
+
+Add columns per spec §10, row detail dialog with full calc trail, extra filters (draft/finalized/reversed already present — add reason + date).
+
+### 8. Realtime
+
+Reuse existing per-mount channel pattern. New Dashboard channel subscribes to `stock_closings` + `stock_adjustments`; cleanup on unmount. No global channels.
+
+### 9. Audit
+
+Finalize RPC writes `closing_finalized` with before/after JSON. Reverse RPC already logs. Add `closing_reconciliation_failed` when server validation rejects finalize.
+
+### 10. Tests
+
+`src/lib/closingVariance.test.ts` + extend `netProfit.test.ts`: shortage 6kg, surplus 6kg, balanced, draft-does-not-lock, finalized shortage reduces net once, surplus no inflate, no double-count mortality/negAdj (spec items 1–8, 18). Idempotency (11–12) covered by RPC unit assertions.
+
+### Files
+
+**New**: `supabase/migrations/<ts>_phase2_closing.sql`, `src/lib/closingVariance.ts`, `src/lib/closingVariance.test.ts`, `src/lib/currentStock.ts`, `src/components/DashboardClosingCards.tsx`, `src/components/ClosingBanner.tsx`, `src/components/ClosingHistoryDetailDialog.tsx`.
+
+**Modified**: `src/lib/netProfit.ts` + test, `src/pages/Dashboard.tsx`, `src/pages/Inventory.tsx`, `src/pages/Reports.tsx`, `src/pages/StockClosing.tsx`, `src/pages/ClosingHistory.tsx`, `src/integrations/supabase/types.ts` (auto-regenerated by migration).
+
+### Out of scope (explicit)
+
+- No changes to purchase / supply / recovery / expense / farm_payment / shop_recovery calculations.
+- No changes to notification enum beyond what Phase 1 already did.
+- No new `stock_opening_balances` table (derived approach).
+- Surplus never increases profit — informational only.
+
+### Verification
+
+- `tsgo` typecheck, `bunx vitest run`, prod build.
+- Manual reconciliation query comparing Dashboard values to raw SQL for one tenant on a shortage day + surplus day + balanced day.
+- Confirm reversal blocked when later finalized closing exists.

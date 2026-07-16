@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MEAT_TYPES, fmtKg } from "@/lib/constants";
+import { MEAT_TYPES, fmtKg, fmtMoney } from "@/lib/constants";
 import { format, subDays } from "date-fns";
 import { Printer } from "lucide-react";
 import { SeoHead } from "@/components/SeoHead";
@@ -42,6 +42,12 @@ type Row = {
   mortality_weight?: number | null;
   positive_adjustments_kg?: number | null;
   negative_adjustments_kg?: number | null;
+  expected_closing_stock?: number | null;
+  variance_weight?: number | null;
+  shortage_cost?: number | null;
+  finalized_at?: string | null;
+  finalized_by?: string | null;
+  finalizer_name?: string | null;
 };
 
 const ClosingHistory = () => {
@@ -58,21 +64,29 @@ const ClosingHistory = () => {
       setLoading(true);
       let q = supabase
         .from("stock_closings")
-        .select("id, closing_date, meat_type, opening_stock, system_stock, physical_stock, difference, reason, created_by, created_at, variance_type, status, reversed_at, reversal_reason, mortality_weight, positive_adjustments_kg, negative_adjustments_kg")
+        .select("id, closing_date, meat_type, opening_stock, system_stock, physical_stock, difference, reason, created_by, created_at, variance_type, status, reversed_at, reversal_reason, mortality_weight, positive_adjustments_kg, negative_adjustments_kg, expected_closing_stock, variance_weight, shortage_cost, finalized_at, finalized_by")
         .gte("closing_date", from).lte("closing_date", to)
         .order("closing_date", { ascending: false }).order("meat_type");
       if (meatType !== "all") q = q.eq("meat_type", meatType);
       if (varianceFilter === "reversed") q = q.not("reversed_at", "is", null);
+      else if (varianceFilter === "draft") q = q.eq("status", "draft").is("reversed_at", null);
+      else if (varianceFilter === "finalized") q = q.eq("status", "finalized").is("reversed_at", null);
       else if (varianceFilter !== "all") q = q.eq("variance_type", varianceFilter as any);
       const { data } = await q;
       const list = (data ?? []) as Row[];
 
-      const ids = Array.from(new Set(list.map((r) => r.created_by).filter(Boolean))) as string[];
+      const ids = Array.from(new Set([
+        ...list.map((r) => r.created_by).filter(Boolean) as string[],
+        ...list.map((r) => r.finalized_by).filter(Boolean) as string[],
+      ]));
       if (ids.length) {
         const { data: profs } = await supabase.from("profiles").select("id, full_name").in("id", ids);
         const map = new Map<string, string>();
         (profs ?? []).forEach((p: any) => map.set(p.id, p.full_name));
-        list.forEach((r) => { r.creator_name = r.created_by ? map.get(r.created_by) ?? null : null; });
+        list.forEach((r) => {
+          r.creator_name = r.created_by ? map.get(r.created_by) ?? null : null;
+          r.finalizer_name = r.finalized_by ? map.get(r.finalized_by) ?? null : null;
+        });
       }
       setRows(list); setLoading(false);
     })();
@@ -84,7 +98,8 @@ const ClosingHistory = () => {
       system: a.system + Number(r.system_stock),
       physical: a.physical + Number(r.physical_stock),
       diff: a.diff + Number(r.difference),
-    }), { opening: 0, system: 0, physical: 0, diff: 0 });
+      shortageCost: a.shortageCost + Number(r.shortage_cost ?? 0),
+    }), { opening: 0, system: 0, physical: 0, diff: 0, shortageCost: 0 });
   }, [rows]);
 
   return (
@@ -125,6 +140,8 @@ const ClosingHistory = () => {
                   <SelectItem value="balanced">Balanced</SelectItem>
                   <SelectItem value="shortage">Shortage</SelectItem>
                   <SelectItem value="surplus">Surplus</SelectItem>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="finalized">Finalized</SelectItem>
                   <SelectItem value="reversed">Reversed</SelectItem>
                 </SelectContent>
               </Select>
@@ -142,30 +159,33 @@ const ClosingHistory = () => {
                   <TableHead>Date</TableHead>
                   <TableHead>Meat Type</TableHead>
                   <TableHead className="text-end">Opening</TableHead>
-                  <TableHead className="text-end">System</TableHead>
+                  <TableHead className="text-end">Expected</TableHead>
                   <TableHead className="text-end">Physical</TableHead>
-                  <TableHead className="text-end">Difference</TableHead>
+                  <TableHead className="text-end">Variance</TableHead>
+                  <TableHead className="text-end">Shortage Cost</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Reason</TableHead>
-                  <TableHead>Created By</TableHead>
+                  <TableHead>Finalized By</TableHead>
+                  <TableHead>Finalized At</TableHead>
                   <TableHead>Created At</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={12} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">No closing records in this range.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={12} className="text-center py-10 text-muted-foreground">No closing records in this range.</TableCell></TableRow>
                 ) : rows.map((r) => (
                   <TableRow key={r.id} className={r.reversed_at ? "opacity-60" : ""}>
                     <TableCell className="force-ltr">{r.closing_date}</TableCell>
                     <TableCell className="font-medium">{r.meat_type}</TableCell>
                     <TableCell className="text-end">{fmtKg(r.opening_stock)}</TableCell>
-                    <TableCell className="text-end">{fmtKg(r.system_stock)}</TableCell>
+                    <TableCell className="text-end">{fmtKg(r.expected_closing_stock ?? r.system_stock)}</TableCell>
                     <TableCell className="text-end">{fmtKg(r.physical_stock)}</TableCell>
-                    <TableCell className={`text-end font-semibold ${Number(r.difference) < 0 ? "text-destructive" : Number(r.difference) > 0 ? "text-success" : ""}`}>
-                      {Number(r.difference) > 0 ? "+" : ""}{fmtKg(r.difference)}
+                    <TableCell className={`text-end font-semibold ${Number(r.variance_weight ?? r.difference) < 0 ? "text-destructive" : Number(r.variance_weight ?? r.difference) > 0 ? "text-success" : ""}`}>
+                      {Number(r.variance_weight ?? r.difference) > 0 ? "+" : ""}{fmtKg(r.variance_weight ?? r.difference)}
                     </TableCell>
+                    <TableCell className={`text-end ${Number(r.shortage_cost ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"}`}>{fmtMoney(r.shortage_cost ?? 0)}</TableCell>
                     <TableCell>
                       {r.reversed_at ? (
                         <span className="text-xs uppercase tracking-wider text-destructive">Reversed</span>
@@ -181,9 +201,13 @@ const ClosingHistory = () => {
                       {r.status === "draft" && !r.reversed_at && (
                         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">draft</div>
                       )}
+                      {r.status === "finalized" && !r.reversed_at && (
+                        <div className="text-[10px] uppercase tracking-wider text-success">finalized</div>
+                      )}
                     </TableCell>
                     <TableCell>{r.reason ? REASON_LABELS[r.reason] ?? r.reason : "—"}</TableCell>
-                    <TableCell className="text-sm">{r.creator_name ?? "—"}</TableCell>
+                    <TableCell className="text-sm">{r.finalizer_name ?? "—"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{r.finalized_at ? new Date(r.finalized_at).toLocaleString() : "—"}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString()}</TableCell>
                   </TableRow>
                 ))}
@@ -196,7 +220,8 @@ const ClosingHistory = () => {
                     <TableCell className={`text-end ${totals.diff < 0 ? "text-destructive" : totals.diff > 0 ? "text-success" : ""}`}>
                       {totals.diff > 0 ? "+" : ""}{fmtKg(totals.diff)}
                     </TableCell>
-                    <TableCell colSpan={4} />
+                    <TableCell className="text-end text-destructive">{fmtMoney(totals.shortageCost)}</TableCell>
+                    <TableCell colSpan={5} />
                   </TableRow>
                 )}
               </TableBody>
