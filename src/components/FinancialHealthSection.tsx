@@ -396,6 +396,13 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
     return trend30.slice(a, b + 1);
   }, [trend30, trendZoom]);
 
+  /** Days with actual business activity (supply or recovery). */
+  const activeDays = useMemo(
+    () => trend30.filter(p => p.receivable > 0 || p.recovery > 0).length,
+    [trend30],
+  );
+  const hasEnoughHistory = activeDays >= 7;
+
   const doPrint = () => {
     printReport({
       title: "Financial Health Summary",
