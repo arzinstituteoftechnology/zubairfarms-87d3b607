@@ -1106,11 +1106,24 @@ const Reports = () => {
 
   const setF = (patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch, preset: patch.from || patch.to ? "custom" : f.preset }));
 
+  const headerLines = () => {
+    const parts: string[] = [];
+    if (company?.company_name) parts.push(company.company_name);
+    if (tenant?.company_name && tenant.company_name !== company?.company_name) parts.push(`Tenant: ${tenant.company_name}`);
+    const filterBits: string[] = [];
+    if (filters.meat_type !== "all") filterBits.push(`Meat: ${filters.meat_type}`);
+    if (filters.variance_type !== "all") filterBits.push(`Variance: ${filters.variance_type}`);
+    if (filters.closing_status !== "all") filterBits.push(`Status: ${filters.closing_status}`);
+    if (filters.includeReversed) filterBits.push("Includes Reversed");
+    return { parts, filterBits, generatedAt: new Date().toLocaleString() };
+  };
+
   const doPrint = () => {
     if (!result) return;
+    const h = headerLines();
     printReport({
       title: def.label,
-      subtitle: `${filters.from} to ${filters.to}`,
+      subtitle: `${filters.from} to ${filters.to}${h.filterBits.length ? " • " + h.filterBits.join(" • ") : ""}${h.parts.length ? " • " + h.parts.join(" — ") : ""} • Generated ${h.generatedAt}`,
       dateLabel: `${filters.from} — ${filters.to}`,
       columns: result.columns.map((c) => ({
         label: c.label,
@@ -1125,12 +1138,21 @@ const Reports = () => {
 
   const doExcel = () => {
     if (!result) return;
+    const h = headerLines();
     const data = result.rows.map((r) => {
       const o: any = {};
       result.columns.forEach((c) => { o[c.label] = c.format ? fmt(r[c.key], c.format).replace(/[^\d.\-]/g, "") : (r[c.key] ?? ""); });
       return o;
     });
     const wb = XLSX.utils.book_new();
+    const meta = [
+      { Metric: "Report", Value: def.label },
+      { Metric: "Date Range", Value: `${filters.from} to ${filters.to}` },
+      ...h.parts.map((p) => ({ Metric: "Company/Tenant", Value: p })),
+      ...h.filterBits.map((p) => ({ Metric: "Filter", Value: p })),
+      { Metric: "Generated At", Value: h.generatedAt },
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(meta), "Header");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), "Report");
     if (result.totals.length) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(result.totals.map(t => ({ Metric: t.label, Value: t.value }))), "Totals");
@@ -1140,20 +1162,30 @@ const Reports = () => {
 
   const doPdf = () => {
     if (!result) return;
+    const h = headerLines();
     const pdf = new jsPDF({ orientation: result.columns.length > 6 ? "landscape" : "portrait" });
     pdf.setFontSize(14); pdf.text(def.label, 14, 14);
-    pdf.setFontSize(10); pdf.text(`${filters.from} to ${filters.to}`, 14, 20);
+    pdf.setFontSize(9);
+    let y = 20;
+    if (h.parts.length) { pdf.text(h.parts.join(" — "), 14, y); y += 5; }
+    pdf.text(`${filters.from} to ${filters.to}${h.filterBits.length ? " • " + h.filterBits.join(" • ") : ""}`, 14, y); y += 5;
+    pdf.text(`Generated: ${h.generatedAt}`, 14, y); y += 3;
     autoTable(pdf, {
-      startY: 26,
+      startY: y + 3,
       head: [result.columns.map((c) => c.label)],
       body: result.rows.map((r) => result.columns.map((c) => fmt(r[c.key], c.format))),
       styles: { fontSize: 8 },
       headStyles: { fillColor: [40, 40, 40] },
+      didDrawPage: (data) => {
+        const pageNum = (pdf as any).internal.getNumberOfPages();
+        pdf.setFontSize(8);
+        pdf.text(`Page ${pageNum}`, data.settings.margin.left, (pdf as any).internal.pageSize.height - 6);
+      },
     });
     if (result.totals.length) {
-      const y = (pdf as any).lastAutoTable.finalY + 6;
+      const yy = (pdf as any).lastAutoTable.finalY + 6;
       pdf.setFontSize(10);
-      result.totals.forEach((t, i) => pdf.text(`${t.label}: ${t.value}`, 14, y + i * 5));
+      result.totals.forEach((t, i) => pdf.text(`${t.label}: ${t.value}`, 14, yy + i * 5));
     }
     pdf.save(`${def.id}_${filters.from}_${filters.to}.pdf`);
   };
