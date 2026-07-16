@@ -777,19 +777,6 @@ const loaders: Record<string, ReportDef["load"]> = {
       const pct = expected !== 0 ? round2((variance / expected) * 100) : 0;
       return { ...r, variance_pct: pct };
     });
-    // Roll-ups (per meat, weekly, monthly)
-    const sumBy = (fn: (r: any) => string) => {
-      const m = new Map<string, { expected: number; physical: number; variance: number }>();
-      rows.forEach((r) => {
-        const k = fn(r);
-        const cur = m.get(k) ?? { expected: 0, physical: 0, variance: 0 };
-        cur.expected += num(r.expected_closing_stock);
-        cur.physical += num(r.physical_stock);
-        cur.variance += num(r.variance_weight);
-        m.set(k, cur);
-      });
-      return m;
-    };
     const totExp = rows.reduce((a, r) => a + num(r.expected_closing_stock), 0);
     const totPhys = rows.reduce((a, r) => a + num(r.physical_stock), 0);
     const totVar = rows.reduce((a, r) => a + num(r.variance_weight), 0);
