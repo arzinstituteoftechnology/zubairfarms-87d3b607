@@ -103,6 +103,21 @@ const StockClosing = () => {
   };
   const reasonIdFor = (code: string) =>
     CUSTOM_REASONS.find(x => x.value === code)?.id ?? null;
+  // Backwards-compat merged reasons list used for lookups and legacy dropdowns
+  const REASONS: { value: string; label: string; id?: string | null }[] = [
+    ...CUSTOM_REASONS,
+    ...ALL_REASONS.filter(r => !CUSTOM_REASONS.some(c => c.value === r.value)),
+  ];
+  // Diff-aware reason picker: shortage list when Physical < Expected, surplus list when >
+  const reasonsForDiff = (diff: number | null): { value: string; label: string }[] => {
+    if (diff == null || Math.abs(diff) < 0.001) return [];
+    const base = diff < 0 ? SHORTAGE_REASONS : SURPLUS_REASONS;
+    // Append any tenant-custom reasons the base list doesn't already include
+    const extras = CUSTOM_REASONS
+      .filter(c => !base.some(b => b.value === c.value))
+      .map(c => ({ value: c.value, label: c.label }));
+    return [...base, ...extras];
+  };
   const ACTIVE_MEATS = activeOnly(meatTypes).map(m => m.name);
   const canReverse = role === "admin" || isSuperAdmin;
   const [rows, setRows] = useState<Row[]>([]);
