@@ -94,6 +94,16 @@ const Dashboard = () => {
         supabase.from("purchases").select("weight_kg, total_amount, meat_type, rate_per_kg, purchase_date").eq("purchase_date", today).is("reversed_at", null),
         supabase.from("supplies").select("weight_kg, total_amount, cost_per_kg, rate_per_kg, supply_date").eq("supply_date", today).is("reversed_at", null),
       ]);
+      // Selected-date operating expenses.
+      //  • deliveries: fuel + labour + other for the loading_date (authoritative)
+      //  • expenses:  category amounts for the expense_date
+      // Neither table has reversal/soft-delete columns today (see \d in code
+      // review) — RLS scopes them to the current tenant. If reversal support
+      // is added later, filter it here.
+      const [{ data: dayExpenses }, { data: dayDeliveries }] = await Promise.all([
+        supabase.from("expenses").select("amount").eq("expense_date", today),
+        supabase.from("deliveries").select("fuel_expense, labour_expense, other_expense").eq("loading_date", today),
+      ]);
       // Stock balance: use latest physical closing (per meat_type) on/before selectedDate,
       // then add purchases and subtract supplies AFTER that closing up to selectedDate.
       // If no closing has ever been recorded, fall back to cumulative purchases − supplies.
@@ -166,12 +176,21 @@ const Dashboard = () => {
       const purchaseAmt = sum(pAll, "total_amount");
       const supplyKg = sum(sAll, "weight_kg");
       const supplyAmt = sum(sAll, "total_amount");
-      // Realized Profit on the selected date is calculated PER SUPPLY LINE:
-      //   Σ supplied_weight × (sale_rate_per_kg − cost_per_kg)
-      // We do NOT subtract full purchase value from supply revenue — remaining
-      // stock is inventory, not loss. This matches the profit shown in each
-      // supply row/edit modal.
-      const profit = calcRealizedProfit(sAll ?? []);
+      // Net Profit (single source of truth: src/lib/netProfit.ts):
+      //   Gross Profit (per-supply-line) − General Expense − Delivery Expense
+      // Gross Profit stays PER SUPPLY LINE: Σ supplied_weight × (sale_rate − cost_per_kg).
+      // Remaining stock is inventory, not loss — we do NOT subtract full purchase value.
+      // Delivery costs live on the delivery record; the expenses table does NOT
+      // duplicate them (no delivery_id linkage), so both sources are counted once.
+      const np = computeNetProfit({
+        supplies: sAll ?? [],
+        expenses: dayExpenses ?? [],
+        deliveries: dayDeliveries ?? [],
+      });
+      const profit = np.netProfit;
+      const grossProfit = np.grossProfit;
+      const generalExpense = np.generalExpense;
+      const deliveryExpense = np.deliveryExpense;
 
       // Payable to farms (Total Udhaar) — cumulative as-of selected date.
       // Mirrors the Suppliers ledger balance math so Dashboard matches Suppliers.
@@ -258,7 +277,7 @@ const Dashboard = () => {
       });
       const inventoryLossToday = Object.values(breakdownToday).reduce((a, v) => a + v, 0);
 
-      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, payableToFarms, receivableFromCustomers, receivableFromShops, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost, inventoryLossToday, breakdownToday, breakdownWeek, breakdownMonth });
+      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, grossProfit, generalExpense, deliveryExpense, payableToFarms, receivableFromCustomers, receivableFromShops, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost, inventoryLossToday, breakdownToday, breakdownWeek, breakdownMonth });
 
       // 7-day chart ending at selected date
       const days: any[] = [];
@@ -290,6 +309,8 @@ const Dashboard = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "pos_sales" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "shop_ledger_entries" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "shops" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "expenses" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "deliveries" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [load]);
