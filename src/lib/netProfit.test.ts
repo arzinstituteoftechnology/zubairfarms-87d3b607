@@ -68,4 +68,50 @@ describe("computeNetProfit", () => {
     });
     expect(r.netProfit).toBe(-70); // 10 − 50 − 30
   });
+
+  it("finalized shortage cost reduces Net Profit exactly once", () => {
+    const r = computeNetProfit({
+      supplies: [{ weight_kg: 100, rate_per_kg: 500, cost_per_kg: 400 }], // gross 10,000
+      expenses: [{ amount: 1_500 }],
+      deliveries: [{ fuel_expense: 500, labour_expense: 300, other_expense: 200 }],
+      finalizedShortageCost: 3_000,
+    });
+    expect(r.grossProfit).toBe(10_000);
+    expect(r.finalizedShortageCost).toBe(3_000);
+    expect(r.netProfit).toBe(4_500); // 10,000 − 1,500 − 1,000 − 3,000
+  });
+
+  it("draft closing (finalizedShortageCost=0) does not lock profit", () => {
+    const r = computeNetProfit({
+      supplies: [{ weight_kg: 100, rate_per_kg: 500, cost_per_kg: 400 }],
+      expenses: [], deliveries: [], finalizedShortageCost: 0,
+    });
+    expect(r.netProfit).toBe(10_000);
+  });
+
+  it("surplus never inflates profit (helper simply does not add anything)", () => {
+    // Surplus is not a parameter — omitting finalizedShortageCost gives 0.
+    const r = computeNetProfit({
+      supplies: [{ weight_kg: 100, rate_per_kg: 500, cost_per_kg: 400 }],
+      expenses: [], deliveries: [],
+    });
+    expect(r.finalizedShortageCost).toBe(0);
+    expect(r.netProfit).toBe(r.grossProfit);
+  });
+
+  it("negative or nullish finalizedShortageCost is clamped to 0", () => {
+    const r1 = computeNetProfit({ supplies: [], expenses: [], deliveries: [], finalizedShortageCost: -50 });
+    expect(r1.finalizedShortageCost).toBe(0);
+    const r2 = computeNetProfit({ supplies: [], expenses: [], deliveries: [], finalizedShortageCost: null });
+    expect(r2.finalizedShortageCost).toBe(0);
+  });
+
+  it("existing callers that omit finalizedShortageCost see no behavior change", () => {
+    const legacy = computeNetProfit({
+      supplies: [{ weight_kg: 50, rate_per_kg: 600, cost_per_kg: 500 }],
+      expenses: [{ amount: 200 }],
+      deliveries: [{ fuel_expense: 100, labour_expense: 0, other_expense: 0 }],
+    });
+    expect(legacy.netProfit).toBe(5_000 - 200 - 100);
+  });
 });
