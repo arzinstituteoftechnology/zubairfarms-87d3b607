@@ -399,6 +399,7 @@ const StockClosing = () => {
                   <TableHead className="text-end">System Stock</TableHead>
                   <TableHead className="text-end">Physical Stock</TableHead>
                   <TableHead className="text-end">Difference</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
                   <TableHead>Reason</TableHead>
                   <TableHead>Notes</TableHead>
                   <TableHead />
@@ -406,9 +407,9 @@ const StockClosing = () => {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">No meat types configured.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center py-10 text-muted-foreground">No meat types configured.</TableCell></TableRow>
                 ) : rows.map((r, i) => {
                   const physicalNum = r.physical === "" ? null : Number(r.physical);
                   const diff = physicalNum == null || isNaN(physicalNum) ? null : round2(physicalNum - r.system);
@@ -643,8 +644,8 @@ const StockClosing = () => {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={(e) => { e.preventDefault(); const idx = confirmIdx; setConfirmIdx(null); if (idx !== null) saveRow(idx); }}>
-                    Save Closing
+                  <AlertDialogAction onClick={(e) => { e.preventDefault(); const idx = confirmIdx; const ts = pendingStatus; setConfirmIdx(null); if (idx !== null) saveRow(idx, ts); }}>
+                    {pendingStatus === "finalized" ? "Finalize Closing" : "Save Draft"}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </>
