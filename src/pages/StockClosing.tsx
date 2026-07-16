@@ -146,7 +146,7 @@ const StockClosing = () => {
     const [{ data: p }, { data: s }, { data: adj }, { data: existing }, { data: pPrior }, { data: sPrior }, { data: adjPrior }] = await Promise.all([
       supabase.from("purchases").select("meat_type, weight_kg").eq("purchase_date", selectedDate).is("reversed_at", null),
       supabase.from("supplies").select("meat_type, weight_kg").eq("supply_date", selectedDate).is("reversed_at", null),
-      supabase.from("stock_adjustments").select("meat_type, quantity_kg").eq("adjustment_date", selectedDate).is("reversed_at", null).is("original_adjustment_id", null).is("closing_id", null),
+      supabase.from("stock_adjustments").select("meat_type, quantity_kg, reason").eq("adjustment_date", selectedDate).is("reversed_at", null).is("original_adjustment_id", null).is("closing_id", null),
       supabase.from("stock_closings").select("*").eq("closing_date", selectedDate),
       // Fallback opening: cumulative purchases/supplies/adjustments BEFORE selectedDate
       // (reversed rows must NOT contribute to stock — audit only)
@@ -163,6 +163,21 @@ const StockClosing = () => {
     const pMap = sumBy(p ?? null, "meat_type", "weight_kg");
     const sMap = sumBy(s ?? null, "meat_type", "weight_kg");
     const aMap = sumBy(adj ?? null, "meat_type", "quantity_kg");
+    // Split day's adjustments (excluding those already linked to a closing) into mortality / positive / negative
+    const mortalityMap = new Map<string, number>();
+    const posAdjMap = new Map<string, number>();
+    const negAdjMap = new Map<string, number>();
+    (adj ?? []).forEach((r: any) => {
+      const mt = r.meat_type as string;
+      const q = num(r.quantity_kg);
+      if ((r.reason ?? "").toLowerCase() === "mortality") {
+        mortalityMap.set(mt, num(mortalityMap.get(mt)) + Math.abs(q));
+      } else if (q > 0) {
+        posAdjMap.set(mt, num(posAdjMap.get(mt)) + q);
+      } else if (q < 0) {
+        negAdjMap.set(mt, num(negAdjMap.get(mt)) + Math.abs(q));
+      }
+    });
     const pPriorMap = sumBy(pPrior ?? null, "meat_type", "weight_kg");
     const sPriorMap = sumBy(sPrior ?? null, "meat_type", "weight_kg");
     const aPriorMap = sumBy(adjPrior ?? null, "meat_type", "quantity_kg");
@@ -197,10 +212,15 @@ const StockClosing = () => {
       return {
         meat_type: mt,
         opening, openingSource, purchases, supplies, adjustments, system,
+        mortality: round2(mortalityMap.get(mt) ?? 0),
+        positiveAdjustments: round2(posAdjMap.get(mt) ?? 0),
+        negativeAdjustments: round2(negAdjMap.get(mt) ?? 0),
         physical: ex ? String(num(ex.physical_stock)) : "",
         reason: (ex?.reason as Reason) ?? "",
         notes: ex?.notes ?? "",
         closingId: ex?.id,
+        status: (ex?.status as "draft" | "finalized") ?? undefined,
+        reversed: !!ex?.reversed_at,
       };
     });
     setRows(nextRows);
