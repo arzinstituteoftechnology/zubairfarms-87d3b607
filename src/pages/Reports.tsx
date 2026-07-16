@@ -33,6 +33,8 @@ type Filters = {
   shop_id: string;
   user_id: string;
   includeReversed: boolean;
+  variance_type: string;   // all | balanced | shortage | surplus
+  closing_status: string;  // all | draft | finalized
 };
 
 type Column = { label: string; key: string; align?: "left" | "right" | "center"; format?: "kg" | "money" | "int"; width?: string };
@@ -44,6 +46,8 @@ type ReportDef = {
   label: string;
   icon: any;
   supports: { meat?: boolean; farm?: boolean; shop?: boolean; user?: boolean };
+  supportsVariance?: boolean;
+  supportsStatus?: boolean;
   load: (f: Filters, opts: LookupOpts) => Promise<ReportResult>;
 };
 
