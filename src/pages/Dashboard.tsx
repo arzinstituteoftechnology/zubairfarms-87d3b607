@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtKg, fmtMoney } from "@/lib/constants";
-import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull, PackageMinus, Store, Scale, CheckCircle2, AlertTriangle } from "lucide-react";
+import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull, PackageMinus, Store, Scale, CheckCircle2, AlertTriangle, Fuel, Receipt } from "lucide-react";
 import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
@@ -14,7 +14,7 @@ import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { useModuleFlags } from "@/hooks/useModuleFlags";
 import { SeoHead } from "@/components/SeoHead";
 import { useSettingsLists, activeOnly } from "@/hooks/useSettingsLists";
-import { calcRealizedProfit } from "@/lib/profit";
+import { computeNetProfit } from "@/lib/netProfit";
 import { computeShopBalances, totalReceivableFromShops } from "@/lib/shopReceivable";
 import { ShopReceivableDialog } from "@/components/ShopReceivableDialog";
 import { FinancialHealthSection } from "@/components/FinancialHealthSection";
@@ -23,7 +23,10 @@ interface KPI {
   purchaseKg: number; purchaseAmt: number;
   supplyKg: number; supplyAmt: number;
   stockKg: number;
-  profit: number;
+  profit: number;         // Net Profit (gross − general − delivery)
+  grossProfit: number;
+  generalExpense: number;
+  deliveryExpense: number;
   payableToFarms: number; receivableFromCustomers: number;
   receivableFromShops: number;
   recoveryToday: number; recoveryWeek: number; recoveryMonth: number;
@@ -43,7 +46,7 @@ const DEFAULT_REASONS: { value: string; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 const emptyBreakdown = (): Record<string, number> => Object.fromEntries(DEFAULT_REASONS.map(r => [r.value, 0]));
-const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0, receivableFromShops: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0, inventoryLossToday: 0, breakdownToday: emptyBreakdown(), breakdownWeek: emptyBreakdown(), breakdownMonth: emptyBreakdown() };
+const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, grossProfit: 0, generalExpense: 0, deliveryExpense: 0, payableToFarms: 0, receivableFromCustomers: 0, receivableFromShops: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0, inventoryLossToday: 0, breakdownToday: emptyBreakdown(), breakdownWeek: emptyBreakdown(), breakdownMonth: emptyBreakdown() };
 
 const KpiCard = ({ icon: Icon, label, value, sub, tone = "default", onClick }: any) => (
   <Card onClick={onClick} className={onClick ? "cursor-pointer hover:border-primary/50 transition-colors" : undefined}>
