@@ -42,6 +42,12 @@ type Row = {
   mortality_weight?: number | null;
   positive_adjustments_kg?: number | null;
   negative_adjustments_kg?: number | null;
+  expected_closing_stock?: number | null;
+  variance_weight?: number | null;
+  shortage_cost?: number | null;
+  finalized_at?: string | null;
+  finalized_by?: string | null;
+  finalizer_name?: string | null;
 };
 
 const ClosingHistory = () => {
@@ -58,21 +64,29 @@ const ClosingHistory = () => {
       setLoading(true);
       let q = supabase
         .from("stock_closings")
-        .select("id, closing_date, meat_type, opening_stock, system_stock, physical_stock, difference, reason, created_by, created_at, variance_type, status, reversed_at, reversal_reason, mortality_weight, positive_adjustments_kg, negative_adjustments_kg")
+        .select("id, closing_date, meat_type, opening_stock, system_stock, physical_stock, difference, reason, created_by, created_at, variance_type, status, reversed_at, reversal_reason, mortality_weight, positive_adjustments_kg, negative_adjustments_kg, expected_closing_stock, variance_weight, shortage_cost, finalized_at, finalized_by")
         .gte("closing_date", from).lte("closing_date", to)
         .order("closing_date", { ascending: false }).order("meat_type");
       if (meatType !== "all") q = q.eq("meat_type", meatType);
       if (varianceFilter === "reversed") q = q.not("reversed_at", "is", null);
+      else if (varianceFilter === "draft") q = q.eq("status", "draft").is("reversed_at", null);
+      else if (varianceFilter === "finalized") q = q.eq("status", "finalized").is("reversed_at", null);
       else if (varianceFilter !== "all") q = q.eq("variance_type", varianceFilter as any);
       const { data } = await q;
       const list = (data ?? []) as Row[];
 
-      const ids = Array.from(new Set(list.map((r) => r.created_by).filter(Boolean))) as string[];
+      const ids = Array.from(new Set([
+        ...list.map((r) => r.created_by).filter(Boolean) as string[],
+        ...list.map((r) => r.finalized_by).filter(Boolean) as string[],
+      ]));
       if (ids.length) {
         const { data: profs } = await supabase.from("profiles").select("id, full_name").in("id", ids);
         const map = new Map<string, string>();
         (profs ?? []).forEach((p: any) => map.set(p.id, p.full_name));
-        list.forEach((r) => { r.creator_name = r.created_by ? map.get(r.created_by) ?? null : null; });
+        list.forEach((r) => {
+          r.creator_name = r.created_by ? map.get(r.created_by) ?? null : null;
+          r.finalizer_name = r.finalized_by ? map.get(r.finalized_by) ?? null : null;
+        });
       }
       setRows(list); setLoading(false);
     })();
@@ -125,6 +139,8 @@ const ClosingHistory = () => {
                   <SelectItem value="balanced">Balanced</SelectItem>
                   <SelectItem value="shortage">Shortage</SelectItem>
                   <SelectItem value="surplus">Surplus</SelectItem>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="finalized">Finalized</SelectItem>
                   <SelectItem value="reversed">Reversed</SelectItem>
                 </SelectContent>
               </Select>

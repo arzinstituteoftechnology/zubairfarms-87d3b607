@@ -396,6 +396,24 @@ const StockClosing = () => {
           </Button>
         </CardHeader>
         <CardContent>
+          {rows.length > 0 && (
+            <div className="mb-3 rounded-md border p-3 text-xs bg-background">
+              <div className="font-semibold text-foreground mb-2">Live Reconciliation Formula</div>
+              <div className="text-muted-foreground font-mono">
+                Expected Closing = Opening + Purchases − Supplies + Positive Adj − Negative Adj − Mortality<br />
+                Variance = Physical Closing − Expected Closing
+              </div>
+              <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-muted-foreground">
+                <div>Opening total: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.opening, 0))}</span></div>
+                <div>Purchases: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.purchases, 0))}</span></div>
+                <div>Supplies: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.supplies, 0))}</span></div>
+                <div>Mortality: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.mortality, 0))}</span></div>
+                <div>Pos Adj: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.positiveAdjustments, 0))}</span></div>
+                <div>Neg Adj: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.negativeAdjustments, 0))}</span></div>
+                <div>Expected: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.system, 0))}</span></div>
+              </div>
+            </div>
+          )}
           <div className="mb-3 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground flex gap-2">
             <Info className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
             <div className="space-y-0.5">
