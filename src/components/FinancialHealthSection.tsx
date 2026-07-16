@@ -15,10 +15,11 @@ import * as XLSX from "xlsx";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Wallet, Store, Scale, Percent, TrendingUp, TrendingDown,
   FileText, FileSpreadsheet, Printer, Download, Activity, ArrowRight,
-  Crown, AlertOctagon, Info, Image as ImageIcon,
+  Crown, AlertOctagon, Info, Image as ImageIcon, ChevronDown, Radio,
 } from "lucide-react";
 
 type Period = "today" | "week" | "month" | "custom";
@@ -152,6 +153,17 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
   const [chart, setChart] = useState<ChartPoint[]>([]);
   const [trend30, setTrend30] = useState<TrendPoint[]>([]);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [expanded, setExpanded] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const saved = window.localStorage.getItem("fin-health-expanded");
+    if (saved === "1") return true;
+    if (saved === "0") return false;
+    // First visit: expanded on desktop/tablet, collapsed on mobile.
+    return window.matchMedia("(min-width: 768px)").matches;
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem("fin-health-expanded", expanded ? "1" : "0"); } catch {}
+  }, [expanded]);
   const [seriesVisible, setSeriesVisible] = useState<Record<string, boolean>>({ receivable: true, recovery: true, outstanding: true });
   const [trendZoom, setTrendZoom] = useState<{ from: number; to: number } | null>(null);
 
@@ -432,16 +444,44 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
 
   return (
     <Card>
+      <Collapsible open={expanded} onOpenChange={setExpanded}>
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Activity className="h-4 w-4 text-primary" /> Financial Health Summary
-          </CardTitle>
-          <p className="text-xs text-muted-foreground mt-1">
-            Period: {range.start} → {range.end}{loading ? " • loading…" : ""}
-          </p>
+        <div className="flex items-start gap-2">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              aria-label={expanded ? "Collapse Financial Health Summary" : "Expand Financial Health Summary"}
+              className="mt-0.5 h-6 w-6 rounded-md border flex items-center justify-center hover:bg-muted transition-colors"
+            >
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${expanded ? "" : "-rotate-90"}`} />
+            </button>
+          </CollapsibleTrigger>
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Activity className="h-4 w-4 text-primary" /> Financial Health Summary
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Period: {range.start} → {range.end}{loading ? " • loading…" : ""}
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="hidden md:flex items-center gap-2 rounded-md border bg-muted/30 px-2.5 py-1 mr-1">
+            <div className="flex flex-col leading-tight">
+              <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Last Updated</span>
+              <span className="text-[11px] font-medium">{format(lastUpdated, "dd MMM yyyy")}</span>
+              <span className="text-[11px] font-mono tabular-nums">{format(lastUpdated, "hh:mm:ss a")}</span>
+            </div>
+            <div className="flex items-center gap-1 border-l pl-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-success"></span>
+              </span>
+              <span className="text-[10px] font-semibold text-success uppercase tracking-wide flex items-center gap-1">
+                <Radio className="h-3 w-3" />Realtime
+              </span>
+            </div>
+          </div>
           <div className="flex rounded-md border overflow-hidden">
             {(["today", "week", "month", "custom"] as Period[]).map((p) => (
               <button key={p}
@@ -464,6 +504,17 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
           </div>
         </div>
       </CardHeader>
+      {/* Mobile status widget — visible under header when panel is expanded */}
+      <div className="md:hidden px-6 -mt-2 mb-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-success"></span>
+        </span>
+        <span className="text-success font-semibold uppercase tracking-wide">Realtime</span>
+        <span>•</span>
+        <span className="font-mono tabular-nums">{format(lastUpdated, "dd MMM yyyy hh:mm:ss a")}</span>
+      </div>
+      <CollapsibleContent className="overflow-hidden data-[state=open]:animate-accordion-down data-[state=closed]:animate-accordion-up">
       <CardContent className="space-y-6">
         {/* Cash Flow Summary */}
         <div>
@@ -501,9 +552,6 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-              </span>
-              <span className="text-[10px] normal-case tracking-normal text-muted-foreground">
-                Updated {format(lastUpdated, "HH:mm:ss")}
               </span>
             </div>
             <HealthGauge score={score} status={health} />
@@ -693,6 +741,8 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
           )}
         </div>
       </CardContent>
+      </CollapsibleContent>
+      </Collapsible>
     </Card>
   );
 }
