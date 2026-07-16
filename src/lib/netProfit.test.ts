@@ -66,6 +66,6 @@ describe("computeNetProfit", () => {
       expenses: [{ amount: 50 }],
       deliveries: [{ fuel_expense: 10, labour_expense: 10, other_expense: 10 }],
     });
-    expect(r.netProfit).toBe(-80);
+    expect(r.netProfit).toBe(-70); // 10 − 50 − 30
   });
 });
