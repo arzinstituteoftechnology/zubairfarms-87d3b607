@@ -544,6 +544,30 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
             </LineChart>
           </ChartContainer>
         </div>
+
+        {/* 30-day Collection Trend */}
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Collection Trend — Last 30 Days</div>
+          <ChartContainer
+            config={{
+              receivable: { label: "Daily Supply (Receivable)", color: "hsl(var(--primary))" },
+              recovery: { label: "Daily Recovery", color: "hsl(var(--success))" },
+              outstanding: { label: "Outstanding", color: "hsl(24 95% 53%)" },
+            }}
+            className="h-[260px] w-full force-ltr"
+          >
+            <LineChart data={trend30} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Legend />
+              <Line type="monotone" dataKey="receivable" stroke="var(--color-receivable)" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="recovery" stroke="var(--color-recovery)" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="outstanding" stroke="var(--color-outstanding)" strokeWidth={2} dot={false} strokeDasharray="4 3" />
+            </LineChart>
+          </ChartContainer>
+        </div>
       </CardContent>
     </Card>
   );
