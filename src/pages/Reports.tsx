@@ -669,6 +669,361 @@ const loaders: Record<string, ReportDef["load"]> = {
       ],
     };
   },
+
+  // ---- Phase 2 additions ----
+
+  shortage: async (f, o) => {
+    let q = supabase.from("stock_closings")
+      .select("closing_date, meat_type, variance_weight, shortage_cost, reason, notes, finalized_by, finalized_at")
+      .eq("status", "finalized" as any).eq("variance_type", "shortage" as any).is("reversed_at", null)
+      .gte("closing_date", f.from).lte("closing_date", f.to)
+      .order("closing_date", { ascending: false });
+    if (f.meat_type !== "all") q = q.eq("meat_type", f.meat_type);
+    const { data } = await q;
+    const rows = (data ?? []).map((r: any) => ({
+      ...r,
+      shortage_kg: round2(Math.abs(num(r.variance_weight))),
+      war: num(r.shortage_cost) / (Math.abs(num(r.variance_weight)) || 1),
+      reason_label: r.reason ? (REASONS_LABEL[r.reason] ?? r.reason) : "—",
+      finalized_by_name: r.finalized_by ? o.userMap.get(r.finalized_by) ?? "—" : "—",
+    }));
+    const tKg = rows.reduce((a, r) => a + num(r.shortage_kg), 0);
+    const tCost = rows.reduce((a, r) => a + num(r.shortage_cost), 0);
+    return {
+      rows,
+      columns: [
+        { label: "Date", key: "closing_date" },
+        { label: "Meat", key: "meat_type" },
+        { label: "Shortage (kg)", key: "shortage_kg", format: "kg", align: "right" },
+        { label: "WAR", key: "war", format: "money", align: "right" },
+        { label: "Shortage Cost", key: "shortage_cost", format: "money", align: "right" },
+        { label: "Reason", key: "reason_label" },
+        { label: "Notes", key: "notes" },
+        { label: "Finalized By", key: "finalized_by_name" },
+      ],
+      totals: [
+        { label: "Total Shortage", value: fmtKg(tKg) },
+        { label: "Total Shortage Cost", value: fmtMoney(tCost) },
+        { label: "Entries", value: String(rows.length) },
+      ],
+      kpis: [
+        { label: "Shortage Events", value: String(rows.length), icon: AlertTriangle, tone: "bg-red-500" },
+        { label: "Total Shortage", value: fmtKg(tKg), icon: TrendingDown, tone: "bg-orange-500" },
+        { label: "Shortage Cost", value: fmtMoney(tCost), icon: DollarSign, tone: "bg-red-500" },
+      ],
+    };
+  },
+
+  surplus: async (f, o) => {
+    let q = supabase.from("stock_closings")
+      .select("closing_date, meat_type, variance_weight, reason, notes, finalized_by, finalized_at")
+      .eq("status", "finalized" as any).eq("variance_type", "surplus" as any).is("reversed_at", null)
+      .gte("closing_date", f.from).lte("closing_date", f.to)
+      .order("closing_date", { ascending: false });
+    if (f.meat_type !== "all") q = q.eq("meat_type", f.meat_type);
+    const { data } = await q;
+    const rows = await Promise.all((data ?? []).map(async (r: any) => {
+      const { data: warRes } = await supabase.rpc("compute_closing_war" as any, {
+        p_meat_type: r.meat_type, p_ref_date: r.closing_date,
+      }).maybeSingle();
+      const war = num(warRes ?? 0);
+      return {
+        ...r,
+        surplus_kg: round2(num(r.variance_weight)),
+        war,
+        surplus_value: round2(num(r.variance_weight) * war),
+        reason_label: r.reason ? (REASONS_LABEL[r.reason] ?? r.reason) : "—",
+        finalized_by_name: r.finalized_by ? o.userMap.get(r.finalized_by) ?? "—" : "—",
+      };
+    }));
+    const tKg = rows.reduce((a, r) => a + num(r.surplus_kg), 0);
+    const tVal = rows.reduce((a, r) => a + num(r.surplus_value), 0);
+    return {
+      rows,
+      columns: [
+        { label: "Date", key: "closing_date" },
+        { label: "Meat", key: "meat_type" },
+        { label: "Surplus (kg)", key: "surplus_kg", format: "kg", align: "right" },
+        { label: "Valuation Rate", key: "war", format: "money", align: "right" },
+        { label: "Est. Value", key: "surplus_value", format: "money", align: "right" },
+        { label: "Reason", key: "reason_label" },
+        { label: "Notes", key: "notes" },
+        { label: "Finalized By", key: "finalized_by_name" },
+      ],
+      totals: [
+        { label: "Total Surplus", value: fmtKg(tKg) },
+        { label: "Total Est. Value", value: fmtMoney(tVal) },
+        { label: "Entries", value: String(rows.length) },
+      ],
+      kpis: [
+        { label: "Surplus Events", value: String(rows.length), icon: PackagePlus, tone: "bg-emerald-500" },
+        { label: "Total Surplus", value: fmtKg(tKg), icon: TrendingUp, tone: "bg-emerald-500" },
+        { label: "Est. Value (info)", value: fmtMoney(tVal), icon: DollarSign, tone: "bg-teal-500" },
+      ],
+    };
+  },
+
+  inventory_variance: async (f) => {
+    let q = supabase.from("stock_closings")
+      .select("closing_date, meat_type, expected_closing_stock, physical_stock, variance_weight, variance_type, status, reversed_at")
+      .gte("closing_date", f.from).lte("closing_date", f.to)
+      .order("closing_date", { ascending: true });
+    if (f.meat_type !== "all") q = q.eq("meat_type", f.meat_type);
+    q = applyReversedFilter(q, f.includeReversed);
+    const { data } = await q;
+    const rows = (data ?? []).map((r: any) => {
+      const expected = num(r.expected_closing_stock);
+      const variance = num(r.variance_weight);
+      const pct = expected !== 0 ? round2((variance / expected) * 100) : 0;
+      return { ...r, variance_pct: pct };
+    });
+    // Roll-ups (per meat, weekly, monthly)
+    const sumBy = (fn: (r: any) => string) => {
+      const m = new Map<string, { expected: number; physical: number; variance: number }>();
+      rows.forEach((r) => {
+        const k = fn(r);
+        const cur = m.get(k) ?? { expected: 0, physical: 0, variance: 0 };
+        cur.expected += num(r.expected_closing_stock);
+        cur.physical += num(r.physical_stock);
+        cur.variance += num(r.variance_weight);
+        m.set(k, cur);
+      });
+      return m;
+    };
+    const totExp = rows.reduce((a, r) => a + num(r.expected_closing_stock), 0);
+    const totPhys = rows.reduce((a, r) => a + num(r.physical_stock), 0);
+    const totVar = rows.reduce((a, r) => a + num(r.variance_weight), 0);
+    const balCount = rows.filter(r => r.variance_type === "balanced").length;
+    const shortCount = rows.filter(r => r.variance_type === "shortage").length;
+    const surpCount = rows.filter(r => r.variance_type === "surplus").length;
+    return {
+      rows,
+      columns: [
+        { label: "Date", key: "closing_date" },
+        { label: "Meat", key: "meat_type" },
+        { label: "Expected", key: "expected_closing_stock", format: "kg", align: "right" },
+        { label: "Physical", key: "physical_stock", format: "kg", align: "right" },
+        { label: "Variance", key: "variance_weight", format: "kg", align: "right" },
+        { label: "Variance %", key: "variance_pct", align: "right" },
+        { label: "Type", key: "variance_type" },
+        { label: "Status", key: "status" },
+      ],
+      totals: [
+        { label: "Expected", value: fmtKg(totExp) },
+        { label: "Physical", value: fmtKg(totPhys) },
+        { label: "Net Variance", value: fmtKg(totVar) },
+      ],
+      kpis: [
+        { label: "Records", value: String(rows.length), icon: Scale, tone: "bg-blue-500" },
+        { label: "Balanced", value: String(balCount), icon: ClipboardCheck, tone: "bg-slate-500" },
+        { label: "Shortage", value: String(shortCount), icon: TrendingDown, tone: "bg-red-500" },
+        { label: "Surplus", value: String(surpCount), icon: TrendingUp, tone: "bg-emerald-500" },
+      ],
+    };
+  },
+
+  stock_adj_analysis: async (f, o) => {
+    let q = supabase.from("stock_adjustments")
+      .select("adjustment_date, meat_type, quantity_kg, reason, notes, created_by, reversed_at")
+      .is("original_adjustment_id", null)
+      .gte("adjustment_date", f.from).lte("adjustment_date", f.to)
+      .order("adjustment_date", { ascending: false });
+    if (f.meat_type !== "all") q = q.eq("meat_type", f.meat_type);
+    if (f.user_id !== "all") q = q.eq("created_by", f.user_id);
+    q = applyReversedFilter(q, f.includeReversed);
+    const { data } = await q;
+    const rows = (data ?? []).map((r: any) => ({
+      ...r,
+      type: num(r.quantity_kg) >= 0 ? "Positive" : "Negative",
+      abs_kg: round2(Math.abs(num(r.quantity_kg))),
+      reason_label: REASONS_LABEL[r.reason] ?? r.reason ?? "—",
+      user: o.userMap.get(r.created_by) ?? "—",
+      status: r.reversed_at ? "Reversed" : "Active",
+    }));
+    const pos = rows.filter(r => r.type === "Positive").reduce((a, r) => a + num(r.abs_kg), 0);
+    const neg = rows.filter(r => r.type === "Negative").reduce((a, r) => a + num(r.abs_kg), 0);
+    return {
+      rows,
+      columns: [
+        { label: "Date", key: "adjustment_date" },
+        { label: "Meat", key: "meat_type" },
+        { label: "Type", key: "type" },
+        { label: "Reason", key: "reason_label" },
+        { label: "Quantity", key: "abs_kg", format: "kg", align: "right" },
+        { label: "User", key: "user" },
+        { label: "Notes", key: "notes" },
+        { label: "Status", key: "status" },
+      ],
+      totals: [
+        { label: "Positive Total", value: fmtKg(pos) },
+        { label: "Negative Total", value: fmtKg(neg) },
+        { label: "Net", value: fmtKg(pos - neg) },
+      ],
+      kpis: [
+        { label: "Entries", value: String(rows.length), icon: Scale, tone: "bg-blue-500" },
+        { label: "Positive", value: fmtKg(pos), icon: PackagePlus, tone: "bg-emerald-500" },
+        { label: "Negative", value: fmtKg(neg), icon: PackageMinus, tone: "bg-red-500" },
+      ],
+    };
+  },
+
+  profit_recon: async (f) => {
+    const [{ data: sup }, { data: exp }, { data: del }, { data: sc }] = await Promise.all([
+      supabase.from("supplies").select("weight_kg, rate_per_kg, cost_per_kg, supply_date, reversed_at")
+        .gte("supply_date", f.from).lte("supply_date", f.to).is("reversed_at", null),
+      supabase.from("expenses").select("amount, expense_date")
+        .gte("expense_date", f.from).lte("expense_date", f.to),
+      supabase.from("deliveries").select("fuel_expense, labour_expense, other_expense, loading_date")
+        .gte("loading_date", f.from).lte("loading_date", f.to),
+      supabase.from("stock_closings").select("shortage_cost, closing_date, status, variance_type, reversed_at")
+        .gte("closing_date", f.from).lte("closing_date", f.to)
+        .eq("status", "finalized" as any).eq("variance_type", "shortage" as any).is("reversed_at", null),
+    ]);
+    const shortageCost = (sc ?? []).reduce((a, r: any) => a + num(r.shortage_cost), 0);
+    const bd = computeNetProfit({
+      supplies: (sup ?? []) as any,
+      expenses: exp ?? [],
+      deliveries: del ?? [],
+      finalizedShortageCost: shortageCost,
+    });
+    const rows = [
+      { line: "Gross Profit",              formula: "Σ (rate − cost) × weight",  amount: bd.grossProfit },
+      { line: "− General Expenses",        formula: "Σ expenses.amount",           amount: -bd.generalExpense },
+      { line: "− Truck Delivery Expenses", formula: "Σ (fuel + labour + other)",   amount: -bd.deliveryExpense },
+      { line: "− Finalized Shortage Cost", formula: "Σ finalized shortage.cost",   amount: -bd.finalizedShortageCost },
+      { line: "= Net Profit",              formula: "Gross − Gen − Del − Shortage", amount: bd.netProfit },
+    ];
+    return {
+      rows,
+      columns: [
+        { label: "Line", key: "line" },
+        { label: "Formula", key: "formula" },
+        { label: "Amount", key: "amount", format: "money", align: "right" },
+      ],
+      totals: [
+        { label: "Gross Profit", value: fmtMoney(bd.grossProfit) },
+        { label: "General Exp", value: fmtMoney(bd.generalExpense) },
+        { label: "Delivery Exp", value: fmtMoney(bd.deliveryExpense) },
+        { label: "Shortage Cost", value: fmtMoney(bd.finalizedShortageCost) },
+        { label: "Net Profit", value: fmtMoney(bd.netProfit) },
+      ],
+      kpis: [
+        { label: "Gross Profit", value: fmtMoney(bd.grossProfit), icon: TrendingUp, tone: "bg-emerald-500" },
+        { label: "General Exp", value: fmtMoney(bd.generalExpense), icon: Wallet, tone: "bg-orange-500" },
+        { label: "Delivery Exp", value: fmtMoney(bd.deliveryExpense), icon: Truck, tone: "bg-orange-500" },
+        { label: "Shortage Cost", value: fmtMoney(bd.finalizedShortageCost), icon: TrendingDown, tone: "bg-red-500" },
+        { label: "Net Profit", value: fmtMoney(bd.netProfit), icon: Calculator, tone: bd.netProfit >= 0 ? "bg-purple-500" : "bg-red-500" },
+      ],
+    };
+  },
+
+  payable_receivable: async (f, o) => {
+    const asOf = f.to;
+    const [farmsQ, shopsQ, purQ, payQ, ledSupQ, supQ, ledShopQ, recQ] = await Promise.all([
+      supabase.from("farms").select("id, name, opening_balance").is("deleted_at", null),
+      supabase.from("shops").select("id, name, opening_balance").is("deleted_at", null),
+      supabase.from("purchases").select("farm_id, total_amount, paid_amount, purchase_date, reversed_at"),
+      supabase.from("farm_payments").select("farm_id, amount, payment_date, reversed_at"),
+      supabase.from("supplier_ledger_entries").select("supplier_id, entry_type, amount, entry_date, reversed_at, original_entry_id"),
+      supabase.from("supplies").select("shop_id, total_amount, supply_date, reversed_at"),
+      supabase.from("shop_ledger_entries").select("id, shop_id, entry_type, amount, entry_date, reversed_at, reversal_entry_id, original_entry_id"),
+      supabase.from("shop_recoveries").select("ledger_entry_id, reversed_at").not("reversed_at", "is", null),
+    ]);
+    const farmBal = computeFarmBalances(
+      (farmsQ.data ?? []) as any,
+      (purQ.data ?? []) as any,
+      (payQ.data ?? []) as any,
+      ((ledSupQ.data ?? []) as any[]).map((x) => ({ ...x, farm_id: x.supplier_id })) as any,
+      asOf,
+    );
+    const shopBal = computeShopBalances(
+      (shopsQ.data ?? []) as any,
+      (supQ.data ?? []) as any,
+      (ledShopQ.data ?? []) as any,
+      (recQ.data ?? []) as any,
+      asOf,
+    );
+    const farmName = new Map((farmsQ.data ?? []).map((x: any) => [x.id, x.name]));
+    const shopName = new Map((shopsQ.data ?? []).map((x: any) => [x.id, x.name]));
+    const farmRows = farmBal
+      .filter((b) => Math.abs(b.balance) > 0.01)
+      .sort((a, b) => b.balance - a.balance)
+      .map((b) => ({
+        party: farmName.get(b.id) ?? "—", side: "Farm Payable",
+        opening: b.opening, activity: b.purchased, payments: b.paid, adjustments: b.adj,
+        balance: round2(b.balance),
+      }));
+    const shopRows = shopBal
+      .filter((b) => Math.abs(b.balance) > 0.01)
+      .sort((a, b) => b.balance - a.balance)
+      .map((b) => ({
+        party: shopName.get(b.id) ?? "—", side: "Shop Receivable",
+        opening: b.opening, activity: b.supplied, payments: b.paid, adjustments: b.adj,
+        balance: round2(b.balance),
+      }));
+    const totalPay = totalPayableToFarms(farmBal);
+    const totalRec = totalReceivableFromShops(shopBal);
+    const rows = [...farmRows, ...shopRows];
+    return {
+      rows,
+      columns: [
+        { label: "Side", key: "side" },
+        { label: "Party", key: "party" },
+        { label: "Opening", key: "opening", format: "money", align: "right" },
+        { label: "Activity", key: "activity", format: "money", align: "right" },
+        { label: "Payments/Recoveries", key: "payments", format: "money", align: "right" },
+        { label: "Adjustments", key: "adjustments", format: "money", align: "right" },
+        { label: "Balance", key: "balance", format: "money", align: "right" },
+      ],
+      totals: [
+        { label: "Total Payable", value: fmtMoney(totalPay) },
+        { label: "Total Receivable", value: fmtMoney(totalRec) },
+        { label: "Net Working Capital", value: fmtMoney(totalRec - totalPay) },
+      ],
+      kpis: [
+        { label: "Farm Payable", value: fmtMoney(totalPay), icon: TrendingDown, tone: "bg-red-500" },
+        { label: "Shop Receivable", value: fmtMoney(totalRec), icon: TrendingUp, tone: "bg-emerald-500" },
+        { label: "Net Working Capital", value: fmtMoney(totalRec - totalPay), icon: DollarSign, tone: (totalRec - totalPay) >= 0 ? "bg-purple-500" : "bg-red-500" },
+        { label: "Top Farm Balance", value: farmRows[0] ? fmtMoney(farmRows[0].balance) : "—", icon: Wallet, tone: "bg-orange-500" },
+        { label: "Top Shop Balance", value: shopRows[0] ? fmtMoney(shopRows[0].balance) : "—", icon: Wallet, tone: "bg-blue-500" },
+      ],
+    };
+  },
+
+  reversal_audit: async (f, o) => {
+    let q = supabase.from("activity_logs")
+      .select("created_at, action, entity, entity_id, actor_user_id, metadata")
+      .ilike("action", "%revers%")
+      .gte("created_at", f.from + "T00:00:00")
+      .lte("created_at", f.to + "T23:59:59")
+      .order("created_at", { ascending: false });
+    if (f.user_id !== "all") q = q.eq("actor_user_id", f.user_id);
+    const { data } = await q;
+    const rows = (data ?? []).map((r: any) => ({
+      ...r,
+      user: r.actor_user_id ? o.userMap.get(r.actor_user_id) ?? "—" : "System",
+      reason: r.metadata?.reason ?? r.metadata?.reversal_reason ?? "—",
+      amount: r.metadata?.amount ?? r.metadata?.total_amount ?? r.metadata?.weight_kg ?? "",
+      audit_ref: r.entity_id ?? "",
+      ts: r.created_at ? new Date(r.created_at).toLocaleString() : "",
+    }));
+    return {
+      rows,
+      columns: [
+        { label: "When", key: "ts" },
+        { label: "Module", key: "entity" },
+        { label: "Action", key: "action" },
+        { label: "Original Record", key: "audit_ref" },
+        { label: "Amount/Weight", key: "amount" },
+        { label: "Reason", key: "reason" },
+        { label: "Reversed By", key: "user" },
+      ],
+      totals: [{ label: "Reversal Events", value: String(rows.length) }],
+      kpis: [
+        { label: "Reversal Events", value: String(rows.length), icon: RotateCcw, tone: "bg-orange-500" },
+      ],
+    };
+  },
 };
 
 const REPORTS: ReportDef[] = [
@@ -679,10 +1034,17 @@ const REPORTS: ReportDef[] = [
   { id: "supplier_ledger", label: "Supplier Ledger Report",  icon: Wallet,          supports: { farm: true },                          load: loaders.supplier_ledger },
   { id: "expenses",        label: "Expense Report",          icon: Wallet,          supports: { farm: true, user: true },              load: loaders.expenses },
   { id: "inventory",       label: "Inventory Report",        icon: Boxes,           supports: { meat: true },                          load: loaders.inventory },
-  { id: "daily_closing",   label: "Daily Closing Stock",     icon: ClipboardCheck,  supports: { meat: true },                          load: loaders.daily_closing },
+  { id: "daily_closing",   label: "Daily Closing Stock",     icon: ClipboardCheck,  supports: { meat: true }, supportsVariance: true, supportsStatus: true, load: loaders.daily_closing },
+  { id: "inventory_variance", label: "Inventory Variance",   icon: Scale,           supports: { meat: true },                          load: loaders.inventory_variance },
+  { id: "shortage",        label: "Shortage Report",         icon: AlertTriangle,   supports: { meat: true },                          load: loaders.shortage },
+  { id: "surplus",         label: "Surplus Report",          icon: PackagePlus,     supports: { meat: true },                          load: loaders.surplus },
+  { id: "stock_adj_analysis", label: "Stock Adjustment Analysis", icon: Scale,      supports: { meat: true, user: true },              load: loaders.stock_adj_analysis },
   { id: "closing_history", label: "Closing History Report",  icon: History,         supports: { meat: true },                          load: loaders.closing_history },
   { id: "mortality",       label: "Mortality Register",      icon: Skull,           supports: { meat: true, farm: true, shop: true, user: true }, load: loaders.mortality },
   { id: "inventory_loss",  label: "Inventory Loss Report",   icon: PackageMinus,    supports: { meat: true, farm: true, shop: true, user: true }, load: loaders.inventory_loss },
+  { id: "profit_recon",    label: "Profit Reconciliation",   icon: Calculator,      supports: {},                                      load: loaders.profit_recon },
+  { id: "payable_receivable", label: "Payable & Receivable", icon: Wallet,          supports: {},                                      load: loaders.payable_receivable },
+  { id: "reversal_audit",  label: "Reversal & Audit",        icon: RotateCcw,       supports: { user: true },                          load: loaders.reversal_audit },
   { id: "dashboard",       label: "Dashboard Summary",       icon: LayoutDashboard, supports: {},                                      load: loaders.dashboard },
 ];
 
