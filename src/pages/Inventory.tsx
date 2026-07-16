@@ -219,7 +219,13 @@ const Inventory = () => {
     supplied: acc.supplied + r.supplied,
     loss: acc.loss + r.loss,
     current: acc.current + r.current,
-  }), { opening: 0, purchased: 0, supplied: 0, loss: 0, current: 0 }), [filtered]);
+    posAdj: acc.posAdj + r.posAdj,
+    negAdj: acc.negAdj + r.negAdj,
+    mortality: acc.mortality + r.mortality,
+    expected: acc.expected + r.expected,
+    physical: acc.physical + (r.physical ?? 0),
+    difference: acc.difference + (r.difference ?? 0),
+  }), { opening: 0, purchased: 0, supplied: 0, loss: 0, current: 0, posAdj: 0, negAdj: 0, mortality: 0, expected: 0, physical: 0, difference: 0 }), [filtered]);
 
   const currentStockTotal = useMemo(
     () => round2(rows.reduce((a, r) => a + r.current, 0)),
