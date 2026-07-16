@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtKg, fmtMoney } from "@/lib/constants";
-import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull, PackageMinus, Store, Scale, CheckCircle2, AlertTriangle } from "lucide-react";
+import { ShoppingCart, Truck, Boxes, TrendingUp, Beef, Wallet, Users, HandCoins, Skull, PackageMinus, Store, Scale, CheckCircle2, AlertTriangle, Fuel, Receipt } from "lucide-react";
 import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
@@ -14,7 +14,7 @@ import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { useModuleFlags } from "@/hooks/useModuleFlags";
 import { SeoHead } from "@/components/SeoHead";
 import { useSettingsLists, activeOnly } from "@/hooks/useSettingsLists";
-import { calcRealizedProfit } from "@/lib/profit";
+import { computeNetProfit } from "@/lib/netProfit";
 import { computeShopBalances, totalReceivableFromShops } from "@/lib/shopReceivable";
 import { ShopReceivableDialog } from "@/components/ShopReceivableDialog";
 import { FinancialHealthSection } from "@/components/FinancialHealthSection";
@@ -23,7 +23,10 @@ interface KPI {
   purchaseKg: number; purchaseAmt: number;
   supplyKg: number; supplyAmt: number;
   stockKg: number;
-  profit: number;
+  profit: number;         // Net Profit (gross − general − delivery)
+  grossProfit: number;
+  generalExpense: number;
+  deliveryExpense: number;
   payableToFarms: number; receivableFromCustomers: number;
   receivableFromShops: number;
   recoveryToday: number; recoveryWeek: number; recoveryMonth: number;
@@ -43,7 +46,7 @@ const DEFAULT_REASONS: { value: string; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 const emptyBreakdown = (): Record<string, number> => Object.fromEntries(DEFAULT_REASONS.map(r => [r.value, 0]));
-const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, payableToFarms: 0, receivableFromCustomers: 0, receivableFromShops: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0, inventoryLossToday: 0, breakdownToday: emptyBreakdown(), breakdownWeek: emptyBreakdown(), breakdownMonth: emptyBreakdown() };
+const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, grossProfit: 0, generalExpense: 0, deliveryExpense: 0, payableToFarms: 0, receivableFromCustomers: 0, receivableFromShops: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0, inventoryLossToday: 0, breakdownToday: emptyBreakdown(), breakdownWeek: emptyBreakdown(), breakdownMonth: emptyBreakdown() };
 
 const KpiCard = ({ icon: Icon, label, value, sub, tone = "default", onClick }: any) => (
   <Card onClick={onClick} className={onClick ? "cursor-pointer hover:border-primary/50 transition-colors" : undefined}>
@@ -90,6 +93,16 @@ const Dashboard = () => {
       const [{ data: pAll }, { data: sAll }] = await Promise.all([
         supabase.from("purchases").select("weight_kg, total_amount, meat_type, rate_per_kg, purchase_date").eq("purchase_date", today).is("reversed_at", null),
         supabase.from("supplies").select("weight_kg, total_amount, cost_per_kg, rate_per_kg, supply_date").eq("supply_date", today).is("reversed_at", null),
+      ]);
+      // Selected-date operating expenses.
+      //  • deliveries: fuel + labour + other for the loading_date (authoritative)
+      //  • expenses:  category amounts for the expense_date
+      // Neither table has reversal/soft-delete columns today (see \d in code
+      // review) — RLS scopes them to the current tenant. If reversal support
+      // is added later, filter it here.
+      const [{ data: dayExpenses }, { data: dayDeliveries }] = await Promise.all([
+        supabase.from("expenses").select("amount").eq("expense_date", today),
+        supabase.from("deliveries").select("fuel_expense, labour_expense, other_expense").eq("loading_date", today),
       ]);
       // Stock balance: use latest physical closing (per meat_type) on/before selectedDate,
       // then add purchases and subtract supplies AFTER that closing up to selectedDate.
@@ -163,12 +176,21 @@ const Dashboard = () => {
       const purchaseAmt = sum(pAll, "total_amount");
       const supplyKg = sum(sAll, "weight_kg");
       const supplyAmt = sum(sAll, "total_amount");
-      // Realized Profit on the selected date is calculated PER SUPPLY LINE:
-      //   Σ supplied_weight × (sale_rate_per_kg − cost_per_kg)
-      // We do NOT subtract full purchase value from supply revenue — remaining
-      // stock is inventory, not loss. This matches the profit shown in each
-      // supply row/edit modal.
-      const profit = calcRealizedProfit(sAll ?? []);
+      // Net Profit (single source of truth: src/lib/netProfit.ts):
+      //   Gross Profit (per-supply-line) − General Expense − Delivery Expense
+      // Gross Profit stays PER SUPPLY LINE: Σ supplied_weight × (sale_rate − cost_per_kg).
+      // Remaining stock is inventory, not loss — we do NOT subtract full purchase value.
+      // Delivery costs live on the delivery record; the expenses table does NOT
+      // duplicate them (no delivery_id linkage), so both sources are counted once.
+      const np = computeNetProfit({
+        supplies: sAll ?? [],
+        expenses: dayExpenses ?? [],
+        deliveries: dayDeliveries ?? [],
+      });
+      const profit = np.netProfit;
+      const grossProfit = np.grossProfit;
+      const generalExpense = np.generalExpense;
+      const deliveryExpense = np.deliveryExpense;
 
       // Payable to farms (Total Udhaar) — cumulative as-of selected date.
       // Mirrors the Suppliers ledger balance math so Dashboard matches Suppliers.
@@ -255,7 +277,7 @@ const Dashboard = () => {
       });
       const inventoryLossToday = Object.values(breakdownToday).reduce((a, v) => a + v, 0);
 
-      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, payableToFarms, receivableFromCustomers, receivableFromShops, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost, inventoryLossToday, breakdownToday, breakdownWeek, breakdownMonth });
+      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, grossProfit, generalExpense, deliveryExpense, payableToFarms, receivableFromCustomers, receivableFromShops, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost, inventoryLossToday, breakdownToday, breakdownWeek, breakdownMonth });
 
       // 7-day chart ending at selected date
       const days: any[] = [];
@@ -287,6 +309,8 @@ const Dashboard = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "pos_sales" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "shop_ledger_entries" }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "shops" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "expenses" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "deliveries" }, () => load())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [load]);
@@ -316,7 +340,29 @@ const Dashboard = () => {
         <KpiCard icon={ShoppingCart} label={isToday ? t("dashboard.todays_purchase") : t("dashboard.purchase_on")} value={fmtKg(kpi.purchaseKg)} sub={t("dashboard.amt", { value: fmtMoney(kpi.purchaseAmt) })} />
         <KpiCard icon={Truck} label={isToday ? t("dashboard.todays_supply") : t("dashboard.supply_on")} value={fmtKg(kpi.supplyKg)} sub={t("dashboard.amt", { value: fmtMoney(kpi.supplyAmt) })} />
         <KpiCard icon={Boxes} label={isToday ? t("dashboard.current_stock") : t("dashboard.stock_on")} value={fmtKg(kpi.stockKg)} tone={kpi.stockKg < 0 ? "danger" : "default"} sub={selectedDate} />
-        <KpiCard icon={TrendingUp} label={isToday ? t("dashboard.todays_profit") : t("dashboard.profit_on")} value={fmtMoney(kpi.profit)} tone={kpi.profit >= 0 ? "success" : "danger"} sub={t("dashboard.revenue_minus_cost")} />
+        <KpiCard
+          icon={TrendingUp}
+          label={isToday ? t("dashboard.todays_profit") : t("dashboard.profit_on")}
+          value={fmtMoney(kpi.profit)}
+          tone={kpi.profit >= 0 ? "success" : "danger"}
+          sub={`Gross ${fmtMoney(kpi.grossProfit)} − Exp ${fmtMoney(kpi.generalExpense)} − Del ${fmtMoney(kpi.deliveryExpense)}`}
+        />
+        <KpiCard
+          icon={Fuel}
+          label={isToday ? "Truck Delivery Expense Today" : `Truck Delivery Expense on ${selectedDate}`}
+          value={fmtMoney(kpi.deliveryExpense)}
+          sub="Fuel + Labour + Other"
+          tone={kpi.deliveryExpense > 0 ? "danger" : "default"}
+          onClick={() => navigate("/deliveries")}
+        />
+        <KpiCard
+          icon={Receipt}
+          label={isToday ? "Expense Today" : `Expenses on ${selectedDate}`}
+          value={fmtMoney(kpi.generalExpense)}
+          sub="Daily general expenses"
+          tone={kpi.generalExpense > 0 ? "danger" : "default"}
+          onClick={() => navigate("/expenses")}
+        />
         <KpiCard icon={Wallet} label={t("dashboard.payable_to_farms")} value={fmtMoney(kpi.payableToFarms)} sub={t("dashboard.total_udhaar")} tone="danger" />
         <KpiCard
           icon={Store}
