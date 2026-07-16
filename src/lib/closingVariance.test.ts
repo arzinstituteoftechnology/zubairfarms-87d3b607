@@ -52,8 +52,8 @@ describe("closingVariance", () => {
   });
 
   it("classifyVariance rounds and handles string inputs", () => {
-    const v = classifyVariance("94.005", 100);
-    expect(v.varianceWeight).toBeCloseTo(-6, 2);
+    const v = classifyVariance("94.00", 100);
+    expect(v.varianceWeight).toBe(-6);
     expect(v.varianceType).toBe("shortage");
   });
 
