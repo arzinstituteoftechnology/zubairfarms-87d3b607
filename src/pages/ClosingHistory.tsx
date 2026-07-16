@@ -12,7 +12,15 @@ import { SeoHead } from "@/components/SeoHead";
 
 const REASON_LABELS: Record<string, string> = {
   weight_loss: "Weight Loss", mortality: "Mortality", wastage: "Wastage",
-  damage: "Damage", theft: "Theft", other: "Other",
+  damage: "Damage", theft: "Theft", other: "Other", leakage: "Leakage",
+  scale_difference: "Scale Difference", counting_difference: "Counting Difference",
+  purchase_entry_error: "Purchase Entry Error", supply_entry_error: "Supply Entry Error",
+  opening_stock_correction: "Opening Stock Correction",
+  weight_gain: "Weight Gain", moisture_gain: "Moisture Gain",
+  purchase_under_recorded: "Purchase Under-recorded",
+  supply_over_recorded: "Supply Over-recorded",
+  measurement_correction: "Measurement Correction",
+  previous_closing_correction: "Previous Closing Correction",
 };
 
 type Row = {
