@@ -17,17 +17,39 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Info } from "lucide-react";
+import { Info, CheckCircle2, Lock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 type Reason = string;
-const DEFAULT_REASONS: { value: string; label: string }[] = [
-  { value: "weight_loss", label: "Weight Loss" },
+// Reasons available when Physical < Expected (stock is missing)
+const SHORTAGE_REASONS: { value: string; label: string }[] = [
   { value: "mortality", label: "Mortality" },
+  { value: "weight_loss", label: "Weight Loss" },
   { value: "wastage", label: "Wastage" },
+  { value: "leakage", label: "Leakage" },
   { value: "damage", label: "Damage" },
   { value: "theft", label: "Theft" },
+  { value: "scale_difference", label: "Scale Difference" },
+  { value: "counting_difference", label: "Counting Difference" },
+  { value: "purchase_entry_error", label: "Purchase Entry Error" },
+  { value: "supply_entry_error", label: "Supply Entry Error" },
+  { value: "opening_stock_correction", label: "Opening Stock Correction" },
   { value: "other", label: "Other" },
 ];
+// Reasons available when Physical > Expected (extra stock)
+const SURPLUS_REASONS: { value: string; label: string }[] = [
+  { value: "weight_gain", label: "Weight Gain" },
+  { value: "scale_difference", label: "Scale Difference" },
+  { value: "moisture_gain", label: "Moisture Gain" },
+  { value: "purchase_under_recorded", label: "Purchase Under-recorded" },
+  { value: "supply_over_recorded", label: "Supply Over-recorded" },
+  { value: "counting_difference", label: "Counting Difference" },
+  { value: "measurement_correction", label: "Measurement Correction" },
+  { value: "opening_stock_correction", label: "Opening Stock Correction" },
+  { value: "previous_closing_correction", label: "Previous Closing Correction" },
+  { value: "other", label: "Other" },
+];
+const ALL_REASONS = [...SHORTAGE_REASONS, ...SURPLUS_REASONS];
 
 type Row = {
   meat_type: string;
@@ -36,6 +58,9 @@ type Row = {
   purchases: number;
   supplies: number;
   adjustments: number;
+  mortality: number;             // absolute kg (from mortality adjustments)
+  positiveAdjustments: number;   // sum of quantity_kg > 0 (excluding mortality)
+  negativeAdjustments: number;   // sum of quantity_kg < 0 (absolute, excluding mortality)
   system: number;
   physical: string; // input
   reason: Reason | "";
@@ -44,6 +69,8 @@ type Row = {
   shop_id?: string | null;
   bird_count?: string; // input as string
   closingId?: string;
+  status?: "draft" | "finalized";
+  reversed?: boolean;
   saving?: boolean;
 };
 
@@ -67,13 +94,15 @@ const StockClosing = () => {
   const { selectedDate } = useLedgerDate();
   const { user, tenant, role, isSuperAdmin } = useAuth();
   const { meatTypes, adjustmentReasons } = useSettingsLists();
-  const REASONS = (adjustmentReasons.length
-    ? activeOnly(adjustmentReasons).map(r => ({ value: r.code, label: r.name, id: r.id }))
-    : DEFAULT_REASONS.map(r => ({ ...r, id: undefined as string | undefined })));
-  // Include archived reasons so historical rows still resolve a label
-  const REASON_LABEL: Record<string, string> = Object.fromEntries(
-    (adjustmentReasons ?? []).map(r => [r.code, r.name])
-  );
+  // Custom tenant-defined reasons (if any) are merged so both the shortage/surplus
+  // curated lists AND any tenant-specific reasons remain available.
+  const CUSTOM_REASONS = activeOnly(adjustmentReasons).map(r => ({ value: r.code, label: r.name, id: r.id }));
+  const REASON_LABEL: Record<string, string> = {
+    ...Object.fromEntries(ALL_REASONS.map(r => [r.value, r.label])),
+    ...Object.fromEntries((adjustmentReasons ?? []).map(r => [r.code, r.name])),
+  };
+  const reasonIdFor = (code: string) =>
+    CUSTOM_REASONS.find(x => x.value === code)?.id ?? null;
   const ACTIVE_MEATS = activeOnly(meatTypes).map(m => m.name);
   const canReverse = role === "admin" || isSuperAdmin;
   const [rows, setRows] = useState<Row[]>([]);
