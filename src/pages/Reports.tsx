@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { computeNetProfit } from "@/lib/netProfit";
+import { reconcileClosing } from "@/lib/closingVariance";
+import { computeFarmBalances, totalPayableToFarms } from "@/lib/farmPayable";
+import { computeShopBalances, totalReceivableFromShops } from "@/lib/shopReceivable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +17,7 @@ import { MEAT_TYPES, fmtKg, fmtMoney } from "@/lib/constants";
 import { SeoHead } from "@/components/SeoHead";
 import { printReport } from "@/lib/printReport";
 import { format, startOfWeek, startOfMonth, subDays } from "date-fns";
-import { FileSpreadsheet, FileText, Printer, TrendingUp, TrendingDown, DollarSign, Boxes, PackageMinus, ShoppingCart, Truck, HandCoins, Wallet, ClipboardCheck, History, Skull, LayoutDashboard } from "lucide-react";
+import { FileSpreadsheet, FileText, Printer, TrendingUp, TrendingDown, DollarSign, Boxes, PackageMinus, ShoppingCart, Truck, HandCoins, Wallet, ClipboardCheck, History, Skull, LayoutDashboard, AlertTriangle, PackagePlus, Scale, Calculator, RotateCcw } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -28,6 +33,8 @@ type Filters = {
   shop_id: string;
   user_id: string;
   includeReversed: boolean;
+  variance_type: string;   // all | balanced | shortage | surplus
+  closing_status: string;  // all | draft | finalized
 };
 
 type Column = { label: string; key: string; align?: "left" | "right" | "center"; format?: "kg" | "money" | "int"; width?: string };
@@ -39,6 +46,8 @@ type ReportDef = {
   label: string;
   icon: any;
   supports: { meat?: boolean; farm?: boolean; shop?: boolean; user?: boolean };
+  supportsVariance?: boolean;
+  supportsStatus?: boolean;
   load: (f: Filters, opts: LookupOpts) => Promise<ReportResult>;
 };
 
@@ -399,18 +408,38 @@ const loaders: Record<string, ReportDef["load"]> = {
     };
   },
 
-  daily_closing: async (f) => {
+  daily_closing: async (f, o) => {
     let q = supabase.from("stock_closings")
-      .select("closing_date, meat_type, opening_stock, purchases_kg, supplies_kg, adjustments_kg, system_stock, physical_stock, difference, reason, notes")
+      .select("closing_date, meat_type, opening_stock, purchases_kg, supplies_kg, positive_adjustments_kg, negative_adjustments_kg, mortality_weight, expected_closing_stock, physical_stock, variance_weight, variance_type, shortage_cost, status, reason, notes, created_by, finalized_by, finalized_at, reversed_by, reversed_at")
       .gte("closing_date", f.from).lte("closing_date", f.to)
       .order("closing_date", { ascending: false });
     if (f.meat_type !== "all") q = q.eq("meat_type", f.meat_type);
+    if (f.variance_type !== "all") q = q.eq("variance_type", f.variance_type as any);
+    if (f.closing_status !== "all") q = q.eq("status", f.closing_status as any);
+    q = applyReversedFilter(q, f.includeReversed);
     const { data } = await q;
-    const rows = (data ?? []).map((r: any) => ({
-      ...r,
-      reason_label: r.reason ? (REASONS_LABEL[r.reason] ?? r.reason) : "—",
+    // Rolling 30-day WAR per closing (for surplus estimated value)
+    const rows = await Promise.all((data ?? []).map(async (r: any) => {
+      let war = 0;
+      const { data: warRes } = await supabase.rpc("compute_closing_war" as any, {
+        p_meat_type: r.meat_type, p_ref_date: r.closing_date,
+      }).maybeSingle();
+      war = num(warRes ?? 0);
+      return {
+        ...r,
+        surplus_estimated_value: r.variance_type === "surplus"
+          ? round2(num(r.variance_weight) * war) : 0,
+        reason_label: r.reason ? (REASONS_LABEL[r.reason] ?? r.reason) : "—",
+        created_by_name: r.created_by ? o.userMap.get(r.created_by) ?? "—" : "—",
+        finalized_by_name: r.finalized_by ? o.userMap.get(r.finalized_by) ?? "—" : "—",
+        reversed_by_name: r.reversed_by ? o.userMap.get(r.reversed_by) ?? "—" : "—",
+      };
     }));
-    const totalDiff = rows.reduce((a, r) => a + num(r.difference), 0);
+    const totalVar = rows.reduce((a, r) => a + num(r.variance_weight), 0);
+    const totalShort = rows.filter(r => r.variance_type === "shortage" && r.status === "finalized" && !r.reversed_at)
+      .reduce((a, r) => a + num(r.shortage_cost), 0);
+    const totalSurp = rows.filter(r => r.variance_type === "surplus" && r.status === "finalized" && !r.reversed_at)
+      .reduce((a, r) => a + num(r.surplus_estimated_value), 0);
     return {
       rows,
       columns: [
@@ -419,18 +448,34 @@ const loaders: Record<string, ReportDef["load"]> = {
         { label: "Opening", key: "opening_stock", format: "kg", align: "right" },
         { label: "Purchased", key: "purchases_kg", format: "kg", align: "right" },
         { label: "Supplied", key: "supplies_kg", format: "kg", align: "right" },
-        { label: "System", key: "system_stock", format: "kg", align: "right" },
+        { label: "Pos Adj", key: "positive_adjustments_kg", format: "kg", align: "right" },
+        { label: "Neg Adj", key: "negative_adjustments_kg", format: "kg", align: "right" },
+        { label: "Mortality", key: "mortality_weight", format: "kg", align: "right" },
+        { label: "Expected", key: "expected_closing_stock", format: "kg", align: "right" },
         { label: "Physical", key: "physical_stock", format: "kg", align: "right" },
-        { label: "Difference", key: "difference", format: "kg", align: "right" },
+        { label: "Variance", key: "variance_weight", format: "kg", align: "right" },
+        { label: "Type", key: "variance_type" },
         { label: "Reason", key: "reason_label" },
+        { label: "Shortage Cost", key: "shortage_cost", format: "money", align: "right" },
+        { label: "Surplus Value", key: "surplus_estimated_value", format: "money", align: "right" },
+        { label: "Status", key: "status" },
+        { label: "Created By", key: "created_by_name" },
+        { label: "Finalized By", key: "finalized_by_name" },
+        { label: "Finalized At", key: "finalized_at" },
+        { label: "Reversed By", key: "reversed_by_name" },
+        { label: "Reversed At", key: "reversed_at" },
       ],
       totals: [
         { label: "Entries", value: String(rows.length) },
-        { label: "Total Difference", value: fmtKg(totalDiff) },
+        { label: "Net Variance", value: fmtKg(totalVar) },
+        { label: "Finalized Shortage Cost", value: fmtMoney(totalShort) },
+        { label: "Finalized Surplus Value", value: fmtMoney(totalSurp) },
       ],
       kpis: [
         { label: "Closings", value: String(rows.length), icon: ClipboardCheck, tone: "bg-blue-500" },
-        { label: "Total Difference", value: fmtKg(totalDiff), icon: PackageMinus, tone: "bg-orange-500" },
+        { label: "Net Variance", value: fmtKg(totalVar), icon: PackageMinus, tone: "bg-orange-500" },
+        { label: "Shortage Cost", value: fmtMoney(totalShort), icon: TrendingDown, tone: "bg-red-500" },
+        { label: "Surplus Value", value: fmtMoney(totalSurp), icon: TrendingUp, tone: "bg-emerald-500" },
       ],
     };
   },
@@ -624,6 +669,348 @@ const loaders: Record<string, ReportDef["load"]> = {
       ],
     };
   },
+
+  // ---- Phase 2 additions ----
+
+  shortage: async (f, o) => {
+    let q = supabase.from("stock_closings")
+      .select("closing_date, meat_type, variance_weight, shortage_cost, reason, notes, finalized_by, finalized_at")
+      .eq("status", "finalized" as any).eq("variance_type", "shortage" as any).is("reversed_at", null)
+      .gte("closing_date", f.from).lte("closing_date", f.to)
+      .order("closing_date", { ascending: false });
+    if (f.meat_type !== "all") q = q.eq("meat_type", f.meat_type);
+    const { data } = await q;
+    const rows = (data ?? []).map((r: any) => ({
+      ...r,
+      shortage_kg: round2(Math.abs(num(r.variance_weight))),
+      war: num(r.shortage_cost) / (Math.abs(num(r.variance_weight)) || 1),
+      reason_label: r.reason ? (REASONS_LABEL[r.reason] ?? r.reason) : "—",
+      finalized_by_name: r.finalized_by ? o.userMap.get(r.finalized_by) ?? "—" : "—",
+    }));
+    const tKg = rows.reduce((a, r) => a + num(r.shortage_kg), 0);
+    const tCost = rows.reduce((a, r) => a + num(r.shortage_cost), 0);
+    return {
+      rows,
+      columns: [
+        { label: "Date", key: "closing_date" },
+        { label: "Meat", key: "meat_type" },
+        { label: "Shortage (kg)", key: "shortage_kg", format: "kg", align: "right" },
+        { label: "WAR", key: "war", format: "money", align: "right" },
+        { label: "Shortage Cost", key: "shortage_cost", format: "money", align: "right" },
+        { label: "Reason", key: "reason_label" },
+        { label: "Notes", key: "notes" },
+        { label: "Finalized By", key: "finalized_by_name" },
+      ],
+      totals: [
+        { label: "Total Shortage", value: fmtKg(tKg) },
+        { label: "Total Shortage Cost", value: fmtMoney(tCost) },
+        { label: "Entries", value: String(rows.length) },
+      ],
+      kpis: [
+        { label: "Shortage Events", value: String(rows.length), icon: AlertTriangle, tone: "bg-red-500" },
+        { label: "Total Shortage", value: fmtKg(tKg), icon: TrendingDown, tone: "bg-orange-500" },
+        { label: "Shortage Cost", value: fmtMoney(tCost), icon: DollarSign, tone: "bg-red-500" },
+      ],
+    };
+  },
+
+  surplus: async (f, o) => {
+    let q = supabase.from("stock_closings")
+      .select("closing_date, meat_type, variance_weight, reason, notes, finalized_by, finalized_at")
+      .eq("status", "finalized" as any).eq("variance_type", "surplus" as any).is("reversed_at", null)
+      .gte("closing_date", f.from).lte("closing_date", f.to)
+      .order("closing_date", { ascending: false });
+    if (f.meat_type !== "all") q = q.eq("meat_type", f.meat_type);
+    const { data } = await q;
+    const rows = await Promise.all((data ?? []).map(async (r: any) => {
+      const { data: warRes } = await supabase.rpc("compute_closing_war" as any, {
+        p_meat_type: r.meat_type, p_ref_date: r.closing_date,
+      }).maybeSingle();
+      const war = num(warRes ?? 0);
+      return {
+        ...r,
+        surplus_kg: round2(num(r.variance_weight)),
+        war,
+        surplus_value: round2(num(r.variance_weight) * war),
+        reason_label: r.reason ? (REASONS_LABEL[r.reason] ?? r.reason) : "—",
+        finalized_by_name: r.finalized_by ? o.userMap.get(r.finalized_by) ?? "—" : "—",
+      };
+    }));
+    const tKg = rows.reduce((a, r) => a + num(r.surplus_kg), 0);
+    const tVal = rows.reduce((a, r) => a + num(r.surplus_value), 0);
+    return {
+      rows,
+      columns: [
+        { label: "Date", key: "closing_date" },
+        { label: "Meat", key: "meat_type" },
+        { label: "Surplus (kg)", key: "surplus_kg", format: "kg", align: "right" },
+        { label: "Valuation Rate", key: "war", format: "money", align: "right" },
+        { label: "Est. Value", key: "surplus_value", format: "money", align: "right" },
+        { label: "Reason", key: "reason_label" },
+        { label: "Notes", key: "notes" },
+        { label: "Finalized By", key: "finalized_by_name" },
+      ],
+      totals: [
+        { label: "Total Surplus", value: fmtKg(tKg) },
+        { label: "Total Est. Value", value: fmtMoney(tVal) },
+        { label: "Entries", value: String(rows.length) },
+      ],
+      kpis: [
+        { label: "Surplus Events", value: String(rows.length), icon: PackagePlus, tone: "bg-emerald-500" },
+        { label: "Total Surplus", value: fmtKg(tKg), icon: TrendingUp, tone: "bg-emerald-500" },
+        { label: "Est. Value (info)", value: fmtMoney(tVal), icon: DollarSign, tone: "bg-teal-500" },
+      ],
+    };
+  },
+
+  inventory_variance: async (f) => {
+    let q = supabase.from("stock_closings")
+      .select("closing_date, meat_type, expected_closing_stock, physical_stock, variance_weight, variance_type, status, reversed_at")
+      .gte("closing_date", f.from).lte("closing_date", f.to)
+      .order("closing_date", { ascending: true });
+    if (f.meat_type !== "all") q = q.eq("meat_type", f.meat_type);
+    q = applyReversedFilter(q, f.includeReversed);
+    const { data } = await q;
+    const rows = (data ?? []).map((r: any) => {
+      const expected = num(r.expected_closing_stock);
+      const variance = num(r.variance_weight);
+      const pct = expected !== 0 ? round2((variance / expected) * 100) : 0;
+      return { ...r, variance_pct: pct };
+    });
+    const totExp = rows.reduce((a, r) => a + num(r.expected_closing_stock), 0);
+    const totPhys = rows.reduce((a, r) => a + num(r.physical_stock), 0);
+    const totVar = rows.reduce((a, r) => a + num(r.variance_weight), 0);
+    const balCount = rows.filter(r => r.variance_type === "balanced").length;
+    const shortCount = rows.filter(r => r.variance_type === "shortage").length;
+    const surpCount = rows.filter(r => r.variance_type === "surplus").length;
+    return {
+      rows,
+      columns: [
+        { label: "Date", key: "closing_date" },
+        { label: "Meat", key: "meat_type" },
+        { label: "Expected", key: "expected_closing_stock", format: "kg", align: "right" },
+        { label: "Physical", key: "physical_stock", format: "kg", align: "right" },
+        { label: "Variance", key: "variance_weight", format: "kg", align: "right" },
+        { label: "Variance %", key: "variance_pct", align: "right" },
+        { label: "Type", key: "variance_type" },
+        { label: "Status", key: "status" },
+      ],
+      totals: [
+        { label: "Expected", value: fmtKg(totExp) },
+        { label: "Physical", value: fmtKg(totPhys) },
+        { label: "Net Variance", value: fmtKg(totVar) },
+      ],
+      kpis: [
+        { label: "Records", value: String(rows.length), icon: Scale, tone: "bg-blue-500" },
+        { label: "Balanced", value: String(balCount), icon: ClipboardCheck, tone: "bg-slate-500" },
+        { label: "Shortage", value: String(shortCount), icon: TrendingDown, tone: "bg-red-500" },
+        { label: "Surplus", value: String(surpCount), icon: TrendingUp, tone: "bg-emerald-500" },
+      ],
+    };
+  },
+
+  stock_adj_analysis: async (f, o) => {
+    let q = supabase.from("stock_adjustments")
+      .select("adjustment_date, meat_type, quantity_kg, reason, notes, created_by, reversed_at")
+      .is("original_adjustment_id", null)
+      .gte("adjustment_date", f.from).lte("adjustment_date", f.to)
+      .order("adjustment_date", { ascending: false });
+    if (f.meat_type !== "all") q = q.eq("meat_type", f.meat_type);
+    if (f.user_id !== "all") q = q.eq("created_by", f.user_id);
+    q = applyReversedFilter(q, f.includeReversed);
+    const { data } = await q;
+    const rows = (data ?? []).map((r: any) => ({
+      ...r,
+      type: num(r.quantity_kg) >= 0 ? "Positive" : "Negative",
+      abs_kg: round2(Math.abs(num(r.quantity_kg))),
+      reason_label: REASONS_LABEL[r.reason] ?? r.reason ?? "—",
+      user: o.userMap.get(r.created_by) ?? "—",
+      status: r.reversed_at ? "Reversed" : "Active",
+    }));
+    const pos = rows.filter(r => r.type === "Positive").reduce((a, r) => a + num(r.abs_kg), 0);
+    const neg = rows.filter(r => r.type === "Negative").reduce((a, r) => a + num(r.abs_kg), 0);
+    return {
+      rows,
+      columns: [
+        { label: "Date", key: "adjustment_date" },
+        { label: "Meat", key: "meat_type" },
+        { label: "Type", key: "type" },
+        { label: "Reason", key: "reason_label" },
+        { label: "Quantity", key: "abs_kg", format: "kg", align: "right" },
+        { label: "User", key: "user" },
+        { label: "Notes", key: "notes" },
+        { label: "Status", key: "status" },
+      ],
+      totals: [
+        { label: "Positive Total", value: fmtKg(pos) },
+        { label: "Negative Total", value: fmtKg(neg) },
+        { label: "Net", value: fmtKg(pos - neg) },
+      ],
+      kpis: [
+        { label: "Entries", value: String(rows.length), icon: Scale, tone: "bg-blue-500" },
+        { label: "Positive", value: fmtKg(pos), icon: PackagePlus, tone: "bg-emerald-500" },
+        { label: "Negative", value: fmtKg(neg), icon: PackageMinus, tone: "bg-red-500" },
+      ],
+    };
+  },
+
+  profit_recon: async (f) => {
+    const [{ data: sup }, { data: exp }, { data: del }, { data: sc }] = await Promise.all([
+      supabase.from("supplies").select("weight_kg, rate_per_kg, cost_per_kg, supply_date, reversed_at")
+        .gte("supply_date", f.from).lte("supply_date", f.to).is("reversed_at", null),
+      supabase.from("expenses").select("amount, expense_date")
+        .gte("expense_date", f.from).lte("expense_date", f.to),
+      supabase.from("deliveries").select("fuel_expense, labour_expense, other_expense, loading_date")
+        .gte("loading_date", f.from).lte("loading_date", f.to),
+      supabase.from("stock_closings").select("shortage_cost, closing_date, status, variance_type, reversed_at")
+        .gte("closing_date", f.from).lte("closing_date", f.to)
+        .eq("status", "finalized" as any).eq("variance_type", "shortage" as any).is("reversed_at", null),
+    ]);
+    const shortageCost = (sc ?? []).reduce((a, r: any) => a + num(r.shortage_cost), 0);
+    const bd = computeNetProfit({
+      supplies: (sup ?? []) as any,
+      expenses: exp ?? [],
+      deliveries: del ?? [],
+      finalizedShortageCost: shortageCost,
+    });
+    const rows = [
+      { line: "Gross Profit",              formula: "Σ (rate − cost) × weight",  amount: bd.grossProfit },
+      { line: "− General Expenses",        formula: "Σ expenses.amount",           amount: -bd.generalExpense },
+      { line: "− Truck Delivery Expenses", formula: "Σ (fuel + labour + other)",   amount: -bd.deliveryExpense },
+      { line: "− Finalized Shortage Cost", formula: "Σ finalized shortage.cost",   amount: -bd.finalizedShortageCost },
+      { line: "= Net Profit",              formula: "Gross − Gen − Del − Shortage", amount: bd.netProfit },
+    ];
+    return {
+      rows,
+      columns: [
+        { label: "Line", key: "line" },
+        { label: "Formula", key: "formula" },
+        { label: "Amount", key: "amount", format: "money", align: "right" },
+      ],
+      totals: [
+        { label: "Gross Profit", value: fmtMoney(bd.grossProfit) },
+        { label: "General Exp", value: fmtMoney(bd.generalExpense) },
+        { label: "Delivery Exp", value: fmtMoney(bd.deliveryExpense) },
+        { label: "Shortage Cost", value: fmtMoney(bd.finalizedShortageCost) },
+        { label: "Net Profit", value: fmtMoney(bd.netProfit) },
+      ],
+      kpis: [
+        { label: "Gross Profit", value: fmtMoney(bd.grossProfit), icon: TrendingUp, tone: "bg-emerald-500" },
+        { label: "General Exp", value: fmtMoney(bd.generalExpense), icon: Wallet, tone: "bg-orange-500" },
+        { label: "Delivery Exp", value: fmtMoney(bd.deliveryExpense), icon: Truck, tone: "bg-orange-500" },
+        { label: "Shortage Cost", value: fmtMoney(bd.finalizedShortageCost), icon: TrendingDown, tone: "bg-red-500" },
+        { label: "Net Profit", value: fmtMoney(bd.netProfit), icon: Calculator, tone: bd.netProfit >= 0 ? "bg-purple-500" : "bg-red-500" },
+      ],
+    };
+  },
+
+  payable_receivable: async (f, o) => {
+    const asOf = f.to;
+    const [farmsQ, shopsQ, purQ, payQ, ledSupQ, supQ, ledShopQ, recQ] = await Promise.all([
+      supabase.from("farms").select("id, name, opening_balance").is("deleted_at", null),
+      supabase.from("shops").select("id, name, opening_balance").is("deleted_at", null),
+      supabase.from("purchases").select("farm_id, total_amount, paid_amount, purchase_date, reversed_at"),
+      supabase.from("farm_payments").select("farm_id, amount, payment_date, reversed_at"),
+      supabase.from("supplier_ledger_entries").select("supplier_id, entry_type, amount, entry_date, reversed_at, original_entry_id"),
+      supabase.from("supplies").select("shop_id, total_amount, supply_date, reversed_at"),
+      supabase.from("shop_ledger_entries").select("id, shop_id, entry_type, amount, entry_date, reversed_at, reversal_entry_id, original_entry_id"),
+      supabase.from("shop_recoveries").select("ledger_entry_id, reversed_at").not("reversed_at", "is", null),
+    ]);
+    const farmBal = computeFarmBalances(
+      (farmsQ.data ?? []) as any,
+      (purQ.data ?? []) as any,
+      (payQ.data ?? []) as any,
+      ((ledSupQ.data ?? []) as any[]).map((x) => ({ ...x, farm_id: x.supplier_id })) as any,
+      asOf,
+    );
+    const shopBal = computeShopBalances(
+      (shopsQ.data ?? []) as any,
+      (supQ.data ?? []) as any,
+      (ledShopQ.data ?? []) as any,
+      (recQ.data ?? []) as any,
+      asOf,
+    );
+    const farmName = new Map((farmsQ.data ?? []).map((x: any) => [x.id, x.name]));
+    const shopName = new Map((shopsQ.data ?? []).map((x: any) => [x.id, x.name]));
+    const farmRows = farmBal
+      .filter((b) => Math.abs(b.balance) > 0.01)
+      .sort((a, b) => b.balance - a.balance)
+      .map((b) => ({
+        party: farmName.get(b.id) ?? "—", side: "Farm Payable",
+        opening: b.opening, activity: b.purchased, payments: b.paid, adjustments: b.adj,
+        balance: round2(b.balance),
+      }));
+    const shopRows = shopBal
+      .filter((b) => Math.abs(b.balance) > 0.01)
+      .sort((a, b) => b.balance - a.balance)
+      .map((b) => ({
+        party: shopName.get(b.id) ?? "—", side: "Shop Receivable",
+        opening: b.opening, activity: b.supplied, payments: b.paid, adjustments: b.adj,
+        balance: round2(b.balance),
+      }));
+    const totalPay = totalPayableToFarms(farmBal);
+    const totalRec = totalReceivableFromShops(shopBal);
+    const rows = [...farmRows, ...shopRows];
+    return {
+      rows,
+      columns: [
+        { label: "Side", key: "side" },
+        { label: "Party", key: "party" },
+        { label: "Opening", key: "opening", format: "money", align: "right" },
+        { label: "Activity", key: "activity", format: "money", align: "right" },
+        { label: "Payments/Recoveries", key: "payments", format: "money", align: "right" },
+        { label: "Adjustments", key: "adjustments", format: "money", align: "right" },
+        { label: "Balance", key: "balance", format: "money", align: "right" },
+      ],
+      totals: [
+        { label: "Total Payable", value: fmtMoney(totalPay) },
+        { label: "Total Receivable", value: fmtMoney(totalRec) },
+        { label: "Net Working Capital", value: fmtMoney(totalRec - totalPay) },
+      ],
+      kpis: [
+        { label: "Farm Payable", value: fmtMoney(totalPay), icon: TrendingDown, tone: "bg-red-500" },
+        { label: "Shop Receivable", value: fmtMoney(totalRec), icon: TrendingUp, tone: "bg-emerald-500" },
+        { label: "Net Working Capital", value: fmtMoney(totalRec - totalPay), icon: DollarSign, tone: (totalRec - totalPay) >= 0 ? "bg-purple-500" : "bg-red-500" },
+        { label: "Top Farm Balance", value: farmRows[0] ? fmtMoney(farmRows[0].balance) : "—", icon: Wallet, tone: "bg-orange-500" },
+        { label: "Top Shop Balance", value: shopRows[0] ? fmtMoney(shopRows[0].balance) : "—", icon: Wallet, tone: "bg-blue-500" },
+      ],
+    };
+  },
+
+  reversal_audit: async (f, o) => {
+    let q = supabase.from("activity_logs")
+      .select("created_at, action, entity, entity_id, actor_user_id, metadata")
+      .ilike("action", "%revers%")
+      .gte("created_at", f.from + "T00:00:00")
+      .lte("created_at", f.to + "T23:59:59")
+      .order("created_at", { ascending: false });
+    if (f.user_id !== "all") q = q.eq("actor_user_id", f.user_id);
+    const { data } = await q;
+    const rows = (data ?? []).map((r: any) => ({
+      ...r,
+      user: r.actor_user_id ? o.userMap.get(r.actor_user_id) ?? "—" : "System",
+      reason: r.metadata?.reason ?? r.metadata?.reversal_reason ?? "—",
+      amount: r.metadata?.amount ?? r.metadata?.total_amount ?? r.metadata?.weight_kg ?? "",
+      audit_ref: r.entity_id ?? "",
+      ts: r.created_at ? new Date(r.created_at).toLocaleString() : "",
+    }));
+    return {
+      rows,
+      columns: [
+        { label: "When", key: "ts" },
+        { label: "Module", key: "entity" },
+        { label: "Action", key: "action" },
+        { label: "Original Record", key: "audit_ref" },
+        { label: "Amount/Weight", key: "amount" },
+        { label: "Reason", key: "reason" },
+        { label: "Reversed By", key: "user" },
+      ],
+      totals: [{ label: "Reversal Events", value: String(rows.length) }],
+      kpis: [
+        { label: "Reversal Events", value: String(rows.length), icon: RotateCcw, tone: "bg-orange-500" },
+      ],
+    };
+  },
 };
 
 const REPORTS: ReportDef[] = [
@@ -634,24 +1021,33 @@ const REPORTS: ReportDef[] = [
   { id: "supplier_ledger", label: "Supplier Ledger Report",  icon: Wallet,          supports: { farm: true },                          load: loaders.supplier_ledger },
   { id: "expenses",        label: "Expense Report",          icon: Wallet,          supports: { farm: true, user: true },              load: loaders.expenses },
   { id: "inventory",       label: "Inventory Report",        icon: Boxes,           supports: { meat: true },                          load: loaders.inventory },
-  { id: "daily_closing",   label: "Daily Closing Stock",     icon: ClipboardCheck,  supports: { meat: true },                          load: loaders.daily_closing },
+  { id: "daily_closing",   label: "Daily Closing Stock",     icon: ClipboardCheck,  supports: { meat: true }, supportsVariance: true, supportsStatus: true, load: loaders.daily_closing },
+  { id: "inventory_variance", label: "Inventory Variance",   icon: Scale,           supports: { meat: true },                          load: loaders.inventory_variance },
+  { id: "shortage",        label: "Shortage Report",         icon: AlertTriangle,   supports: { meat: true },                          load: loaders.shortage },
+  { id: "surplus",         label: "Surplus Report",          icon: PackagePlus,     supports: { meat: true },                          load: loaders.surplus },
+  { id: "stock_adj_analysis", label: "Stock Adjustment Analysis", icon: Scale,      supports: { meat: true, user: true },              load: loaders.stock_adj_analysis },
   { id: "closing_history", label: "Closing History Report",  icon: History,         supports: { meat: true },                          load: loaders.closing_history },
   { id: "mortality",       label: "Mortality Register",      icon: Skull,           supports: { meat: true, farm: true, shop: true, user: true }, load: loaders.mortality },
   { id: "inventory_loss",  label: "Inventory Loss Report",   icon: PackageMinus,    supports: { meat: true, farm: true, shop: true, user: true }, load: loaders.inventory_loss },
+  { id: "profit_recon",    label: "Profit Reconciliation",   icon: Calculator,      supports: {},                                      load: loaders.profit_recon },
+  { id: "payable_receivable", label: "Payable & Receivable", icon: Wallet,          supports: {},                                      load: loaders.payable_receivable },
+  { id: "reversal_audit",  label: "Reversal & Audit",        icon: RotateCcw,       supports: { user: true },                          load: loaders.reversal_audit },
   { id: "dashboard",       label: "Dashboard Summary",       icon: LayoutDashboard, supports: {},                                      load: loaders.dashboard },
 ];
 
 // ---------- Page ----------
 const Reports = () => {
+  const { tenant } = useAuth();
   const [reportId, setReportId] = useState<string>("purchases");
   const [filters, setFilters] = useState<Filters>(applyPreset("today", {
     preset: "today", from: today(), to: today(),
     meat_type: "all", farm_id: "all", shop_id: "all", user_id: "all",
-    includeReversed: false,
+    includeReversed: false, variance_type: "all", closing_status: "all",
   }));
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
   const [shops, setShops] = useState<{ id: string; name: string }[]>([]);
   const [users, setUsers] = useState<{ id: string; full_name: string | null }[]>([]);
+  const [company, setCompany] = useState<{ company_name?: string; address?: string; phone?: string } | null>(null);
   const [result, setResult] = useState<ReportResult | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -667,8 +1063,13 @@ const Reports = () => {
       setFarms((f ?? []) as any);
       setShops((s ?? []) as any);
       setUsers((u ?? []) as any);
+      if (tenant?.id) {
+        const { data: bp } = await supabase.from("business_profiles")
+          .select("company_name, address, phone").eq("tenant_id", tenant.id).maybeSingle();
+        setCompany(bp as any);
+      }
     })();
-  }, []);
+  }, [tenant?.id]);
 
   const lookups: LookupOpts = useMemo(() => ({
     farmMap: new Map(farms.map((x) => [x.id, x.name])),
@@ -705,11 +1106,24 @@ const Reports = () => {
 
   const setF = (patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch, preset: patch.from || patch.to ? "custom" : f.preset }));
 
+  const headerLines = () => {
+    const parts: string[] = [];
+    if (company?.company_name) parts.push(company.company_name);
+    if (tenant?.company_name && tenant.company_name !== company?.company_name) parts.push(`Tenant: ${tenant.company_name}`);
+    const filterBits: string[] = [];
+    if (filters.meat_type !== "all") filterBits.push(`Meat: ${filters.meat_type}`);
+    if (filters.variance_type !== "all") filterBits.push(`Variance: ${filters.variance_type}`);
+    if (filters.closing_status !== "all") filterBits.push(`Status: ${filters.closing_status}`);
+    if (filters.includeReversed) filterBits.push("Includes Reversed");
+    return { parts, filterBits, generatedAt: new Date().toLocaleString() };
+  };
+
   const doPrint = () => {
     if (!result) return;
+    const h = headerLines();
     printReport({
       title: def.label,
-      subtitle: `${filters.from} to ${filters.to}`,
+      subtitle: `${filters.from} to ${filters.to}${h.filterBits.length ? " • " + h.filterBits.join(" • ") : ""}${h.parts.length ? " • " + h.parts.join(" — ") : ""} • Generated ${h.generatedAt}`,
       dateLabel: `${filters.from} — ${filters.to}`,
       columns: result.columns.map((c) => ({
         label: c.label,
@@ -724,12 +1138,21 @@ const Reports = () => {
 
   const doExcel = () => {
     if (!result) return;
+    const h = headerLines();
     const data = result.rows.map((r) => {
       const o: any = {};
       result.columns.forEach((c) => { o[c.label] = c.format ? fmt(r[c.key], c.format).replace(/[^\d.\-]/g, "") : (r[c.key] ?? ""); });
       return o;
     });
     const wb = XLSX.utils.book_new();
+    const meta = [
+      { Metric: "Report", Value: def.label },
+      { Metric: "Date Range", Value: `${filters.from} to ${filters.to}` },
+      ...h.parts.map((p) => ({ Metric: "Company/Tenant", Value: p })),
+      ...h.filterBits.map((p) => ({ Metric: "Filter", Value: p })),
+      { Metric: "Generated At", Value: h.generatedAt },
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(meta), "Header");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), "Report");
     if (result.totals.length) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(result.totals.map(t => ({ Metric: t.label, Value: t.value }))), "Totals");
@@ -739,20 +1162,30 @@ const Reports = () => {
 
   const doPdf = () => {
     if (!result) return;
+    const h = headerLines();
     const pdf = new jsPDF({ orientation: result.columns.length > 6 ? "landscape" : "portrait" });
     pdf.setFontSize(14); pdf.text(def.label, 14, 14);
-    pdf.setFontSize(10); pdf.text(`${filters.from} to ${filters.to}`, 14, 20);
+    pdf.setFontSize(9);
+    let y = 20;
+    if (h.parts.length) { pdf.text(h.parts.join(" — "), 14, y); y += 5; }
+    pdf.text(`${filters.from} to ${filters.to}${h.filterBits.length ? " • " + h.filterBits.join(" • ") : ""}`, 14, y); y += 5;
+    pdf.text(`Generated: ${h.generatedAt}`, 14, y); y += 3;
     autoTable(pdf, {
-      startY: 26,
+      startY: y + 3,
       head: [result.columns.map((c) => c.label)],
       body: result.rows.map((r) => result.columns.map((c) => fmt(r[c.key], c.format))),
       styles: { fontSize: 8 },
       headStyles: { fillColor: [40, 40, 40] },
+      didDrawPage: (data) => {
+        const pageNum = (pdf as any).internal.getNumberOfPages();
+        pdf.setFontSize(8);
+        pdf.text(`Page ${pageNum}`, data.settings.margin.left, (pdf as any).internal.pageSize.height - 6);
+      },
     });
     if (result.totals.length) {
-      const y = (pdf as any).lastAutoTable.finalY + 6;
+      const yy = (pdf as any).lastAutoTable.finalY + 6;
       pdf.setFontSize(10);
-      result.totals.forEach((t, i) => pdf.text(`${t.label}: ${t.value}`, 14, y + i * 5));
+      result.totals.forEach((t, i) => pdf.text(`${t.label}: ${t.value}`, 14, yy + i * 5));
     }
     pdf.save(`${def.id}_${filters.from}_${filters.to}.pdf`);
   };
@@ -848,6 +1281,33 @@ const Reports = () => {
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
                   {users.map((u) => <SelectItem key={u.id} value={u.id}>{u.full_name ?? "—"}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {def.supportsVariance && (
+            <div>
+              <Label className="text-xs">Variance Type</Label>
+              <Select value={filters.variance_type} onValueChange={(v) => setF({ variance_type: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="balanced">Balanced</SelectItem>
+                  <SelectItem value="shortage">Shortage</SelectItem>
+                  <SelectItem value="surplus">Surplus</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {def.supportsStatus && (
+            <div>
+              <Label className="text-xs">Closing Status</Label>
+              <Select value={filters.closing_status} onValueChange={(v) => setF({ closing_status: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="finalized">Finalized</SelectItem>
                 </SelectContent>
               </Select>
             </div>
