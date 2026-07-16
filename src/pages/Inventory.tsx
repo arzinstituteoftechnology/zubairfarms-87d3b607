@@ -27,6 +27,13 @@ type Row = {
   loss: number; // positive number = total loss
   current: number;
   breakdown: Record<ReasonKey, number>;
+  posAdj: number;      // sum of quantity_kg > 0 (excluding mortality)
+  negAdj: number;      // absolute sum of quantity_kg < 0 (excluding mortality)
+  mortality: number;   // absolute mortality kg
+  expected: number;    // opening + purchased − supplied + posAdj − negAdj − mortality
+  physical: number | null;    // physical closing for the day (if recorded)
+  difference: number | null;  // physical − expected (null when no closing)
+  status: "balanced" | "shortage" | "surplus" | "none";
 };
 
 const num = (v: any) => (v == null || isNaN(Number(v)) ? 0 : Number(v));
@@ -70,6 +77,7 @@ const Inventory = () => {
       { data: p }, { data: s }, { data: adj },
       { data: pPrior }, { data: sPrior }, { data: adjPrior },
       { data: lossMonthRows },
+      { data: closingsToday },
     ] = await Promise.all([
       supabase.from("stock_closings").select("meat_type, physical_stock, closing_date")
         .lt("closing_date", selectedDate).order("closing_date", { ascending: false }),
@@ -85,6 +93,8 @@ const Inventory = () => {
       supabase.from("stock_adjustments").select("quantity_kg, adjustment_date")
         .gte("adjustment_date", monthStart).lte("adjustment_date", today)
         .is("reversed_at", null).is("original_adjustment_id", null).lt("quantity_kg", 0),
+      supabase.from("stock_closings").select("meat_type, physical_stock, status, reversed_at")
+        .eq("closing_date", selectedDate).is("reversed_at", null),
     ]);
 
     const openingMap = new Map<string, number>();
@@ -106,11 +116,22 @@ const Inventory = () => {
     // Adjustments today by meat_type & reason
     const breakdownMap = new Map<string, Record<ReasonKey, number>>();
     const netAdjToday = new Map<string, number>(); // signed sum (includes positives)
+    const posAdjToday = new Map<string, number>();
+    const negAdjToday = new Map<string, number>();
+    const mortalityToday = new Map<string, number>();
     const seenReasons = new Map<string, string>(); // key -> label
     (adj ?? []).forEach((r: any) => {
       const mt = r.meat_type;
       const q = num(r.quantity_kg);
       netAdjToday.set(mt, num(netAdjToday.get(mt)) + q);
+      const reasonCode = (r.reason ?? "").toLowerCase();
+      if (reasonCode === "mortality") {
+        mortalityToday.set(mt, num(mortalityToday.get(mt)) + Math.abs(q));
+      } else if (q > 0) {
+        posAdjToday.set(mt, num(posAdjToday.get(mt)) + q);
+      } else if (q < 0) {
+        negAdjToday.set(mt, num(negAdjToday.get(mt)) + Math.abs(q));
+      }
       if (q < 0) {
         const b = breakdownMap.get(mt) ?? emptyBreakdown();
         const key: string = r.reason_id ?? r.reason ?? "unknown";
@@ -124,6 +145,11 @@ const Inventory = () => {
       }
     });
     setReasonMetas(Array.from(seenReasons, ([key, label]) => ({ key, label })));
+
+    const physicalMap = new Map<string, number>();
+    (closingsToday ?? []).forEach((c: any) => {
+      physicalMap.set(c.meat_type, num(c.physical_stock));
+    });
 
     const types = new Set<string>(MEAT_TYPES as readonly string[]);
     [openingMap, pMap, sMap, pPriorMap, sPriorMap, aPriorMap, breakdownMap, netAdjToday]
@@ -139,8 +165,18 @@ const Inventory = () => {
       const loss = round2(Object.values(breakdown).reduce((a, b) => a + b, 0));
       // Current stock uses signed net adjustments (which include the negative losses)
       const current = round2(opening + purchased - supplied + (netAdjToday.get(mt) ?? 0));
-      return { meat_type: mt, opening, purchased, supplied, loss, current, breakdown };
-    }).filter(r => r.opening || r.purchased || r.supplied || r.loss || r.current);
+      const posAdj = round2(posAdjToday.get(mt) ?? 0);
+      const negAdj = round2(negAdjToday.get(mt) ?? 0);
+      const mortality = round2(mortalityToday.get(mt) ?? 0);
+      const expected = round2(opening + purchased - supplied + posAdj - negAdj - mortality);
+      const physical = physicalMap.has(mt) ? round2(physicalMap.get(mt) ?? 0) : null;
+      const difference = physical == null ? null : round2(physical - expected);
+      const status: Row["status"] =
+        physical == null ? "none"
+        : Math.abs(difference ?? 0) < 0.001 ? "balanced"
+        : (difference ?? 0) < 0 ? "shortage" : "surplus";
+      return { meat_type: mt, opening, purchased, supplied, loss, current, breakdown, posAdj, negAdj, mortality, expected, physical, difference, status };
+    }).filter(r => r.opening || r.purchased || r.supplied || r.loss || r.current || r.physical != null);
 
     setRows(nextRows);
 
@@ -183,7 +219,13 @@ const Inventory = () => {
     supplied: acc.supplied + r.supplied,
     loss: acc.loss + r.loss,
     current: acc.current + r.current,
-  }), { opening: 0, purchased: 0, supplied: 0, loss: 0, current: 0 }), [filtered]);
+    posAdj: acc.posAdj + r.posAdj,
+    negAdj: acc.negAdj + r.negAdj,
+    mortality: acc.mortality + r.mortality,
+    expected: acc.expected + r.expected,
+    physical: acc.physical + (r.physical ?? 0),
+    difference: acc.difference + (r.difference ?? 0),
+  }), { opening: 0, purchased: 0, supplied: 0, loss: 0, current: 0, posAdj: 0, negAdj: 0, mortality: 0, expected: 0, physical: 0, difference: 0 }), [filtered]);
 
   const currentStockTotal = useMemo(
     () => round2(rows.reduce((a, r) => a + r.current, 0)),
@@ -324,17 +366,23 @@ const Inventory = () => {
                 <TableHead className="w-8" />
                 <TableHead>Meat Type</TableHead>
                 <TableHead className="text-end">Opening</TableHead>
-                <TableHead className="text-end">Purchased</TableHead>
-                <TableHead className="text-end">Supplied</TableHead>
-                <TableHead className="text-end">Inventory Loss</TableHead>
-                <TableHead className="text-end">Current Stock</TableHead>
+                <TableHead className="text-end">+ Purchases</TableHead>
+                <TableHead className="text-end">− Supplies</TableHead>
+                <TableHead className="text-end">+ Pos Adj</TableHead>
+                <TableHead className="text-end">− Neg Adj</TableHead>
+                <TableHead className="text-end">− Mortality</TableHead>
+                <TableHead className="text-end">Expected</TableHead>
+                <TableHead className="text-end">Physical</TableHead>
+                <TableHead className="text-end">Difference</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-end">Current</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={12} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                <TableRow><TableCell colSpan={12} className="text-center py-10 text-muted-foreground">
                   <Boxes className="h-8 w-8 mx-auto mb-2 opacity-40" />No stock records for this date.
                 </TableCell></TableRow>
               ) : (
@@ -352,13 +400,26 @@ const Inventory = () => {
                         <TableCell className="text-end">{fmtKg(r.opening)}</TableCell>
                         <TableCell className="text-end">{fmtKg(r.purchased)}</TableCell>
                         <TableCell className="text-end">{fmtKg(r.supplied)}</TableCell>
-                        <TableCell className={`text-end ${r.loss > 0 ? "text-destructive font-medium" : ""}`}>{fmtKg(r.loss)}</TableCell>
+                        <TableCell className="text-end">{fmtKg(r.posAdj)}</TableCell>
+                        <TableCell className={`text-end ${r.negAdj > 0 ? "text-destructive" : ""}`}>{fmtKg(r.negAdj)}</TableCell>
+                        <TableCell className={`text-end ${r.mortality > 0 ? "text-destructive" : ""}`}>{fmtKg(r.mortality)}</TableCell>
+                        <TableCell className="text-end font-medium">{fmtKg(r.expected)}</TableCell>
+                        <TableCell className="text-end">{r.physical == null ? <span className="text-muted-foreground">—</span> : fmtKg(r.physical)}</TableCell>
+                        <TableCell className={`text-end font-semibold ${r.difference == null ? "text-muted-foreground" : r.difference < 0 ? "text-destructive" : r.difference > 0 ? "text-success" : ""}`}>
+                          {r.difference == null ? "—" : (r.difference > 0 ? "+" : "") + fmtKg(r.difference)}
+                        </TableCell>
+                        <TableCell>
+                          {r.status === "shortage" ? <span className="text-xs px-2 py-0.5 rounded bg-destructive/10 text-destructive font-medium">Shortage</span>
+                           : r.status === "surplus" ? <span className="text-xs px-2 py-0.5 rounded bg-success/10 text-success font-medium">Surplus</span>
+                           : r.status === "balanced" ? <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground font-medium">Balanced</span>
+                           : <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">No Closing</span>}
+                        </TableCell>
                         <TableCell className={`text-end font-semibold ${r.current < 0 ? "text-destructive" : ""}`}>{fmtKg(r.current)}</TableCell>
                       </TableRow>
                       {isOpen && (
                         <TableRow key={r.meat_type + "-b"} className="bg-muted/40">
                           <TableCell />
-                          <TableCell colSpan={6}>
+                          <TableCell colSpan={11}>
                             <div className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
                               <TrendingDown className="h-3 w-3" /> Loss Breakdown — {r.meat_type}
                             </div>
@@ -388,7 +449,15 @@ const Inventory = () => {
                   <TableCell className="text-end">{fmtKg(totals.opening)}</TableCell>
                   <TableCell className="text-end">{fmtKg(totals.purchased)}</TableCell>
                   <TableCell className="text-end">{fmtKg(totals.supplied)}</TableCell>
-                  <TableCell className="text-end">{fmtKg(totals.loss)}</TableCell>
+                  <TableCell className="text-end">{fmtKg(totals.posAdj)}</TableCell>
+                  <TableCell className="text-end">{fmtKg(totals.negAdj)}</TableCell>
+                  <TableCell className="text-end">{fmtKg(totals.mortality)}</TableCell>
+                  <TableCell className="text-end">{fmtKg(totals.expected)}</TableCell>
+                  <TableCell className="text-end">{fmtKg(totals.physical)}</TableCell>
+                  <TableCell className={`text-end ${totals.difference < 0 ? "text-destructive" : totals.difference > 0 ? "text-success" : ""}`}>
+                    {(totals.difference > 0 ? "+" : "") + fmtKg(totals.difference)}
+                  </TableCell>
+                  <TableCell />
                   <TableCell className="text-end">{fmtKg(totals.current)}</TableCell>
                 </TableRow>
               )}

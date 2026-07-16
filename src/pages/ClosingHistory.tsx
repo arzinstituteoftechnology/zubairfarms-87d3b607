@@ -48,6 +48,9 @@ type Row = {
   finalized_at?: string | null;
   finalized_by?: string | null;
   finalizer_name?: string | null;
+  reversed_by?: string | null;
+  reverser_name?: string | null;
+  surplus_value?: number | null;
 };
 
 const ClosingHistory = () => {
@@ -64,7 +67,7 @@ const ClosingHistory = () => {
       setLoading(true);
       let q = supabase
         .from("stock_closings")
-        .select("id, closing_date, meat_type, opening_stock, system_stock, physical_stock, difference, reason, created_by, created_at, variance_type, status, reversed_at, reversal_reason, mortality_weight, positive_adjustments_kg, negative_adjustments_kg, expected_closing_stock, variance_weight, shortage_cost, finalized_at, finalized_by")
+        .select("id, closing_date, meat_type, opening_stock, system_stock, physical_stock, difference, reason, created_by, created_at, variance_type, status, reversed_at, reversed_by, reversal_reason, mortality_weight, positive_adjustments_kg, negative_adjustments_kg, expected_closing_stock, variance_weight, shortage_cost, finalized_at, finalized_by, tenant_id")
         .gte("closing_date", from).lte("closing_date", to)
         .order("closing_date", { ascending: false }).order("meat_type");
       if (meatType !== "all") q = q.eq("meat_type", meatType);
@@ -78,6 +81,7 @@ const ClosingHistory = () => {
       const ids = Array.from(new Set([
         ...list.map((r) => r.created_by).filter(Boolean) as string[],
         ...list.map((r) => r.finalized_by).filter(Boolean) as string[],
+        ...list.map((r) => r.reversed_by).filter(Boolean) as string[],
       ]));
       if (ids.length) {
         const { data: profs } = await supabase.from("profiles").select("id, full_name").in("id", ids);
@@ -86,8 +90,19 @@ const ClosingHistory = () => {
         list.forEach((r) => {
           r.creator_name = r.created_by ? map.get(r.created_by) ?? null : null;
           r.finalizer_name = r.finalized_by ? map.get(r.finalized_by) ?? null : null;
+          r.reverser_name = r.reversed_by ? map.get(r.reversed_by) ?? null : null;
         });
       }
+      // Surplus value valuation using rolling 30-day weighted-average purchase rate
+      const surplusRows = list.filter((r) => Number(r.variance_weight ?? r.difference ?? 0) > 0 && !r.reversed_at);
+      await Promise.all(surplusRows.map(async (r: any) => {
+        const { data } = await supabase.rpc("compute_closing_war", {
+          p_tenant: r.tenant_id, p_meat: r.meat_type, p_date: r.closing_date,
+        });
+        const war = Number(data ?? 0);
+        const varKg = Number(r.variance_weight ?? r.difference ?? 0);
+        r.surplus_value = Math.round(Math.max(0, varKg) * war * 100) / 100;
+      }));
       setRows(list); setLoading(false);
     })();
   }, [from, to, meatType, varianceFilter]);
@@ -99,7 +114,8 @@ const ClosingHistory = () => {
       physical: a.physical + Number(r.physical_stock),
       diff: a.diff + Number(r.difference),
       shortageCost: a.shortageCost + Number(r.shortage_cost ?? 0),
-    }), { opening: 0, system: 0, physical: 0, diff: 0, shortageCost: 0 });
+      surplusValue: a.surplusValue + Number(r.surplus_value ?? 0),
+    }), { opening: 0, system: 0, physical: 0, diff: 0, shortageCost: 0, surplusValue: 0 });
   }, [rows]);
 
   return (
@@ -163,18 +179,22 @@ const ClosingHistory = () => {
                   <TableHead className="text-end">Physical</TableHead>
                   <TableHead className="text-end">Variance</TableHead>
                   <TableHead className="text-end">Shortage Cost</TableHead>
+                  <TableHead className="text-end">Surplus Value</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Reason</TableHead>
+                  <TableHead>Created By</TableHead>
                   <TableHead>Finalized By</TableHead>
                   <TableHead>Finalized At</TableHead>
+                  <TableHead>Reversed By</TableHead>
+                  <TableHead>Reversed At</TableHead>
                   <TableHead>Created At</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={12} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={16} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
                 ) : rows.length === 0 ? (
-                  <TableRow><TableCell colSpan={12} className="text-center py-10 text-muted-foreground">No closing records in this range.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={16} className="text-center py-10 text-muted-foreground">No closing records in this range.</TableCell></TableRow>
                 ) : rows.map((r) => (
                   <TableRow key={r.id} className={r.reversed_at ? "opacity-60" : ""}>
                     <TableCell className="force-ltr">{r.closing_date}</TableCell>
@@ -186,6 +206,7 @@ const ClosingHistory = () => {
                       {Number(r.variance_weight ?? r.difference) > 0 ? "+" : ""}{fmtKg(r.variance_weight ?? r.difference)}
                     </TableCell>
                     <TableCell className={`text-end ${Number(r.shortage_cost ?? 0) > 0 ? "text-destructive" : "text-muted-foreground"}`}>{fmtMoney(r.shortage_cost ?? 0)}</TableCell>
+                    <TableCell className={`text-end ${Number(r.surplus_value ?? 0) > 0 ? "text-success" : "text-muted-foreground"}`}>{fmtMoney(r.surplus_value ?? 0)}</TableCell>
                     <TableCell>
                       {r.reversed_at ? (
                         <span className="text-xs uppercase tracking-wider text-destructive">Reversed</span>
@@ -206,8 +227,11 @@ const ClosingHistory = () => {
                       )}
                     </TableCell>
                     <TableCell>{r.reason ? REASON_LABELS[r.reason] ?? r.reason : "—"}</TableCell>
+                    <TableCell className="text-sm">{r.creator_name ?? "—"}</TableCell>
                     <TableCell className="text-sm">{r.finalizer_name ?? "—"}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{r.finalized_at ? new Date(r.finalized_at).toLocaleString() : "—"}</TableCell>
+                    <TableCell className="text-sm">{r.reverser_name ?? "—"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{r.reversed_at ? new Date(r.reversed_at).toLocaleString() : "—"}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString()}</TableCell>
                   </TableRow>
                 ))}
@@ -221,7 +245,8 @@ const ClosingHistory = () => {
                       {totals.diff > 0 ? "+" : ""}{fmtKg(totals.diff)}
                     </TableCell>
                     <TableCell className="text-end text-destructive">{fmtMoney(totals.shortageCost)}</TableCell>
-                    <TableCell colSpan={5} />
+                    <TableCell className="text-end text-success">{fmtMoney(totals.surplusValue)}</TableCell>
+                    <TableCell colSpan={8} />
                   </TableRow>
                 )}
               </TableBody>

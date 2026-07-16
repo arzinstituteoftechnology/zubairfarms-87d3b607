@@ -1,99 +1,80 @@
-## Phase 2 — Daily Closing Variance Integration
+# Phase 3 — Daily Closing: Full Integration
 
-Shipping in one pass per your answers: derived next-day opening (no new table), rolling 30-day WAR for shortage/surplus valuation, new permission keys.
+Builds on the Phase 2 foundation (schema, RPCs, helpers, Dashboard cards, Closing History). This phase completes the remaining 13 items.
 
-### 1. Database migration (single file)
+## 1. Database migration (single file)
 
-- Seed `role_permissions` rows for module `stock_closing`, actions: `view`, `create`, `edit_draft`, `finalize`, `reverse`, `export` (owner=all, admin=all, staff=view/create/edit_draft/export).
-- Extend `reverse_stock_closing` RPC:
-  - Require `stock_closing.reverse` (already wired via `assert_can_reverse_module`).
-  - Refuse if a **later finalized, unreversed** closing exists for same `(tenant_id, meat_type)` — raise conflict `P0001` "Later finalized closing exists; reverse it first."
-  - Idempotent (already checks `reversed_at`).
-- Add RPC `public.finalize_stock_closing(p_id uuid)`:
-  - Perms: `assert_permission('stock_closing','finalize')`.
-  - Validates server-side: physical entered, variance_type set, sum of adjustment reasons equals |variance|, "other" requires notes.
-  - Sets `status='finalized'`, `finalized_by`, `finalized_at`.
-  - Recomputes and persists `shortage_cost` from **rolling 30-day WAR** per `meat_type` (unreversed purchases in `[closing_date-29, closing_date]`).
-  - Writes `activity_logs` events `closing_finalized`.
-- Add RPC `public.compute_closing_war(p_tenant uuid, p_meat text, p_date date) returns numeric` (SECURITY DEFINER, stable, tenant-scoped) — reused by finalize + client display.
-- Ensure realtime publication includes `stock_closings`, `stock_adjustments` (already published purchases/supplies/expenses/deliveries — add any missing).
-- Backfill safety: no data mutation to historical rows beyond what Phase 1 already did.
+- **Reasons expansion**: seed new `stock_adjustment_reasons` (system rows, per-tenant): `bird_dead`, `bird_missing`, `transport_loss`, `shop_counting_error`, `water_loss`, `returned_birds`, `manual_adjustment` (keep existing ones). Idempotent seed.
+- **Permissions** (add to `role_permissions` defaults):
+  - `stock_closing.delete` → admin/super_admin only
+  - `stock_closing.edit_finalized` → admin/super_admin only
+  - staff: keep only `view`, `create`, `edit_draft`
+- **Finalize-lock guards** — new trigger `guard_edit_after_finalized_closing()` attached to `purchases`, `supplies`, `shop_recoveries`, `expenses`, `stock_adjustments` (already have mortality via adjustments). On UPDATE/DELETE, block when a **finalized unreversed** `stock_closings` row exists for same `tenant_id + meat_type` (where applicable) with `closing_date >= row_date`. Message: "Cannot edit — a finalized closing exists on/after this date. Reverse the closing first." Super admin bypasses.
+- **Validation** in `finalize_stock_closing` RPC: reject if `expected < 0`, `physical < 0`, or `variance != 0 && reason is null`. Duplicate-per-day already unique-constrained; surface a clean message.
+- **Dashboard RPC** `dashboard_closing_summary(p_tenant, p_date)` returns one JSON row: per-meat + totals (opening, purchases, supplies, pos_adj, neg_adj, mortality, expected, physical, variance, shortage_cost, surplus_value, status). Uses same helpers as Inventory to guarantee one source.
 
-### 2. Shared helpers (single source of truth)
+## 2. Shared TS helper
 
-New `src/lib/closingVariance.ts`:
+- `src/lib/inventoryReconciliation.ts`: builds per-meat reconciliation rows for a date range from raw purchases/supplies/adjustments/closings using `closingVariance` helpers. Used by Inventory, Dashboard summary fallback, and Reports.
+- `src/lib/closingAlerts.ts`: derives banner list (pending, draft, negative stock, large shortage/surplus, reverse-pending) from summary + settings thresholds (default 5% & 10kg).
 
-```ts
-computeExpectedClosing({ opening, purchases, supplies, posAdj, negAdj, mortality })
-classifyVariance(physical, expected) → { varianceWeight, varianceType, shortageWeight, surplusWeight }
-valuedVariance(shortageWeight, surplusWeight, war) → { shortageCost, surplusEstimatedValue }
-```
+## 3. Inventory page
 
-Update `src/lib/netProfit.ts`:
+Rebuild `src/pages/Inventory.tsx` reconciliation table per meat type with columns:
+Opening · + Purchases · − Supplies · + Pos Adj · − Neg Adj · − Mortality · Expected · Physical · Difference · Status
+Date picker; totals row; status pill (grey/red/green).
 
-```ts
-netProfit = grossProfit − generalExpense − deliveryExpense − finalizedShortageCost
-```
+## 4. Closing History
 
-`finalizedShortageCost` is passed in by callers; defaults to 0 so existing tests still pass. Add new tests covering shortage/surplus/draft/finalized/reversed scenarios (spec items 1–8).
+Extend `src/pages/ClosingHistory.tsx` columns: add Surplus Value, Created By, Reverse By, Reverse Time (Reverse Status already shown). Keep existing filters.
 
-### 3. Dashboard
+## 5. Reports Center
 
-- New query hook loads for selected date + tenant:
-  - `stock_closings` rows for that date (all meat types), status + reversed_at + variance fields.
-  - WAR per meat_type via `compute_closing_war` (batched).
-- New cards (respect selected date, tenant, realtime): Closing Status, Shortage kg, Surplus kg, Shortage Cost, Surplus Est. Value, Expected Closing, Physical Closing.
-- Warning banner logic: Draft / Missing (only if purchases|supplies|adjustments exist that date) / Finalized success line / Reversed line. Click → `/stock-closing?date=YYYY-MM-DD`.
-- Profit card subtitle shows `Gross − General − Delivery − Shortage` breakdown; "Provisional" tag when draft.
-- Current Stock: derived — pick latest finalized unreversed closing ≤ selectedDate per meat_type as baseline, add subsequent purchases − supplies + adj. Shared helper `src/lib/currentStock.ts`.
+Add to `src/pages/Reports.tsx` a "Daily Closing" report group with tabs:
+- Daily Closing (per-meat reconciliation for range)
+- Expected vs Physical (chart + table)
+- Shortage / Surplus reports (filtered lists)
+- Variance Trend (line by day)
+- Monthly Shortage Cost / Surplus Value (bar)
+- Actions: Print, Export PDF (existing `printReport`), Export Excel (new `xlsx` via SheetJS-lite CSV fallback to keep bundle small — use CSV download to stay dependency-free).
 
-### 4. Inventory page
+## 6. Dashboard
 
-Reuse `currentStock.ts` helper so Inventory matches Dashboard exactly.
+- Replace the ~20 per-KPI queries with one call to `dashboard_closing_summary` + existing profit/expense queries.
+- Add missing cards: Closing Difference %, Surplus Estimated Value (already added → keep), colored grey/red/green per rule.
+- Profit card: add formula breakdown block (Gross − General − Delivery − Finalized Shortage = Net).
+- Alerts banner list from `closingAlerts.ts`.
 
-### 5. Reports Center
+## 7. Audit log
 
-New report: **Daily Closing Variance**. Columns per spec §11. Summary cards + CSV/Excel/print export using existing patterns in `Reports.tsx`. Profit Reconciliation section uses updated `computeNetProfit` with `finalizedShortageCost`.
+Every finalize/reverse already logs via `audit_financial_change` + `stamp_edited_audit`. Add explicit `activity_logs` inserts inside `finalize_stock_closing` and `reverse_stock_closing` capturing `reason_changed`, `adjustment_added`, `mortality_added` metadata (IP already captured in `audit_financial_change`).
 
-### 6. Daily Closing form (`StockClosing.tsx`)
+## 8. Frontend permission gating
 
-- Live reconciliation table (Opening + Purchases − Supplies + PosAdj − NegAdj − Mortality = Expected; Physical − Expected = Variance).
-- Reason lists switch by variance type (already done in Phase 1) — extend surplus list per spec §7.
-- Client blocks Finalize when breakdown ≠ |variance| or "other" notes missing; server RPC re-validates.
-- "Finalize" button calls `finalize_stock_closing` RPC.
-- Finalized rows are read-only (already gated by status check); corrections via Reverse dialog.
+Update `RequirePermission` usage on Stock Closing actions:
+- Finalize button → `stock_closing.finalize`
+- Reverse → `stock_closing.reverse`
+- Delete draft → `stock_closing.delete`
+- Edit finalized → `stock_closing.edit_finalized`
+- Staff sees only Save Draft.
 
-### 7. Closing History
+## 9. Next-day opening
 
-Add columns per spec §10, row detail dialog with full calc trail, extra filters (draft/finalized/reversed already present — add reason + date).
+Already derived in Phase 2 via `computeCurrentStock`. Add explicit guard: ignore drafts (`status='finalized' AND reversed_at IS NULL`). Add unit test.
 
-### 8. Realtime
+## 10. Validation & tests
 
-Reuse existing per-mount channel pattern. New Dashboard channel subscribes to `stock_closings` + `stock_adjustments`; cleanup on unmount. No global channels.
+- Vitest: reconciliation helper, alerts helper, next-day opening ignores drafts, netProfit unchanged.
+- Manual smoke via preview.
 
-### 9. Audit
+## Out of scope
 
-Finalize RPC writes `closing_finalized` with before/after JSON. Reverse RPC already logs. Add `closing_reconciliation_failed` when server validation rejects finalize.
+Purchases/Supplies/Recovery/Expense business logic unchanged except for the finalize-lock trigger. No new tables. No notification/monitoring changes.
 
-### 10. Tests
+## Files
 
-`src/lib/closingVariance.test.ts` + extend `netProfit.test.ts`: shortage 6kg, surplus 6kg, balanced, draft-does-not-lock, finalized shortage reduces net once, surplus no inflate, no double-count mortality/negAdj (spec items 1–8, 18). Idempotency (11–12) covered by RPC unit assertions.
+**New**: `src/lib/inventoryReconciliation.ts`, `src/lib/inventoryReconciliation.test.ts`, `src/lib/closingAlerts.ts`, `src/lib/closingAlerts.test.ts`, `src/components/ClosingAlertsBanner.tsx`, `src/components/ProfitBreakdown.tsx`, migration file.
 
-### Files
+**Edited**: `src/pages/Inventory.tsx`, `src/pages/Reports.tsx`, `src/pages/Dashboard.tsx`, `src/pages/StockClosing.tsx`, `src/pages/ClosingHistory.tsx`, `src/integrations/supabase/types.ts` (after migration), `src/lib/netProfit.ts` (only if breakdown export needed).
 
-**New**: `supabase/migrations/<ts>_phase2_closing.sql`, `src/lib/closingVariance.ts`, `src/lib/closingVariance.test.ts`, `src/lib/currentStock.ts`, `src/components/DashboardClosingCards.tsx`, `src/components/ClosingBanner.tsx`, `src/components/ClosingHistoryDetailDialog.tsx`.
-
-**Modified**: `src/lib/netProfit.ts` + test, `src/pages/Dashboard.tsx`, `src/pages/Inventory.tsx`, `src/pages/Reports.tsx`, `src/pages/StockClosing.tsx`, `src/pages/ClosingHistory.tsx`, `src/integrations/supabase/types.ts` (auto-regenerated by migration).
-
-### Out of scope (explicit)
-
-- No changes to purchase / supply / recovery / expense / farm_payment / shop_recovery calculations.
-- No changes to notification enum beyond what Phase 1 already did.
-- No new `stock_opening_balances` table (derived approach).
-- Surplus never increases profit — informational only.
-
-### Verification
-
-- `tsgo` typecheck, `bunx vitest run`, prod build.
-- Manual reconciliation query comparing Dashboard values to raw SQL for one tenant on a shortage day + surplus day + balanced day.
-- Confirm reversal blocked when later finalized closing exists.
+Approve to proceed and I will ship as one integrated change (migration first for approval, then code).
