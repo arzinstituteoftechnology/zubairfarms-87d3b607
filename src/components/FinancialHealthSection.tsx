@@ -553,9 +553,6 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
                   </Tooltip>
                 </TooltipProvider>
               </span>
-              <span className="text-[10px] normal-case tracking-normal text-muted-foreground">
-                Updated {format(lastUpdated, "HH:mm:ss")}
-              </span>
             </div>
             <HealthGauge score={score} status={health} />
             <div className="text-[11px] text-muted-foreground mt-2 text-center">{health.desc}</div>
