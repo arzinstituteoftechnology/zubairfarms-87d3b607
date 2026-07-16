@@ -14,10 +14,11 @@ import { printReport } from "@/lib/printReport";
 import * as XLSX from "xlsx";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Wallet, Store, Scale, Percent, TrendingUp, TrendingDown,
   FileText, FileSpreadsheet, Printer, Download, Activity, ArrowRight,
-  Crown, AlertOctagon,
+  Crown, AlertOctagon, Info, Image as ImageIcon,
 } from "lucide-react";
 
 type Period = "today" | "week" | "month" | "custom";
@@ -99,7 +100,7 @@ function HealthGauge({ score, status }: { score: number; status: HealthStatus })
       </svg>
       <div className="text-center">
         <Badge className={`text-xs px-2.5 py-0.5 ${TONE_BADGE[status.tone]}`} variant="outline">{status.label}</Badge>
-        <div className="text-[11px] text-muted-foreground mt-1">Coverage {score.toFixed(0)}%</div>
+        <div className="text-[11px] text-muted-foreground mt-1">Coverage Ratio {score.toFixed(1)}%</div>
       </div>
     </div>
   );
@@ -145,6 +146,9 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
   const [topFarms, setTopFarms] = useState<TopFarm[]>([]);
   const [chart, setChart] = useState<ChartPoint[]>([]);
   const [trend30, setTrend30] = useState<TrendPoint[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [seriesVisible, setSeriesVisible] = useState<Record<string, boolean>>({ receivable: true, recovery: true, outstanding: true });
+  const [trendZoom, setTrendZoom] = useState<{ from: number; to: number } | null>(null);
 
   const range = useMemo(() => {
     const end = asOf;
@@ -272,6 +276,7 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
     setTrend30(trendPoints);
 
     setLoading(false);
+    setLastUpdated(new Date());
   }, [range.start, range.end]);
 
   useEffect(() => { load(); }, [load]);
@@ -342,6 +347,49 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   };
+
+  const doTrendCsv = () => {
+    const lines: string[] = ["Date,Daily Supply,Daily Recovery,Outstanding"];
+    trend30.forEach(p => lines.push(`${p.date},${p.receivable},${p.recovery},${p.outstanding}`));
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `collection-trend-30d-${range.end}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const doTrendPng = async () => {
+    const svg = document.querySelector<SVGSVGElement>("#collection-trend-chart svg");
+    if (!svg) return;
+    const xml = new XMLSerializer().serializeToString(svg);
+    const svg64 = btoa(unescape(encodeURIComponent(xml)));
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const rect = svg.getBoundingClientRect();
+      canvas.width = rect.width * 2; canvas.height = rect.height * 2;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = getComputedStyle(document.body).backgroundColor || "#fff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((b) => {
+        if (!b) return;
+        const url = URL.createObjectURL(b);
+        const a = document.createElement("a");
+        a.href = url; a.download = `collection-trend-30d-${range.end}.png`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      }, "image/png");
+    };
+    img.src = "data:image/svg+xml;base64," + svg64;
+  };
+
+  const trendData = useMemo(() => {
+    if (!trendZoom) return trend30;
+    const [a, b] = [Math.min(trendZoom.from, trendZoom.to), Math.max(trendZoom.from, trendZoom.to)];
+    return trend30.slice(a, b + 1);
+  }, [trend30, trendZoom]);
 
   const doPrint = () => {
     printReport({
@@ -419,7 +467,29 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
         {/* Health gauge + Largest Debtor/Creditor + Projection */}
         <div className="grid gap-3 lg:grid-cols-3">
           <div className="rounded-lg border p-4">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Financial Health</div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                Financial Health
+                <TooltipProvider delayDuration={100}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button type="button" className="text-muted-foreground hover:text-foreground"><Info className="h-3.5 w-3.5" /></button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[280px] text-xs">
+                      <div className="font-semibold mb-1">Coverage Ratio</div>
+                      <div>= Receivable from Shops ÷ Payable to Farms × 100</div>
+                      <div className="mt-1.5 text-[11px] opacity-80">
+                        &lt; 60% Critical • 60–90% Warning • 90–100% Good • ≥ 100% Excellent.
+                        If payable is zero, ratio caps at 150%.
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </span>
+              <span className="text-[10px] normal-case tracking-normal text-muted-foreground">
+                Updated {format(lastUpdated, "HH:mm:ss")}
+              </span>
+            </div>
             <HealthGauge score={score} status={health} />
             <div className="text-[11px] text-muted-foreground mt-2 text-center">{health.desc}</div>
           </div>
@@ -547,8 +617,25 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
 
         {/* 30-day Collection Trend */}
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Collection Trend — Last 30 Days</div>
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Collection Trend — Last 30 Days</div>
+            <div className="flex items-center gap-1 flex-wrap">
+              {(["receivable", "recovery", "outstanding"] as const).map((k) => (
+                <button key={k} type="button"
+                  onClick={() => setSeriesVisible(s => ({ ...s, [k]: !s[k] }))}
+                  className={`text-[11px] px-2 py-0.5 rounded border capitalize transition-opacity ${seriesVisible[k] ? "" : "opacity-40 line-through"}`}
+                  title="Toggle series"
+                >{k}</button>
+              ))}
+              {trendZoom && (
+                <Button variant="outline" size="sm" className="h-6 text-[11px]" onClick={() => setTrendZoom(null)}>Reset zoom</Button>
+              )}
+              <Button variant="outline" size="sm" className="h-6 text-[11px]" onClick={doTrendPng} title="Export PNG"><ImageIcon className="h-3 w-3 mr-1" />PNG</Button>
+              <Button variant="outline" size="sm" className="h-6 text-[11px]" onClick={doTrendCsv} title="Export CSV"><Download className="h-3 w-3 mr-1" />CSV</Button>
+            </div>
+          </div>
           <ChartContainer
+            id="collection-trend-chart"
             config={{
               receivable: { label: "Daily Supply (Receivable)", color: "hsl(var(--primary))" },
               recovery: { label: "Daily Recovery", color: "hsl(var(--success))" },
@@ -556,17 +643,25 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
             }}
             className="h-[260px] w-full force-ltr"
           >
-            <LineChart data={trend30} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
+            <LineChart
+              data={trendData}
+              margin={{ top: 10, right: 12, bottom: 0, left: 0 }}
+              onClick={(e: any) => {
+                const d = e?.activePayload?.[0]?.payload?.date;
+                if (d) navigate(`/shop-ledger?date=${d}`);
+              }}
+            >
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} />
               <ChartTooltip content={<ChartTooltipContent />} />
               <Legend />
-              <Line type="monotone" dataKey="receivable" stroke="var(--color-receivable)" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="recovery" stroke="var(--color-recovery)" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="outstanding" stroke="var(--color-outstanding)" strokeWidth={2} dot={false} strokeDasharray="4 3" />
+              {seriesVisible.receivable && <Line type="monotone" dataKey="receivable" stroke="var(--color-receivable)" strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 5, cursor: "pointer" }} />}
+              {seriesVisible.recovery && <Line type="monotone" dataKey="recovery" stroke="var(--color-recovery)" strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 5, cursor: "pointer" }} />}
+              {seriesVisible.outstanding && <Line type="monotone" dataKey="outstanding" stroke="var(--color-outstanding)" strokeWidth={2} dot={false} strokeDasharray="4 3" />}
             </LineChart>
           </ChartContainer>
+          <div className="text-[10px] text-muted-foreground mt-1">Tip: click a point to open the shop ledger for that date. Toggle legend chips to hide series.</div>
         </div>
       </CardContent>
     </Card>
