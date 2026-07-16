@@ -1285,6 +1285,33 @@ const Reports = () => {
               </Select>
             </div>
           )}
+          {def.supportsVariance && (
+            <div>
+              <Label className="text-xs">Variance Type</Label>
+              <Select value={filters.variance_type} onValueChange={(v) => setF({ variance_type: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="balanced">Balanced</SelectItem>
+                  <SelectItem value="shortage">Shortage</SelectItem>
+                  <SelectItem value="surplus">Surplus</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {def.supportsStatus && (
+            <div>
+              <Label className="text-xs">Closing Status</Label>
+              <Select value={filters.closing_status} onValueChange={(v) => setF({ closing_status: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="finalized">Finalized</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
