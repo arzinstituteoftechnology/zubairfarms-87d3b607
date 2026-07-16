@@ -1,104 +1,68 @@
+# Enterprise Receivable Analytics — Plan
 
-# Multi-Tenant Poultry ERP SaaS — Phase 1 Foundation
+## 1. New KPI: Net Working Capital
+- Add `NET WORKING CAPITAL = receivableFromShops − payableToFarms` to Dashboard KPI grid, placed after "Receivable from Shops".
+- Colors: positive → success, negative → destructive, zero → default. Subtitle: *Net Cash Position*.
+- Uses existing `kpi.receivableFromShops` and `kpi.payableToFarms` (already realtime and date-aware — no new fetch needed).
+- Click → navigate to `/reports` (existing Financial Summary Report). Add anchor hash `#financial-summary` (best-effort scroll).
 
-This phase delivers the **SaaS backbone**: tenants, plans, subscriptions, manual payments, super admin panel, and tenant-scoped data isolation on every existing ERP table. The existing ERP UI keeps working — it just becomes scoped to the logged-in user's tenant. New modules (sheds, batches, birds, accounts, cash book, ledgers, advanced reports) are intentionally **not** in this phase and will come later.
+## 2. Receivable Breakdown Dialog
+- New component `src/components/ShopReceivableDialog.tsx` opened when user clicks "Receivable from Shops" (replacing the current direct navigation; keep a secondary "Open Shop Ledger" button inside the dialog for full-page view).
+- Reuses `computeShopBalances` from `src/lib/shopReceivable.ts`; augments per shop with:
+  - `lastSupplyDate` — max(`supplies.supply_date`) where `reversed_at IS NULL`
+  - `lastRecoveryDate` — max(`shop_ledger_entries.entry_date`) for active `recovery` / `manual_payment` rows
+  - `adjustments` — manual_supply + adjustment_increase − adjustment_decrease
+- Table columns: Shop, Opening, Supplies, Recoveries, Adjustments, **Outstanding** (bold), Last Supply, Last Recovery.
+- Sorted by Outstanding DESC. Search box (name), 10-per-page pagination (reuse existing table primitives / simple local state).
 
-## What you'll get
+## 3. Aging Analysis (inside the dialog)
+- Per shop, allocate outstanding balance to age buckets using FIFO against active (non-reversed) supplies + non-recovery ledger debits, ordered by date, offset by cumulative active recoveries.
+- Buckets vs `selectedDate`: 0–30, 31–60, 61–90, 90+ days.
+- Show totals row with amount + % of grand receivable, colored badges: 0–30 green, 31–60 yellow, 61–90 orange, 90+ red.
+- Per-row: small stacked bar or 4 mini-cells with the same color coding.
 
-### 1. Fresh start
-- Wipe all rows from every existing business table (farms, shops, customers, suppliers, purchases, supplies, expenses, trucks, deliveries, pos_sales, pos_sale_items, customer_payments, farm_payments).
-- Delete all existing auth users and roles.
-- After deploy: super admin signs in at `/super-admin/login`, creates plans, creates the first tenant, that tenant's owner signs in at `/auth`.
+## 4. Collection Summary strip (dialog header)
+- Total Shops, Shops with Outstanding, Shops Fully Paid.
+- Largest Outstanding Shop (name + amount, clickable → `/shop-ledger?shop=<id>`).
+- Oldest Outstanding Invoice: earliest active supply/debit date still unpaid (from FIFO calc above).
+- Average Collection Days: mean age (weighted by amount) of outstanding rows.
+- Collection Rate %: `Σ active recoveries / (Σ active supplies + opening + manual_supply + adj_inc − adj_dec)` clamped 0–100.
 
-### 2. New database schema (additions only — existing ERP tables get a `tenant_id` column added)
-- `tenants` — company info, owner contact, status (active/suspended), created_at
-- `subscription_plans` — name, billing_cycle (trial/monthly/yearly), price, duration_days, features (jsonb), is_active
-- `subscriptions` — tenant_id, plan_id, started_at, expires_at, status (active/expired/suspended/trial)
-- `payments` — invoice_number, tenant_id, subscription_id, plan name snapshot, amount, payment_date, expiry_date, status (paid/pending/overdue/cancelled), notes
-- `activity_logs` — actor user_id, tenant_id, action, entity, entity_id, metadata, created_at
-- `app_role` enum extended with `super_admin` (existing: admin, staff)
-- `tenant_users` — links auth users to a tenant + role within that tenant (admin/manager/staff)
+## 5. Reconciliation Line
+- Dashboard KPI area shows a small line under the receivable card:
+  `Receivable = Σ Shop Ledger balances — Verified ✓` when equal (within 0.01), else red warning with delta value.
+- Compares dashboard total to a re-computation from same data (sanity check that math is deterministic; also flags rounding drift).
 
-### 3. Tenant data isolation (RLS)
-Every existing ERP table gets:
-- A `tenant_id uuid not null` column.
-- A `current_tenant_id()` security-definer function that reads the caller's tenant from `tenant_users`.
-- Policies replaced so SELECT/INSERT/UPDATE/DELETE only match rows where `tenant_id = current_tenant_id()`.
-- Super admin bypass policy: `has_role(auth.uid(), 'super_admin')` can read all rows (for "Login As Client" and reports).
+## 6. Click Actions
+- Receivable KPI card → opens the new dialog (breakdown).
+- "Open full Shop Ledger" button inside dialog → `/shop-ledger`.
+- Net Working Capital card → `/reports`.
+- Largest Outstanding row/button → `/shop-ledger?shop=<id>` (ShopLedger already reads the row via search; deep-link is optional visual, existing page will still list all shops — no changes to ShopLedger required).
 
-### 4. Super Admin Panel (separate login)
-- Route `/super-admin/login` — isolated login form, only `super_admin` role accepted, everyone else rejected.
-- Route `/super-admin` (protected) with sidebar:
-  - **Dashboard** — Total/Active/Expired/Suspended clients, Monthly Revenue, Total Revenue, Active Farms, Total Users.
-  - **Clients** — list, create (company/farm/owner/mobile/email/password/country/city — creates auth user + tenant + tenant_user + assigns plan), edit, suspend, activate, delete, reset password, assign plan, extend subscription.
-  - **Plans** — CRUD + activate/deactivate. Seeded with Free Trial (15d), Basic M/Y, Pro M/Y, Enterprise M/Y.
-  - **Subscriptions** — list all, filter by status, manual extend.
-  - **Payments** — record manual payment (auto-generates invoice number, sets expiry, marks paid/pending/overdue/cancelled), list, edit status.
-  - **Users** — list every tenant user, role, last login.
-  - **Activity Logs** — paginated audit log.
-  - **System Settings** — app name, currency, default trial days.
-  - **Login As Client** — issues a "view-as" session (sets a tenant override claim in localStorage that the client reads; UI shows a red banner with "Exit").
+## 7. Export
+- Dialog toolbar buttons: **CSV**, **Excel**, **PDF**, **Print**.
+- CSV: build string in-browser, download via Blob.
+- Excel: reuse existing `xlsx`/`sheetjs` if present; otherwise export `.xls` HTML-table fallback (check `package.json`).
+- PDF/Print: reuse `src/lib/printReport.ts` helper (opens print window with styled HTML — user prints to PDF).
 
-### 5. Tenant signup & subscription enforcement
-- `/auth` keeps working for tenant owners/staff. New self-signup is **disabled** — tenants are created by super admin only (matches your manual-payment model).
-- New `SubscriptionGate` wraps `AppLayout`:
-  - Loads the tenant's active subscription on login.
-  - If `expires_at < now()` → redirects to `/subscription-expired` page (shows plan, expiry, "Contact admin to renew", logout button).
-  - If `expires_at - now() ≤ 7d/3d/1d` → shows a dismissible warning banner at the top.
-  - Tenant suspended → redirects to `/subscription-expired` with "Account suspended" message.
+## 8. Security & Realtime
+- All queries go through the existing tenant-scoped Supabase client (RLS enforced). No new endpoints.
+- Realtime: dialog subscribes to `supplies`, `shop_ledger_entries`, `shop_recoveries`, `shops` on a single channel with a unique name; unsubscribes on close. Dashboard's existing subscription already covers KPI refresh — no changes there.
 
-### 6. Roles
-- `super_admin` — full system access, only routes under `/super-admin`.
-- `admin` (client admin) — full access within their tenant (existing behavior preserved).
-- `manager`, `staff` — schema-ready; UI gating stays as today (admin-only Settings page). Detailed per-module gating is Phase 2.
+## 10. Validation / Tests
+- Extend `src/lib/shopReceivable.test.ts` with:
+  - Aging bucket allocation (FIFO offset) test.
+  - Collection Rate math (edge: 0 supplies).
+  - Net Working Capital sign (positive/negative/zero).
+- Run `bunx vitest run` + `bunx tsgo --noEmit`.
+- SQL reconciliation: run one query totalling positive shop balances against dashboard total.
 
-### 7. Manual payments workflow
-- Super admin opens a tenant → "Record Payment" → picks plan, enters amount + payment_date → system creates `payments` row + extends/creates `subscriptions` row by the plan's `duration_days` → tenant access auto-restored. No payment gateway, no webhooks.
-
-## Out of scope for Phase 1 (will be follow-ups)
-- New ERP modules: sheds, batches, bird stock, equipment inventory, accounts/cash book/ledgers, receivable/payable, profit-loss & advanced reports.
-- Per-module RBAC (manager vs staff differences inside the ERP).
-- Automated cron jobs (daily subscription check, email reminders, backups). Expiry is enforced live on every page load instead — same result without infra.
-- Email notifications for warnings/expiry (no email provider connected yet).
-- Stripe/Paddle. Can be bolted on later without touching tenancy.
+## Files
+- **New**: `src/components/ShopReceivableDialog.tsx`, extra cases in `src/lib/shopReceivable.test.ts`, helper `src/lib/shopAging.ts` (+ test).
+- **Edit**: `src/pages/Dashboard.tsx` — add NWC card, reconciliation line, wire dialog to KPI card.
+- **No changes** to accounting/business logic, ShopLedger page, or existing Payable calculation.
 
 ## Technical notes
-
-### Migration strategy (one big migration)
-1. `TRUNCATE` all existing business tables + `auth.users` (cascade).
-2. `ALTER TYPE app_role ADD VALUE 'super_admin'`, `'manager'`.
-3. Create new tables: `tenants`, `subscription_plans`, `subscriptions`, `payments`, `activity_logs`, `tenant_users`.
-4. `ALTER TABLE … ADD COLUMN tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` on every ERP table.
-5. `CREATE OR REPLACE FUNCTION current_tenant_id()` — security definer, returns tenant from `tenant_users` for `auth.uid()`.
-6. `DROP POLICY … CREATE POLICY` on every ERP table → tenant-scoped + super-admin-bypass.
-7. Rewrite `handle_new_user()` — no longer auto-grants admin to first user; new auth users only get role/tenant when super admin creates them.
-8. Seed the 7 default plans.
-9. GRANTs on every new public table (authenticated + service_role; never anon).
-
-### Code changes
-- `useAuth` extended: returns `tenant`, `subscription`, `isSuperAdmin`, `viewAsTenantId`.
-- `src/App.tsx` — add routes: `/super-admin/login`, `/super-admin/*`, `/subscription-expired`.
-- New `src/components/SuperAdminLayout.tsx` + pages under `src/pages/super-admin/*`.
-- New `src/components/SubscriptionGate.tsx` wrapping the existing `AppLayout`.
-- Existing ERP pages: no UI changes; their Supabase queries automatically filter via RLS using `current_tenant_id()`. Inserts get `tenant_id` injected via a tiny helper `withTenant(payload)`.
-- Banner component for expiry warnings.
-
-### Seed plans
-| Name | Cycle | Price | Days |
-|---|---|---|---|
-| Free Trial | trial | 0 | 15 |
-| Basic Monthly | monthly | 9.99 | 30 |
-| Basic Yearly | yearly | 99 | 365 |
-| Professional Monthly | monthly | 29 | 30 |
-| Professional Yearly | yearly | 290 | 365 |
-| Enterprise Monthly | monthly | 99 | 30 |
-| Enterprise Yearly | yearly | 990 | 365 |
-
-(Editable from Plans page; currency configurable in System Settings.)
-
-### Bootstrapping the first super admin
-After the migration runs, you'll need to be promoted to `super_admin`. I'll insert a one-time SQL step that lets you sign up once at `/super-admin/login` → first account created there gets `super_admin` automatically. After that, only existing super admins can create new ones.
-
----
-
-If this looks right, approve and I'll execute the migration and ship the code. Want any changes (e.g. different plan prices, different super-admin bootstrap, keep self-signup at `/auth`)? Tell me before approving.
+- Aging FIFO: sort active debits (supplies + manual_supply + adjustment_increase + opening) ascending by date; subtract active credits (recovery + manual_payment + adjustment_decrease) from oldest first; remaining unpaid slices are the aged outstanding pieces, dated at their original entry.
+- Everything as-of `selectedDate` from `useLedgerDate`.
+- Charts kept minimal (no new chart lib) — colored badges + progress bars only.
