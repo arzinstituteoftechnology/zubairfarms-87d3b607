@@ -404,18 +404,38 @@ const loaders: Record<string, ReportDef["load"]> = {
     };
   },
 
-  daily_closing: async (f) => {
+  daily_closing: async (f, o) => {
     let q = supabase.from("stock_closings")
-      .select("closing_date, meat_type, opening_stock, purchases_kg, supplies_kg, adjustments_kg, system_stock, physical_stock, difference, reason, notes")
+      .select("closing_date, meat_type, opening_stock, purchases_kg, supplies_kg, positive_adjustments_kg, negative_adjustments_kg, mortality_weight, expected_closing_stock, physical_stock, variance_weight, variance_type, shortage_cost, status, reason, notes, created_by, finalized_by, finalized_at, reversed_by, reversed_at")
       .gte("closing_date", f.from).lte("closing_date", f.to)
       .order("closing_date", { ascending: false });
     if (f.meat_type !== "all") q = q.eq("meat_type", f.meat_type);
+    if (f.variance_type !== "all") q = q.eq("variance_type", f.variance_type);
+    if (f.closing_status !== "all") q = q.eq("status", f.closing_status);
+    q = applyReversedFilter(q, f.includeReversed);
     const { data } = await q;
-    const rows = (data ?? []).map((r: any) => ({
-      ...r,
-      reason_label: r.reason ? (REASONS_LABEL[r.reason] ?? r.reason) : "—",
+    // Rolling 30-day WAR per closing (for surplus estimated value)
+    const rows = await Promise.all((data ?? []).map(async (r: any) => {
+      let war = 0;
+      const { data: warRes } = await supabase.rpc("compute_closing_war" as any, {
+        p_meat_type: r.meat_type, p_ref_date: r.closing_date,
+      }).maybeSingle();
+      war = num(warRes ?? 0);
+      return {
+        ...r,
+        surplus_estimated_value: r.variance_type === "surplus"
+          ? round2(num(r.variance_weight) * war) : 0,
+        reason_label: r.reason ? (REASONS_LABEL[r.reason] ?? r.reason) : "—",
+        created_by_name: r.created_by ? o.userMap.get(r.created_by) ?? "—" : "—",
+        finalized_by_name: r.finalized_by ? o.userMap.get(r.finalized_by) ?? "—" : "—",
+        reversed_by_name: r.reversed_by ? o.userMap.get(r.reversed_by) ?? "—" : "—",
+      };
     }));
-    const totalDiff = rows.reduce((a, r) => a + num(r.difference), 0);
+    const totalVar = rows.reduce((a, r) => a + num(r.variance_weight), 0);
+    const totalShort = rows.filter(r => r.variance_type === "shortage" && r.status === "finalized" && !r.reversed_at)
+      .reduce((a, r) => a + num(r.shortage_cost), 0);
+    const totalSurp = rows.filter(r => r.variance_type === "surplus" && r.status === "finalized" && !r.reversed_at)
+      .reduce((a, r) => a + num(r.surplus_estimated_value), 0);
     return {
       rows,
       columns: [
@@ -424,18 +444,34 @@ const loaders: Record<string, ReportDef["load"]> = {
         { label: "Opening", key: "opening_stock", format: "kg", align: "right" },
         { label: "Purchased", key: "purchases_kg", format: "kg", align: "right" },
         { label: "Supplied", key: "supplies_kg", format: "kg", align: "right" },
-        { label: "System", key: "system_stock", format: "kg", align: "right" },
+        { label: "Pos Adj", key: "positive_adjustments_kg", format: "kg", align: "right" },
+        { label: "Neg Adj", key: "negative_adjustments_kg", format: "kg", align: "right" },
+        { label: "Mortality", key: "mortality_weight", format: "kg", align: "right" },
+        { label: "Expected", key: "expected_closing_stock", format: "kg", align: "right" },
         { label: "Physical", key: "physical_stock", format: "kg", align: "right" },
-        { label: "Difference", key: "difference", format: "kg", align: "right" },
+        { label: "Variance", key: "variance_weight", format: "kg", align: "right" },
+        { label: "Type", key: "variance_type" },
         { label: "Reason", key: "reason_label" },
+        { label: "Shortage Cost", key: "shortage_cost", format: "money", align: "right" },
+        { label: "Surplus Value", key: "surplus_estimated_value", format: "money", align: "right" },
+        { label: "Status", key: "status" },
+        { label: "Created By", key: "created_by_name" },
+        { label: "Finalized By", key: "finalized_by_name" },
+        { label: "Finalized At", key: "finalized_at" },
+        { label: "Reversed By", key: "reversed_by_name" },
+        { label: "Reversed At", key: "reversed_at" },
       ],
       totals: [
         { label: "Entries", value: String(rows.length) },
-        { label: "Total Difference", value: fmtKg(totalDiff) },
+        { label: "Net Variance", value: fmtKg(totalVar) },
+        { label: "Finalized Shortage Cost", value: fmtMoney(totalShort) },
+        { label: "Finalized Surplus Value", value: fmtMoney(totalSurp) },
       ],
       kpis: [
         { label: "Closings", value: String(rows.length), icon: ClipboardCheck, tone: "bg-blue-500" },
-        { label: "Total Difference", value: fmtKg(totalDiff), icon: PackageMinus, tone: "bg-orange-500" },
+        { label: "Net Variance", value: fmtKg(totalVar), icon: PackageMinus, tone: "bg-orange-500" },
+        { label: "Shortage Cost", value: fmtMoney(totalShort), icon: TrendingDown, tone: "bg-red-500" },
+        { label: "Surplus Value", value: fmtMoney(totalSurp), icon: TrendingUp, tone: "bg-emerald-500" },
       ],
     };
   },
