@@ -1037,6 +1037,7 @@ const REPORTS: ReportDef[] = [
 
 // ---------- Page ----------
 const Reports = () => {
+  const { tenant } = useAuth();
   const [reportId, setReportId] = useState<string>("purchases");
   const [filters, setFilters] = useState<Filters>(applyPreset("today", {
     preset: "today", from: today(), to: today(),
@@ -1046,6 +1047,7 @@ const Reports = () => {
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
   const [shops, setShops] = useState<{ id: string; name: string }[]>([]);
   const [users, setUsers] = useState<{ id: string; full_name: string | null }[]>([]);
+  const [company, setCompany] = useState<{ company_name?: string; address?: string; phone?: string } | null>(null);
   const [result, setResult] = useState<ReportResult | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -1061,8 +1063,13 @@ const Reports = () => {
       setFarms((f ?? []) as any);
       setShops((s ?? []) as any);
       setUsers((u ?? []) as any);
+      if (tenant?.id) {
+        const { data: bp } = await supabase.from("business_profiles")
+          .select("company_name, address, phone").eq("tenant_id", tenant.id).maybeSingle();
+        setCompany(bp as any);
+      }
     })();
-  }, []);
+  }, [tenant?.id]);
 
   const lookups: LookupOpts = useMemo(() => ({
     farmMap: new Map(farms.map((x) => [x.id, x.name])),
