@@ -192,7 +192,7 @@ const Dashboard = () => {
       // finalized shortage cost (only finalized-unreversed contributes to Net Profit).
       const { data: closingsToday } = await supabase
         .from("stock_closings")
-        .select("id, meat_type, opening_stock, purchases_kg, supplies_kg, positive_adjustments_kg, negative_adjustments_kg, mortality_weight, expected_closing_stock, physical_stock, variance_weight, variance_type, shortage_cost, status, reversed_at, closing_date")
+        .select("id, tenant_id, meat_type, opening_stock, purchases_kg, supplies_kg, positive_adjustments_kg, negative_adjustments_kg, mortality_weight, expected_closing_stock, physical_stock, system_stock, variance_weight, variance_type, shortage_cost, status, reversed_at, closing_date")
         .eq("closing_date", today);
       const closingRows = (closingsToday ?? []) as any[];
       // WAR per meat_type (batched) for KPI display of the "provisional" draft cost
