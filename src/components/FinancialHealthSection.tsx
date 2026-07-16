@@ -636,6 +636,7 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
           <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Collection Trend — Last 30 Days</div>
             <div className="flex items-center gap-1 flex-wrap">
+              {hasEnoughHistory && <>
               {(["receivable", "recovery", "outstanding"] as const).map((k) => (
                 <button key={k} type="button"
                   onClick={() => setSeriesVisible(s => ({ ...s, [k]: !s[k] }))}
@@ -648,8 +649,17 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
               )}
               <Button variant="outline" size="sm" className="h-6 text-[11px]" onClick={doTrendPng} title="Export PNG"><ImageIcon className="h-3 w-3 mr-1" />PNG</Button>
               <Button variant="outline" size="sm" className="h-6 text-[11px]" onClick={doTrendCsv} title="Export CSV"><Download className="h-3 w-3 mr-1" />CSV</Button>
+              </>}
             </div>
           </div>
+          {!hasEnoughHistory ? (
+            <div className="h-[260px] w-full rounded-md border border-dashed flex flex-col items-center justify-center text-center px-4">
+              <Activity className="h-6 w-6 text-muted-foreground mb-2" />
+              <div className="text-sm font-semibold">Insufficient historical data</div>
+              <div className="text-xs text-muted-foreground mt-1">Minimum 7 days of activity required to render the trend.</div>
+              <div className="text-[11px] text-muted-foreground mt-1">Currently {activeDays} day{activeDays === 1 ? "" : "s"} of activity in the last 30 days.</div>
+            </div>
+          ) : (
           <ChartContainer
             id="collection-trend-chart"
             config={{
@@ -677,7 +687,10 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
               {seriesVisible.outstanding && <Line type="monotone" dataKey="outstanding" stroke="var(--color-outstanding)" strokeWidth={2} dot={false} strokeDasharray="4 3" />}
             </LineChart>
           </ChartContainer>
-          <div className="text-[10px] text-muted-foreground mt-1">Tip: click a point to open the shop ledger for that date. Toggle legend chips to hide series.</div>
+          )}
+          {hasEnoughHistory && (
+            <div className="text-[10px] text-muted-foreground mt-1">Tip: click a point to open the shop ledger for that date. Toggle legend chips to hide series.</div>
+          )}
         </div>
       </CardContent>
     </Card>
