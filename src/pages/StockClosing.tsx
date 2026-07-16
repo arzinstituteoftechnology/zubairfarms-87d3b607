@@ -256,8 +256,9 @@ const StockClosing = () => {
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   };
 
-  const requestSave = (i: number) => {
+  const requestSave = (i: number, targetStatus: "draft" | "finalized" = "draft") => {
     const r = rows[i];
+    if (r.status === "finalized" || r.reversed) { toast.error("Closing is finalized/reversed — cannot edit"); return; }
     if (r.physical === "" || isNaN(Number(r.physical))) {
       toast.error("Enter physical stock");
       return;
@@ -268,10 +269,15 @@ const StockClosing = () => {
       toast.error("Select an adjustment reason for the difference");
       return;
     }
+    if (r.reason === "other" && !r.notes.trim()) {
+      toast.error("Notes are required when reason is 'Other'");
+      return;
+    }
+    setPendingStatus(targetStatus);
     setConfirmIdx(i);
   };
 
-  const saveRow = async (i: number) => {
+  const saveRow = async (i: number, targetStatus: "draft" | "finalized" = "draft") => {
     const r = rows[i];
     if (r.physical === "" || isNaN(Number(r.physical))) {
       toast.error("Enter physical stock");
@@ -285,7 +291,9 @@ const StockClosing = () => {
     }
     updateRow(i, { saving: true });
 
-    const payload = {
+    const varianceType: "balanced" | "shortage" | "surplus" =
+      Math.abs(difference) < 0.001 ? "balanced" : difference < 0 ? "shortage" : "surplus";
+    const payload: any = {
       tenant_id: tenant?.id,
       closing_date: selectedDate,
       meat_type: r.meat_type,
@@ -293,9 +301,18 @@ const StockClosing = () => {
       purchases_kg: r.purchases,
       supplies_kg: r.supplies,
       adjustments_kg: r.adjustments,
+      mortality_weight: r.mortality,
+      positive_adjustments_kg: r.positiveAdjustments,
+      negative_adjustments_kg: r.negativeAdjustments,
+      expected_closing_stock: r.system,
+      variance_weight: difference,
+      variance_type: varianceType,
       system_stock: r.system,
       physical_stock: physical,
       difference,
+      status: targetStatus,
+      finalized_at: targetStatus === "finalized" ? new Date().toISOString() : null,
+      finalized_by: targetStatus === "finalized" ? (user?.id ?? null) : null,
       reason: Math.abs(difference) > 0.001 && r.reason ? (r.reason as any) : null,
       reason_id: Math.abs(difference) > 0.001 && r.reason
         ? (REASONS.find(x => x.value === r.reason)?.id ?? null)
