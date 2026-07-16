@@ -2517,6 +2517,10 @@ export type Database = {
         Args: { _id: string; _result?: Json }
         Returns: undefined
       }
+      compute_closing_war: {
+        Args: { p_date: string; p_meat: string; p_tenant: string }
+        Returns: number
+      }
       current_tenant_id: { Args: never; Returns: string }
       delete_job: { Args: { _id: string }; Returns: undefined }
       enqueue_job: {
@@ -2535,6 +2539,50 @@ export type Database = {
       fail_job: {
         Args: { _details?: Json; _error: string; _id: string }
         Returns: undefined
+      }
+      finalize_stock_closing: {
+        Args: { p_id: string }
+        Returns: {
+          adjustments_kg: number
+          closing_date: string
+          created_at: string
+          created_by: string | null
+          difference: number
+          expected_closing_stock: number | null
+          finalized_at: string | null
+          finalized_by: string | null
+          id: string
+          meat_type: string
+          mortality_weight: number
+          negative_adjustments_kg: number
+          notes: string | null
+          opening_stock: number
+          physical_stock: number
+          positive_adjustments_kg: number
+          purchases_kg: number
+          reason: string | null
+          reason_id: string | null
+          reversal_notes: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by: string | null
+          shortage_cost: number
+          status: Database["public"]["Enums"]["stock_closing_status"]
+          supplies_kg: number
+          system_stock: number
+          tenant_id: string
+          updated_at: string
+          variance_type:
+            | Database["public"]["Enums"]["stock_variance_type"]
+            | null
+          variance_weight: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "stock_closings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       get_live_metrics: { Args: { _window_minutes?: number }; Returns: Json }
       has_permission: {
