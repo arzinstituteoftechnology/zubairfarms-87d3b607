@@ -366,17 +366,23 @@ const Inventory = () => {
                 <TableHead className="w-8" />
                 <TableHead>Meat Type</TableHead>
                 <TableHead className="text-end">Opening</TableHead>
-                <TableHead className="text-end">Purchased</TableHead>
-                <TableHead className="text-end">Supplied</TableHead>
-                <TableHead className="text-end">Inventory Loss</TableHead>
-                <TableHead className="text-end">Current Stock</TableHead>
+                <TableHead className="text-end">+ Purchases</TableHead>
+                <TableHead className="text-end">− Supplies</TableHead>
+                <TableHead className="text-end">+ Pos Adj</TableHead>
+                <TableHead className="text-end">− Neg Adj</TableHead>
+                <TableHead className="text-end">− Mortality</TableHead>
+                <TableHead className="text-end">Expected</TableHead>
+                <TableHead className="text-end">Physical</TableHead>
+                <TableHead className="text-end">Difference</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-end">Current</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={12} className="text-center py-10 text-muted-foreground">Loading…</TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                <TableRow><TableCell colSpan={12} className="text-center py-10 text-muted-foreground">
                   <Boxes className="h-8 w-8 mx-auto mb-2 opacity-40" />No stock records for this date.
                 </TableCell></TableRow>
               ) : (
@@ -394,13 +400,26 @@ const Inventory = () => {
                         <TableCell className="text-end">{fmtKg(r.opening)}</TableCell>
                         <TableCell className="text-end">{fmtKg(r.purchased)}</TableCell>
                         <TableCell className="text-end">{fmtKg(r.supplied)}</TableCell>
-                        <TableCell className={`text-end ${r.loss > 0 ? "text-destructive font-medium" : ""}`}>{fmtKg(r.loss)}</TableCell>
+                        <TableCell className="text-end">{fmtKg(r.posAdj)}</TableCell>
+                        <TableCell className={`text-end ${r.negAdj > 0 ? "text-destructive" : ""}`}>{fmtKg(r.negAdj)}</TableCell>
+                        <TableCell className={`text-end ${r.mortality > 0 ? "text-destructive" : ""}`}>{fmtKg(r.mortality)}</TableCell>
+                        <TableCell className="text-end font-medium">{fmtKg(r.expected)}</TableCell>
+                        <TableCell className="text-end">{r.physical == null ? <span className="text-muted-foreground">—</span> : fmtKg(r.physical)}</TableCell>
+                        <TableCell className={`text-end font-semibold ${r.difference == null ? "text-muted-foreground" : r.difference < 0 ? "text-destructive" : r.difference > 0 ? "text-success" : ""}`}>
+                          {r.difference == null ? "—" : (r.difference > 0 ? "+" : "") + fmtKg(r.difference)}
+                        </TableCell>
+                        <TableCell>
+                          {r.status === "shortage" ? <span className="text-xs px-2 py-0.5 rounded bg-destructive/10 text-destructive font-medium">Shortage</span>
+                           : r.status === "surplus" ? <span className="text-xs px-2 py-0.5 rounded bg-success/10 text-success font-medium">Surplus</span>
+                           : r.status === "balanced" ? <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground font-medium">Balanced</span>
+                           : <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">No Closing</span>}
+                        </TableCell>
                         <TableCell className={`text-end font-semibold ${r.current < 0 ? "text-destructive" : ""}`}>{fmtKg(r.current)}</TableCell>
                       </TableRow>
                       {isOpen && (
                         <TableRow key={r.meat_type + "-b"} className="bg-muted/40">
                           <TableCell />
-                          <TableCell colSpan={6}>
+                          <TableCell colSpan={11}>
                             <div className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
                               <TrendingDown className="h-3 w-3" /> Loss Breakdown — {r.meat_type}
                             </div>
@@ -430,7 +449,15 @@ const Inventory = () => {
                   <TableCell className="text-end">{fmtKg(totals.opening)}</TableCell>
                   <TableCell className="text-end">{fmtKg(totals.purchased)}</TableCell>
                   <TableCell className="text-end">{fmtKg(totals.supplied)}</TableCell>
-                  <TableCell className="text-end">{fmtKg(totals.loss)}</TableCell>
+                  <TableCell className="text-end">{fmtKg(totals.posAdj)}</TableCell>
+                  <TableCell className="text-end">{fmtKg(totals.negAdj)}</TableCell>
+                  <TableCell className="text-end">{fmtKg(totals.mortality)}</TableCell>
+                  <TableCell className="text-end">{fmtKg(totals.expected)}</TableCell>
+                  <TableCell className="text-end">{fmtKg(totals.physical)}</TableCell>
+                  <TableCell className={`text-end ${totals.difference < 0 ? "text-destructive" : totals.difference > 0 ? "text-success" : ""}`}>
+                    {(totals.difference > 0 ? "+" : "") + fmtKg(totals.difference)}
+                  </TableCell>
+                  <TableCell />
                   <TableCell className="text-end">{fmtKg(totals.current)}</TableCell>
                 </TableRow>
               )}
