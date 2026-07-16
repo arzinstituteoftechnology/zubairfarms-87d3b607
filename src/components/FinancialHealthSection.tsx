@@ -17,6 +17,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Legend } from "recharts";
 import {
   Wallet, Store, Scale, Percent, TrendingUp, TrendingDown,
   FileText, FileSpreadsheet, Printer, Download, Activity, ArrowRight,
+  Crown, AlertOctagon,
 } from "lucide-react";
 
 type Period = "today" | "week" | "month" | "custom";
@@ -33,6 +34,7 @@ interface HealthKpis {
 interface TopShop { id: string; name: string; balance: number; ageDays: number }
 interface TopFarm { id: string; name: string; balance: number; lastPurchase: string | null }
 interface ChartPoint { date: string; label: string; receivable: number; payable: number; nwc: number }
+interface TrendPoint { date: string; label: string; receivable: number; recovery: number; outstanding: number }
 
 type HealthStatus = { label: string; tone: "excellent" | "good" | "warning" | "critical"; desc: string };
 
@@ -50,6 +52,58 @@ const TONE_BADGE: Record<HealthStatus["tone"], string> = {
   warning: "bg-orange-500/15 text-orange-600 border-orange-500/30",
   critical: "bg-destructive/15 text-destructive border-destructive/30",
 };
+
+/** Health score 0–150 = receivable ÷ payable × 100 (200 max when payable is 0). */
+function healthScore(receivable: number, payable: number): number {
+  if (payable <= 0) return receivable > 0 ? 150 : 100;
+  return Math.max(0, Math.min(150, (receivable / payable) * 100));
+}
+
+/** Semicircle gauge with 4 colored zones and a needle. Pure SVG — no lib. */
+function HealthGauge({ score, status }: { score: number; status: HealthStatus }) {
+  // Map 0..150 → angle 180°..0° (left → right).
+  const angle = 180 - (Math.min(150, Math.max(0, score)) / 150) * 180;
+  const rad = (angle * Math.PI) / 180;
+  const cx = 110, cy = 100, r = 82;
+  const nx = cx + Math.cos(rad) * (r - 8);
+  const ny = cy - Math.sin(rad) * (r - 8);
+  // Zones (percent → color). Boundaries in the 0..150 space, converted to fractions of the 180° arc.
+  const zones = [
+    { from: 0, to: 60, color: "hsl(var(--destructive))" },   // Critical
+    { from: 60, to: 90, color: "hsl(24 95% 53%)" },          // Warning (orange)
+    { from: 90, to: 100, color: "hsl(var(--primary))" },     // Good
+    { from: 100, to: 150, color: "hsl(var(--success))" },    // Excellent
+  ];
+  const arc = (from: number, to: number) => {
+    const a1 = ((150 - from) / 150) * 180;
+    const a2 = ((150 - to) / 150) * 180;
+    const p1 = { x: cx + Math.cos((a1 * Math.PI) / 180) * r, y: cy - Math.sin((a1 * Math.PI) / 180) * r };
+    const p2 = { x: cx + Math.cos((a2 * Math.PI) / 180) * r, y: cy - Math.sin((a2 * Math.PI) / 180) * r };
+    return `M ${p1.x} ${p1.y} A ${r} ${r} 0 0 1 ${p2.x} ${p2.y}`;
+  };
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <svg viewBox="0 0 220 130" className="w-full max-w-[240px]">
+        {zones.map((z, i) => (
+          <path key={i} d={arc(z.from, z.to)} stroke={z.color} strokeWidth={16} fill="none" strokeLinecap="butt" />
+        ))}
+        {/* Tick labels */}
+        <text x="18"  y="118" fontSize="9" fill="hsl(var(--muted-foreground))">Critical</text>
+        <text x="70"  y="24"  fontSize="9" fill="hsl(var(--muted-foreground))">Warning</text>
+        <text x="130" y="24"  fontSize="9" fill="hsl(var(--muted-foreground))">Good</text>
+        <text x="172" y="118" fontSize="9" fill="hsl(var(--muted-foreground))">Excellent</text>
+        {/* Needle */}
+        <line x1={cx} y1={cy} x2={nx} y2={ny} stroke="hsl(var(--foreground))" strokeWidth={3} strokeLinecap="round" />
+        <circle cx={cx} cy={cy} r={6} fill="hsl(var(--foreground))" />
+        <circle cx={cx} cy={cy} r={3} fill="hsl(var(--background))" />
+      </svg>
+      <div className="text-center">
+        <Badge className={`text-xs px-2.5 py-0.5 ${TONE_BADGE[status.tone]}`} variant="outline">{status.label}</Badge>
+        <div className="text-[11px] text-muted-foreground mt-1">Coverage {score.toFixed(0)}%</div>
+      </div>
+    </div>
+  );
+}
 
 const daysBetween = (a: string, b: string) =>
   Math.max(0, Math.round((new Date(b + "T00:00:00Z").getTime() - new Date(a + "T00:00:00Z").getTime()) / 86_400_000));
@@ -90,6 +144,7 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
   const [topShops, setTopShops] = useState<TopShop[]>([]);
   const [topFarms, setTopFarms] = useState<TopFarm[]>([]);
   const [chart, setChart] = useState<ChartPoint[]>([]);
+  const [trend30, setTrend30] = useState<TrendPoint[]>([]);
 
   const range = useMemo(() => {
     const end = asOf;
@@ -111,6 +166,7 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
       { data: supAll }, { data: shopLe }, { data: revRecov },
       { data: purAll }, { data: fpAll }, { data: supLe },
       { data: recPeriod }, { data: supPeriodVal },
+      { data: rec30 }, { data: sup30 },
     ] = await Promise.all([
       supabase.from("shops").select("id, name, opening_balance").is("deleted_at", null),
       supabase.from("farms").select("id, name, opening_balance").is("deleted_at", null),
@@ -122,6 +178,8 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
       supabase.from("supplier_ledger_entries").select("farm_id, entry_type, amount, entry_date, reversed_at, original_entry_id").lte("entry_date", end),
       supabase.from("shop_recoveries").select("amount, recovery_date").gte("recovery_date", start).lte("recovery_date", end).is("reversed_at", null),
       supabase.from("supplies").select("total_amount, supply_date").gte("supply_date", start).lte("supply_date", end).is("reversed_at", null),
+      supabase.from("shop_recoveries").select("amount, recovery_date").gte("recovery_date", format(subDays(new Date(end), 29), "yyyy-MM-dd")).lte("recovery_date", end).is("reversed_at", null),
+      supabase.from("supplies").select("total_amount, supply_date").gte("supply_date", format(subDays(new Date(end), 29), "yyyy-MM-dd")).lte("supply_date", end).is("reversed_at", null),
     ]);
 
     // Current position (as-of end)
@@ -202,6 +260,17 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
     });
     setChart(points);
 
+    // 30-day collection trend (independent of period selector)
+    const trendPoints: TrendPoint[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = format(subDays(new Date(end), i), "yyyy-MM-dd");
+      const r = totalReceivableFromShops(computeShopBalances(shops as any, supAll as any, shopLe as any, revRecov as any, d));
+      const recovery = (rec30 ?? []).filter((x: any) => x.recovery_date === d).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
+      const supplied = (sup30 ?? []).filter((x: any) => x.supply_date === d).reduce((a, x: any) => a + Number(x.total_amount ?? 0), 0);
+      trendPoints.push({ date: d, label: format(new Date(d + "T00:00:00Z"), "MMM d"), receivable: Math.round(supplied), recovery: Math.round(recovery), outstanding: Math.round(r) });
+    }
+    setTrend30(trendPoints);
+
     setLoading(false);
   }, [range.start, range.end]);
 
@@ -221,6 +290,9 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
   }, [load]);
 
   const health = computeHealth(kpis.receivable, kpis.payable);
+  const score = healthScore(kpis.receivable, kpis.payable);
+  const largestDebtor = topShops[0] ?? null;
+  const largestCreditor = topFarms[0] ?? null;
 
   const exportRows = () => {
     const summary = [
