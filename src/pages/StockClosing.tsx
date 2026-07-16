@@ -311,9 +311,11 @@ const StockClosing = () => {
       system_stock: r.system,
       physical_stock: physical,
       difference,
-      status: targetStatus,
-      finalized_at: targetStatus === "finalized" ? new Date().toISOString() : null,
-      finalized_by: targetStatus === "finalized" ? (user?.id ?? null) : null,
+      // Always upsert as draft; finalization is a separate server-side step
+      // (finalize_stock_closing RPC) that re-validates and computes shortage cost.
+      status: "draft",
+      finalized_at: null,
+      finalized_by: null,
       reason: Math.abs(difference) > 0.001 && r.reason ? (r.reason as any) : null,
       reason_id: Math.abs(difference) > 0.001 && r.reason
         ? (REASONS.find(x => x.value === r.reason)?.id ?? null)
@@ -353,7 +355,20 @@ const StockClosing = () => {
       if (aErr) toast.error("Adjustment log failed: " + aErr.message);
     }
 
-    toast.success(`${r.meat_type} closing saved. Tomorrow's opening stock will be ${fmtKg(physical)}.`);
+    // If the user clicked Finalize, call the server-side finalize RPC now
+    // (with the saved closing id). This validates and computes shortage_cost.
+    if (targetStatus === "finalized" && saved?.id) {
+      const { error: finErr } = await supabase.rpc("finalize_stock_closing", { p_id: saved.id });
+      if (finErr) {
+        toast.error("Draft saved but finalize failed: " + finErr.message);
+        updateRow(i, { saving: false, closingId: saved.id });
+        load();
+        return;
+      }
+      toast.success(`${r.meat_type} closing finalized. Tomorrow's opening stock is ${fmtKg(physical)}.`);
+    } else {
+      toast.success(`${r.meat_type} draft saved. Finalize to lock profit & opening stock.`);
+    }
     updateRow(i, { saving: false, closingId: saved?.id });
     load();
   };
