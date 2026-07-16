@@ -340,7 +340,29 @@ const Dashboard = () => {
         <KpiCard icon={ShoppingCart} label={isToday ? t("dashboard.todays_purchase") : t("dashboard.purchase_on")} value={fmtKg(kpi.purchaseKg)} sub={t("dashboard.amt", { value: fmtMoney(kpi.purchaseAmt) })} />
         <KpiCard icon={Truck} label={isToday ? t("dashboard.todays_supply") : t("dashboard.supply_on")} value={fmtKg(kpi.supplyKg)} sub={t("dashboard.amt", { value: fmtMoney(kpi.supplyAmt) })} />
         <KpiCard icon={Boxes} label={isToday ? t("dashboard.current_stock") : t("dashboard.stock_on")} value={fmtKg(kpi.stockKg)} tone={kpi.stockKg < 0 ? "danger" : "default"} sub={selectedDate} />
-        <KpiCard icon={TrendingUp} label={isToday ? t("dashboard.todays_profit") : t("dashboard.profit_on")} value={fmtMoney(kpi.profit)} tone={kpi.profit >= 0 ? "success" : "danger"} sub={t("dashboard.revenue_minus_cost")} />
+        <KpiCard
+          icon={TrendingUp}
+          label={isToday ? t("dashboard.todays_profit") : t("dashboard.profit_on")}
+          value={fmtMoney(kpi.profit)}
+          tone={kpi.profit >= 0 ? "success" : "danger"}
+          sub={`Gross ${fmtMoney(kpi.grossProfit)} − Exp ${fmtMoney(kpi.generalExpense)} − Del ${fmtMoney(kpi.deliveryExpense)}`}
+        />
+        <KpiCard
+          icon={Fuel}
+          label={isToday ? "Truck Delivery Expense Today" : `Truck Delivery Expense on ${selectedDate}`}
+          value={fmtMoney(kpi.deliveryExpense)}
+          sub="Fuel + Labour + Other"
+          tone={kpi.deliveryExpense > 0 ? "danger" : "default"}
+          onClick={() => navigate("/deliveries")}
+        />
+        <KpiCard
+          icon={Receipt}
+          label={isToday ? "Expense Today" : `Expenses on ${selectedDate}`}
+          value={fmtMoney(kpi.generalExpense)}
+          sub="Daily general expenses"
+          tone={kpi.generalExpense > 0 ? "danger" : "default"}
+          onClick={() => navigate("/expenses")}
+        />
         <KpiCard icon={Wallet} label={t("dashboard.payable_to_farms")} value={fmtMoney(kpi.payableToFarms)} sub={t("dashboard.total_udhaar")} tone="danger" />
         <KpiCard
           icon={Store}
