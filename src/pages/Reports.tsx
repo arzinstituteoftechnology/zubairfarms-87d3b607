@@ -414,8 +414,8 @@ const loaders: Record<string, ReportDef["load"]> = {
       .gte("closing_date", f.from).lte("closing_date", f.to)
       .order("closing_date", { ascending: false });
     if (f.meat_type !== "all") q = q.eq("meat_type", f.meat_type);
-    if (f.variance_type !== "all") q = q.eq("variance_type", f.variance_type);
-    if (f.closing_status !== "all") q = q.eq("status", f.closing_status);
+    if (f.variance_type !== "all") q = q.eq("variance_type", f.variance_type as any);
+    if (f.closing_status !== "all") q = q.eq("status", f.closing_status as any);
     q = applyReversedFilter(q, f.includeReversed);
     const { data } = await q;
     // Rolling 30-day WAR per closing (for surplus estimated value)
@@ -692,7 +692,7 @@ const Reports = () => {
   const [filters, setFilters] = useState<Filters>(applyPreset("today", {
     preset: "today", from: today(), to: today(),
     meat_type: "all", farm_id: "all", shop_id: "all", user_id: "all",
-    includeReversed: false,
+    includeReversed: false, variance_type: "all", closing_status: "all",
   }));
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
   const [shops, setShops] = useState<{ id: string; name: string }[]>([]);
