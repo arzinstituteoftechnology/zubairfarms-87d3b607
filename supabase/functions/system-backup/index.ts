@@ -192,6 +192,7 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
       tenant_name: tenantName,
       app: "MeatFlow ERP",
       version: 1,
+      schema_version: SCHEMA_VERSION,
       counts,
       data: snap,
     };
@@ -200,6 +201,7 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
     const gz = new Blob([body]).stream().pipeThrough(new CompressionStream("gzip"));
     const gzBuf = await new Response(gz).arrayBuffer();
     const blob = new Blob([gzBuf], { type: "application/gzip" });
+    const checksum = await sha256Hex(gzBuf);
 
     const now = new Date();
     const yyyy = now.getUTCFullYear();
@@ -227,6 +229,8 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
       integrity_ok: integrityOk,
       compressed: true,
       uncompressed_size: body.length,
+      schema_version: SCHEMA_VERSION,
+      checksum_sha256: checksum,
       errors: tableErrCount ? errors : undefined,
     };
 
@@ -237,6 +241,8 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
       backup_name: backupName,
       table_counts: counts,
       health,
+      checksum_sha256: checksum,
+      schema_version: SCHEMA_VERSION,
       completed_at: new Date().toISOString(),
     }).eq("id", row.id);
 
