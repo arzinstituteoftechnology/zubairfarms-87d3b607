@@ -277,26 +277,46 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
   }
 }
 
-// Verify a backup by re-downloading it and confirming it parses and contains the tenant.
-async function handleVerify(admin: any, backup_id: string) {
+// Verify a backup by re-downloading it, recomputing its checksum, and
+// confirming schema/tenant match. Rejects invalid backups.
+async function handleVerify(admin: any, backup_id: string, ownerTenantId: string | null) {
   const { data: row, error } = await admin.from("backup_history").select("*").eq("id", backup_id).single();
   if (error || !row?.storage_path) return json({ ok: false, error: "Backup not found" }, 404);
+  if (ownerTenantId && row.tenant_id !== ownerTenantId) {
+    return json({ ok: false, error: "You can only verify backups for your own account" }, 403);
+  }
   if (row.status === "failed") return json({ ok: false, error: row.error_message ?? "Backup failed" }, 400);
   const { data: file, error: dErr } = await admin.storage.from("system-backups").download(row.storage_path);
   if (dErr || !file) return json({ ok: false, error: dErr?.message ?? "Cannot download backup" }, 500);
   try {
+    const raw = await file.arrayBuffer();
+    const actualChecksum = await sha256Hex(raw);
+    const checksumOk = row.checksum_sha256 ? actualChecksum === row.checksum_sha256 : true;
     let text: string;
     if (row.storage_path.endsWith(".gz")) {
-      const ds = file.stream().pipeThrough(new DecompressionStream("gzip"));
+      const ds = new Blob([raw]).stream().pipeThrough(new DecompressionStream("gzip"));
       text = await new Response(ds).text();
     } else {
-      text = await file.text();
+      text = new TextDecoder().decode(raw);
     }
     const parsed = JSON.parse(text);
     const tables = Object.keys(parsed.data ?? parsed);
-    if (!tables.length) return json({ ok: false, error: "Backup contains no tables" }, 400);
-    if (row.tenant_id && !(parsed.data?.tenants?.length)) return json({ ok: false, error: "Tenant row missing from backup" }, 400);
-    return json({ ok: true, backup_id, tables: tables.length, file_size: row.file_size });
+    const schemaOk = !parsed.schema_version || parsed.schema_version === SCHEMA_VERSION;
+    const tenantOk = row.tenant_id ? (parsed.tenant_id === row.tenant_id && parsed.data?.tenants?.length === 1) : true;
+    const ok = checksumOk && schemaOk && tenantOk && tables.length > 0;
+    return json({
+      ok, backup_id, tables: tables.length, file_size: row.file_size,
+      checksum_ok: checksumOk, schema_ok: schemaOk, tenant_ok: tenantOk,
+      schema_version: parsed.schema_version ?? null,
+      counts: parsed.counts ?? row.table_counts ?? null,
+      backup_date: parsed.generated_at ?? row.completed_at,
+      checksum: actualChecksum,
+      error: ok ? undefined :
+        !checksumOk ? "Checksum mismatch — backup file corrupted"
+        : !schemaOk ? `Schema version mismatch (backup ${parsed.schema_version} vs current ${SCHEMA_VERSION})`
+        : !tenantOk ? "Tenant row missing or mismatched"
+        : "Backup contains no tables",
+    }, ok ? 200 : 400);
   } catch (e) {
     return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500);
   }
