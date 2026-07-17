@@ -1115,6 +1115,71 @@ export type Database = {
           },
         ]
       }
+      permission_audit_log: {
+        Row: {
+          action: string
+          actor_email: string | null
+          actor_ip: string | null
+          actor_user_agent: string | null
+          actor_user_id: string | null
+          created_at: string
+          id: string
+          metadata: Json
+          module: string | null
+          new_value: Json | null
+          permission_action: string | null
+          previous_value: Json | null
+          reason: string | null
+          target_email: string | null
+          target_user_id: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_email?: string | null
+          actor_ip?: string | null
+          actor_user_agent?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json
+          module?: string | null
+          new_value?: Json | null
+          permission_action?: string | null
+          previous_value?: Json | null
+          reason?: string | null
+          target_email?: string | null
+          target_user_id?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_email?: string | null
+          actor_ip?: string | null
+          actor_user_agent?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json
+          module?: string | null
+          new_value?: Json | null
+          permission_action?: string | null
+          previous_value?: Json | null
+          reason?: string | null
+          target_email?: string | null
+          target_user_id?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permission_audit_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pos_sale_items: {
         Row: {
           created_at: string
@@ -1246,18 +1311,21 @@ export type Database = {
           created_at: string
           full_name: string | null
           id: string
+          must_change_password: boolean
           updated_at: string
         }
         Insert: {
           created_at?: string
           full_name?: string | null
           id: string
+          must_change_password?: boolean
           updated_at?: string
         }
         Update: {
           created_at?: string
           full_name?: string | null
           id?: string
+          must_change_password?: boolean
           updated_at?: string
         }
         Relationships: []
@@ -1369,6 +1437,123 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      role_template_permissions: {
+        Row: {
+          action: string
+          allowed: boolean
+          id: string
+          module: string
+          template_id: string
+          updated_at: string
+        }
+        Insert: {
+          action: string
+          allowed?: boolean
+          id?: string
+          module: string
+          template_id: string
+          updated_at?: string
+        }
+        Update: {
+          action?: string
+          allowed?: boolean
+          id?: string
+          module?: string
+          template_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_template_permissions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "role_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      role_template_versions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          reason: string | null
+          snapshot: Json
+          template_id: string
+          version_no: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          reason?: string | null
+          snapshot: Json
+          template_id: string
+          version_no: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          reason?: string | null
+          snapshot?: Json
+          template_id?: string
+          version_no?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_template_versions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "role_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      role_templates: {
+        Row: {
+          builtin_key: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_builtin: boolean
+          name: string
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          builtin_key?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_builtin?: boolean
+          name: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          builtin_key?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_builtin?: boolean
+          name?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       settings: {
         Row: {
@@ -2252,6 +2437,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          role_template_id: string | null
           status: string
           tenant_id: string
           tenant_role: string
@@ -2260,6 +2446,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          role_template_id?: string | null
           status?: string
           tenant_id: string
           tenant_role?: string
@@ -2268,12 +2455,20 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          role_template_id?: string | null
           status?: string
           tenant_id?: string
           tenant_role?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tenant_users_role_template_id_fkey"
+            columns: ["role_template_id"]
+            isOneToOne: false
+            referencedRelation: "role_templates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tenant_users_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -2408,6 +2603,84 @@ export type Database = {
         }
         Relationships: []
       }
+      user_invitations: {
+        Row: {
+          accepted_at: string | null
+          accepted_user_id: string | null
+          cancelled_at: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          force_password_change: boolean
+          full_name: string | null
+          id: string
+          invited_by: string | null
+          resend_count: number
+          role_template_id: string | null
+          sent_at: string
+          status: string
+          tenant_id: string
+          tenant_role: string
+          token_hash: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          cancelled_at?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          force_password_change?: boolean
+          full_name?: string | null
+          id?: string
+          invited_by?: string | null
+          resend_count?: number
+          role_template_id?: string | null
+          sent_at?: string
+          status?: string
+          tenant_id: string
+          tenant_role: string
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          cancelled_at?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          force_password_change?: boolean
+          full_name?: string | null
+          id?: string
+          invited_by?: string | null
+          resend_count?: number
+          role_template_id?: string | null
+          sent_at?: string
+          status?: string
+          tenant_id?: string
+          tenant_role?: string
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_invitations_role_template_id_fkey"
+            columns: ["role_template_id"]
+            isOneToOne: false
+            referencedRelation: "role_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_invitations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_permission_overrides: {
         Row: {
           action: string
@@ -2465,6 +2738,17 @@ export type Database = {
     }
     Functions: {
       _assert_can_reverse: { Args: never; Returns: undefined }
+      _req_meta: { Args: never; Returns: Json }
+      apply_bulk_permission_action: {
+        Args: {
+          _action: string
+          _new_role?: string
+          _reason?: string
+          _source_user_id?: string
+          _target_user_ids: string[]
+        }
+        Returns: Json
+      }
       assert_can_reverse_module: {
         Args: { _module: string }
         Returns: undefined
