@@ -48,6 +48,7 @@ import { SuperAdminAuthProvider } from "@/hooks/useSuperAdminAuth";
 import UsersPermissions from "./pages/UsersPermissions";
 import Notifications from "./pages/Notifications";
 import AcceptInvite from "./pages/AcceptInvite";
+import ActivityCenter from "./pages/ActivityCenter";
 
 const queryClient = new QueryClient();
 
@@ -115,6 +116,7 @@ const App = () => (
              <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/settings/users" element={<UsersPermissions />} />
+              <Route path="/settings/activity" element={<ActivityCenter />} />
               <Route path="/notifications" element={<Notifications />} />
             </Route>
             <Route path="/invoice/:id" element={<Invoice />} />
