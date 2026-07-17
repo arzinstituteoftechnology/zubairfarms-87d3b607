@@ -234,7 +234,7 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
       errors: tableErrCount ? errors : undefined,
     };
 
-    await admin.from("backup_history").update({
+    const { error: updErr } = await admin.from("backup_history").update({
       status: tableErrCount ? "warning" : "success",
       storage_path: path,
       file_size: gzBuf.byteLength,
@@ -245,6 +245,10 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
       schema_version: SCHEMA_VERSION,
       completed_at: new Date().toISOString(),
     }).eq("id", row.id);
+    if (updErr) {
+      console.error("[system-backup] finalize update failed", updErr);
+      throw new Error(`Finalize update failed: ${updErr.message}`);
+    }
 
     // Audit trail — Requirement #8: backup operations must generate audit events.
     await admin.from("activity_logs").insert({
