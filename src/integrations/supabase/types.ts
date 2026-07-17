@@ -3186,6 +3186,8 @@ export type Database = {
         | "login_alert"
         | "super_admin_login"
         | "system"
+        | "subscription_expiring"
+        | "subscription_expired"
       shop_ledger_type:
         | "opening_balance"
         | "manual_supply"
@@ -3385,6 +3387,8 @@ export const Constants = {
         "login_alert",
         "super_admin_login",
         "system",
+        "subscription_expiring",
+        "subscription_expired",
       ],
       shop_ledger_type: [
         "opening_balance",
