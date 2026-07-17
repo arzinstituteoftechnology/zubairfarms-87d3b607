@@ -36,10 +36,20 @@ const SYSTEM_TABLES = [
 
 const ALL_TABLES = [...BUSINESS_TABLES, ...SYSTEM_TABLES];
 
+// Schema version stamped into every backup payload. Bump on breaking schema
+// changes so restores can refuse older backups if incompatible.
+const SCHEMA_VERSION = "1.0";
+
+async function sha256Hex(buf: ArrayBuffer): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 type Action =
   | { action: "create"; backup_type?: "daily" | "manual" | "monthly" | "emergency" | "pre_restore" | "pre_reset"; tenant_id?: string | null }
   | { action: "verify"; backup_id: string }
-  | { action: "restore"; backup_id?: string; backup?: Record<string, any[]>; preserve_super_admin?: boolean }
+  | { action: "restore"; backup_id?: string; backup?: Record<string, any[]>; preserve_super_admin?: boolean; _rolling_back?: boolean }
   | { action: "cleanup" }
   | { action: "download"; backup_id: string };
 
@@ -65,33 +75,56 @@ Deno.serve(async (req) => {
     const admin = createClient(url, service);
 
     let userId: string | null = null;
+    let callerTenantId: string | null = null;
+    let callerIsSuperAdmin = false;
+    let callerIsTenantOwner = false;
     if (!isCron) {
       const userClient = createClient(url, anon, { global: { headers: { Authorization: authHeader } } });
       const { data: { user } } = await userClient.auth.getUser();
       if (!user) return json({ error: "Not authenticated" }, 401);
+      userId = user.id;
       const { data: roleRow } = await admin
         .from("user_roles").select("role")
         .eq("user_id", user.id).eq("role", "super_admin").maybeSingle();
-      if (!roleRow) return json({ error: "Forbidden — super admin only" }, 403);
-      userId = user.id;
+      callerIsSuperAdmin = !!roleRow;
+      if (!callerIsSuperAdmin) {
+        const { data: tu } = await admin.from("tenant_users")
+          .select("tenant_id, tenant_role, status").eq("user_id", user.id).maybeSingle();
+        if (tu && tu.status === "active" && tu.tenant_role === "owner") {
+          callerIsTenantOwner = true;
+          callerTenantId = tu.tenant_id;
+        }
+      }
+      if (!callerIsSuperAdmin && !callerIsTenantOwner) {
+        return json({ error: "Forbidden — super admin or account Owner only" }, 403);
+      }
     }
 
     const body = (await req.json().catch(() => ({}))) as Action;
 
     if (body.action === "create") {
-      return await handleCreate(admin, body.backup_type ?? "manual", userId, body.tenant_id ?? null);
+      // Tenant Owners may only create backups scoped to their own tenant.
+      let tId = body.tenant_id ?? null;
+      if (callerIsTenantOwner) {
+        if (tId && tId !== callerTenantId) {
+          return json({ error: "Owners can only create backups for their own account" }, 403);
+        }
+        tId = callerTenantId;
+      }
+      return await handleCreate(admin, body.backup_type ?? "manual", userId, tId);
     }
     if (body.action === "verify") {
-      return await handleVerify(admin, body.backup_id);
+      return await handleVerify(admin, body.backup_id, callerIsTenantOwner ? callerTenantId : null);
     }
     if (body.action === "cleanup") {
+      if (!callerIsSuperAdmin) return json({ error: "Super admin only" }, 403);
       return await handleCleanup(admin);
     }
     if (body.action === "download") {
-      return await handleDownload(admin, body.backup_id);
+      return await handleDownload(admin, body.backup_id, callerIsTenantOwner ? callerTenantId : null);
     }
     if (body.action === "restore") {
-      return await handleRestore(admin, body, userId);
+      return await handleRestore(admin, body, userId, callerIsTenantOwner ? callerTenantId : null);
     }
     return json({ error: "Unknown action" }, 400);
   } catch (e) {
