@@ -41,8 +41,8 @@ describe("backupWizard state machine", () => {
   });
 
   it("rollback path surfaces on finish", () => {
-    let s = { ...initialWizard, step: "progress" as const, backupId: "b1" };
-    s = reduceWizard(s, { type: "restore.done", result: { ok: false, rolled_back: true, error: "boom" } });
+    const start = { ...initialWizard, step: "progress" as const, backupId: "b1" };
+    const s = reduceWizard(start, { type: "restore.done", result: { ok: false, rolled_back: true, error: "boom" } });
     expect(s.step).toBe("finish");
     expect(s.result?.rolled_back).toBe(true);
   });
