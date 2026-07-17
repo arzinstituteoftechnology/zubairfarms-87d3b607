@@ -2058,71 +2058,161 @@ export type Database = {
           },
         ]
       }
+      subscription_events: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          event_type: string
+          from_plan_id: string | null
+          id: string
+          metadata: Json
+          subscription_id: string | null
+          tenant_id: string
+          to_plan_id: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type: string
+          from_plan_id?: string | null
+          id?: string
+          metadata?: Json
+          subscription_id?: string | null
+          tenant_id: string
+          to_plan_id?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type?: string
+          from_plan_id?: string | null
+          id?: string
+          metadata?: Json
+          subscription_id?: string | null
+          tenant_id?: string
+          to_plan_id?: string | null
+        }
+        Relationships: []
+      }
       subscription_plans: {
         Row: {
+          api_access: boolean
+          audit_access: boolean
+          backup_frequency: string | null
           billing_cycle: string
           created_at: string
           duration_days: number
           features: Json
           id: string
           is_active: boolean
+          max_farms: number | null
+          max_shops: number | null
+          max_storage_mb: number | null
+          max_trucks: number | null
+          max_users: number | null
           name: string
           price: number
+          report_access: boolean
+          support_priority: string
+          tier: string | null
           updated_at: string
         }
         Insert: {
+          api_access?: boolean
+          audit_access?: boolean
+          backup_frequency?: string | null
           billing_cycle: string
           created_at?: string
           duration_days: number
           features?: Json
           id?: string
           is_active?: boolean
+          max_farms?: number | null
+          max_shops?: number | null
+          max_storage_mb?: number | null
+          max_trucks?: number | null
+          max_users?: number | null
           name: string
           price?: number
+          report_access?: boolean
+          support_priority?: string
+          tier?: string | null
           updated_at?: string
         }
         Update: {
+          api_access?: boolean
+          audit_access?: boolean
+          backup_frequency?: string | null
           billing_cycle?: string
           created_at?: string
           duration_days?: number
           features?: Json
           id?: string
           is_active?: boolean
+          max_farms?: number | null
+          max_shops?: number | null
+          max_storage_mb?: number | null
+          max_trucks?: number | null
+          max_users?: number | null
           name?: string
           price?: number
+          report_access?: boolean
+          support_priority?: string
+          tier?: string | null
           updated_at?: string
         }
         Relationships: []
       }
       subscriptions: {
         Row: {
+          activated_at: string | null
+          cancelled_at: string | null
           created_at: string
           expires_at: string
+          grace_period_days: number
           id: string
+          is_trial: boolean
+          issue_date: string
+          license_key: string | null
           plan_id: string | null
           started_at: string
           status: string
           tenant_id: string
+          trial_days: number | null
           updated_at: string
         }
         Insert: {
+          activated_at?: string | null
+          cancelled_at?: string | null
           created_at?: string
           expires_at: string
+          grace_period_days?: number
           id?: string
+          is_trial?: boolean
+          issue_date?: string
+          license_key?: string | null
           plan_id?: string | null
           started_at?: string
           status?: string
           tenant_id: string
+          trial_days?: number | null
           updated_at?: string
         }
         Update: {
+          activated_at?: string | null
+          cancelled_at?: string | null
           created_at?: string
           expires_at?: string
+          grace_period_days?: number
           id?: string
+          is_trial?: boolean
+          issue_date?: string
+          license_key?: string | null
           plan_id?: string | null
           started_at?: string
           status?: string
           tenant_id?: string
+          trial_days?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -2916,6 +3006,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      generate_license_key: { Args: never; Returns: string }
       get_live_metrics: { Args: { _window_minutes?: number }; Returns: Json }
       has_permission: {
         Args: { _action: string; _module: string; _uid: string }
@@ -2933,6 +3024,17 @@ export type Database = {
       is_tenant_owner: { Args: { _uid: string }; Returns: boolean }
       log_auth_event: {
         Args: { _event: string; _metadata?: Json; _success?: boolean }
+        Returns: string
+      }
+      log_subscription_event: {
+        Args: {
+          _event_type: string
+          _from_plan_id?: string
+          _metadata?: Json
+          _subscription_id?: string
+          _tenant_id: string
+          _to_plan_id?: string
+        }
         Returns: string
       }
       log_system_error: {
@@ -2968,6 +3070,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      notify_expiring_subscriptions: { Args: never; Returns: number }
       notify_super_admins: {
         Args: {
           _actor: string
@@ -3032,12 +3135,14 @@ export type Database = {
       run_job_now: { Args: { _id: string }; Returns: undefined }
       seed_tenant_settings: { Args: { _tid: string }; Returns: undefined }
       soft_delete_notification: { Args: { _id: string }; Returns: undefined }
+      subscription_state: { Args: { _tenant_id: string }; Returns: Json }
       super_admin_exists: { Args: never; Returns: boolean }
       super_admin_login_lockout: { Args: { _email: string }; Returns: number }
       tenant_has_active_subscription: {
         Args: { _tenant_id: string }
         Returns: boolean
       }
+      tenant_usage: { Args: { _tenant_id: string }; Returns: Json }
     }
     Enums: {
       app_role: "admin" | "staff" | "super_admin" | "manager"
@@ -3081,6 +3186,8 @@ export type Database = {
         | "login_alert"
         | "super_admin_login"
         | "system"
+        | "subscription_expiring"
+        | "subscription_expired"
       shop_ledger_type:
         | "opening_balance"
         | "manual_supply"
@@ -3280,6 +3387,8 @@ export const Constants = {
         "login_alert",
         "super_admin_login",
         "system",
+        "subscription_expiring",
+        "subscription_expired",
       ],
       shop_ledger_type: [
         "opening_balance",

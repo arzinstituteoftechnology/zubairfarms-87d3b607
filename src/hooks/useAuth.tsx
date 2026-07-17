@@ -8,6 +8,9 @@ export interface TenantInfo { id: string; company_name: string; status: string }
 export interface SubInfo {
   id: string; tenant_id: string; plan_id: string | null;
   expires_at: string; status: string;
+  grace_period_days?: number;
+  cancelled_at?: string | null;
+  is_trial?: boolean;
   plan?: { name: string; billing_cycle: string } | null;
 }
 
@@ -80,7 +83,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (t) {
       const { data: sub } = await supabase
         .from("subscriptions")
-        .select("id, tenant_id, plan_id, expires_at, status, subscription_plans(name, billing_cycle)")
+        .select("id, tenant_id, plan_id, expires_at, status, grace_period_days, cancelled_at, is_trial, subscription_plans(name, billing_cycle)")
         .eq("tenant_id", t.id)
         .order("expires_at", { ascending: false })
         .limit(1)
@@ -89,6 +92,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setSubscription({
           id: sub.id, tenant_id: sub.tenant_id, plan_id: sub.plan_id,
           expires_at: sub.expires_at, status: sub.status,
+          grace_period_days: (sub as any).grace_period_days ?? 0,
+          cancelled_at: (sub as any).cancelled_at ?? null,
+          is_trial: (sub as any).is_trial ?? false,
           plan: (sub as any).subscription_plans ?? null,
         });
       } else setSubscription(null);
