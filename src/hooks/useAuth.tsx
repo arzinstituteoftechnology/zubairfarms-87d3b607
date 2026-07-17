@@ -96,7 +96,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       if (s?.user) {
         setLoading(true);
@@ -105,6 +105,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         clearProfile();
         setLoading(false);
       }
+      // Best-effort auth event logging (append-only)
+      try {
+        if (event === "SIGNED_IN") {
+          (supabase as any).rpc("log_auth_event", { _event: "login", _success: true, _metadata: { user_agent: navigator.userAgent } });
+        } else if (event === "SIGNED_OUT") {
+          (supabase as any).rpc("log_auth_event", { _event: "logout", _success: true, _metadata: { user_agent: navigator.userAgent } });
+        } else if (event === "PASSWORD_RECOVERY") {
+          (supabase as any).rpc("log_auth_event", { _event: "password_recovery", _success: true, _metadata: { user_agent: navigator.userAgent } });
+        } else if (event === "USER_UPDATED") {
+          (supabase as any).rpc("log_auth_event", { _event: "user_updated", _success: true, _metadata: { user_agent: navigator.userAgent } });
+        }
+      } catch { /* ignore logging errors */ }
     });
 
     supabase.auth.getSession().then(async ({ data }) => {
