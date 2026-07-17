@@ -136,9 +136,11 @@ async function snapshot(admin: any, tenantId: string | null = null) {
   const out: Record<string, any[]> = {};
   const counts: Record<string, number> = {};
   const errors: Record<string, string> = {};
-  // When tenant-scoped: skip subscription_plans (global), scope all others by tenant_id or membership.
+  // When tenant-scoped: skip global tables (subscription_plans, system_settings)
+  // and scope all others by tenant_id or membership.
+  const GLOBAL_TABLES = new Set(["subscription_plans", "system_settings"]);
   const tables = tenantId
-    ? ALL_TABLES.filter((t) => t !== "subscription_plans")
+    ? ALL_TABLES.filter((t) => !GLOBAL_TABLES.has(t))
     : ALL_TABLES;
   // Members of this tenant (for user_roles + profiles which live in auth land).
   let tenantUserIds: string[] = [];
@@ -234,7 +236,7 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
       errors: tableErrCount ? errors : undefined,
     };
 
-    await admin.from("backup_history").update({
+    const { error: updErr } = await admin.from("backup_history").update({
       status: tableErrCount ? "warning" : "success",
       storage_path: path,
       file_size: gzBuf.byteLength,
@@ -245,6 +247,10 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
       schema_version: SCHEMA_VERSION,
       completed_at: new Date().toISOString(),
     }).eq("id", row.id);
+    if (updErr) {
+      console.error("[system-backup] finalize update failed", updErr);
+      throw new Error(`Finalize update failed: ${updErr.message}`);
+    }
 
     // Audit trail — Requirement #8: backup operations must generate audit events.
     await admin.from("activity_logs").insert({
