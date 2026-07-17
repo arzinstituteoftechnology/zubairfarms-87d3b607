@@ -136,9 +136,11 @@ async function snapshot(admin: any, tenantId: string | null = null) {
   const out: Record<string, any[]> = {};
   const counts: Record<string, number> = {};
   const errors: Record<string, string> = {};
-  // When tenant-scoped: skip subscription_plans (global), scope all others by tenant_id or membership.
+  // When tenant-scoped: skip global tables (subscription_plans, system_settings)
+  // and scope all others by tenant_id or membership.
+  const GLOBAL_TABLES = new Set(["subscription_plans", "system_settings"]);
   const tables = tenantId
-    ? ALL_TABLES.filter((t) => t !== "subscription_plans")
+    ? ALL_TABLES.filter((t) => !GLOBAL_TABLES.has(t))
     : ALL_TABLES;
   // Members of this tenant (for user_roles + profiles which live in auth land).
   let tenantUserIds: string[] = [];
