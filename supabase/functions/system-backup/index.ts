@@ -36,10 +36,20 @@ const SYSTEM_TABLES = [
 
 const ALL_TABLES = [...BUSINESS_TABLES, ...SYSTEM_TABLES];
 
+// Schema version stamped into every backup payload. Bump on breaking schema
+// changes so restores can refuse older backups if incompatible.
+const SCHEMA_VERSION = "1.0";
+
+async function sha256Hex(buf: ArrayBuffer): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 type Action =
   | { action: "create"; backup_type?: "daily" | "manual" | "monthly" | "emergency" | "pre_restore" | "pre_reset"; tenant_id?: string | null }
   | { action: "verify"; backup_id: string }
-  | { action: "restore"; backup_id?: string; backup?: Record<string, any[]>; preserve_super_admin?: boolean }
+  | { action: "restore"; backup_id?: string; backup?: Record<string, any[]>; preserve_super_admin?: boolean; _rolling_back?: boolean }
   | { action: "cleanup" }
   | { action: "download"; backup_id: string };
 
@@ -65,33 +75,56 @@ Deno.serve(async (req) => {
     const admin = createClient(url, service);
 
     let userId: string | null = null;
+    let callerTenantId: string | null = null;
+    let callerIsSuperAdmin = false;
+    let callerIsTenantOwner = false;
     if (!isCron) {
       const userClient = createClient(url, anon, { global: { headers: { Authorization: authHeader } } });
       const { data: { user } } = await userClient.auth.getUser();
       if (!user) return json({ error: "Not authenticated" }, 401);
+      userId = user.id;
       const { data: roleRow } = await admin
         .from("user_roles").select("role")
         .eq("user_id", user.id).eq("role", "super_admin").maybeSingle();
-      if (!roleRow) return json({ error: "Forbidden — super admin only" }, 403);
-      userId = user.id;
+      callerIsSuperAdmin = !!roleRow;
+      if (!callerIsSuperAdmin) {
+        const { data: tu } = await admin.from("tenant_users")
+          .select("tenant_id, tenant_role, status").eq("user_id", user.id).maybeSingle();
+        if (tu && tu.status === "active" && tu.tenant_role === "owner") {
+          callerIsTenantOwner = true;
+          callerTenantId = tu.tenant_id;
+        }
+      }
+      if (!callerIsSuperAdmin && !callerIsTenantOwner) {
+        return json({ error: "Forbidden — super admin or account Owner only" }, 403);
+      }
     }
 
     const body = (await req.json().catch(() => ({}))) as Action;
 
     if (body.action === "create") {
-      return await handleCreate(admin, body.backup_type ?? "manual", userId, body.tenant_id ?? null);
+      // Tenant Owners may only create backups scoped to their own tenant.
+      let tId = body.tenant_id ?? null;
+      if (callerIsTenantOwner) {
+        if (tId && tId !== callerTenantId) {
+          return json({ error: "Owners can only create backups for their own account" }, 403);
+        }
+        tId = callerTenantId;
+      }
+      return await handleCreate(admin, body.backup_type ?? "manual", userId, tId);
     }
     if (body.action === "verify") {
-      return await handleVerify(admin, body.backup_id);
+      return await handleVerify(admin, body.backup_id, callerIsTenantOwner ? callerTenantId : null);
     }
     if (body.action === "cleanup") {
+      if (!callerIsSuperAdmin) return json({ error: "Super admin only" }, 403);
       return await handleCleanup(admin);
     }
     if (body.action === "download") {
-      return await handleDownload(admin, body.backup_id);
+      return await handleDownload(admin, body.backup_id, callerIsTenantOwner ? callerTenantId : null);
     }
     if (body.action === "restore") {
-      return await handleRestore(admin, body, userId);
+      return await handleRestore(admin, body, userId, callerIsTenantOwner ? callerTenantId : null);
     }
     return json({ error: "Unknown action" }, 400);
   } catch (e) {
@@ -159,6 +192,7 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
       tenant_name: tenantName,
       app: "MeatFlow ERP",
       version: 1,
+      schema_version: SCHEMA_VERSION,
       counts,
       data: snap,
     };
@@ -167,6 +201,7 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
     const gz = new Blob([body]).stream().pipeThrough(new CompressionStream("gzip"));
     const gzBuf = await new Response(gz).arrayBuffer();
     const blob = new Blob([gzBuf], { type: "application/gzip" });
+    const checksum = await sha256Hex(gzBuf);
 
     const now = new Date();
     const yyyy = now.getUTCFullYear();
@@ -194,6 +229,8 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
       integrity_ok: integrityOk,
       compressed: true,
       uncompressed_size: body.length,
+      schema_version: SCHEMA_VERSION,
+      checksum_sha256: checksum,
       errors: tableErrCount ? errors : undefined,
     };
 
@@ -204,6 +241,8 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
       backup_name: backupName,
       table_counts: counts,
       health,
+      checksum_sha256: checksum,
+      schema_version: SCHEMA_VERSION,
       completed_at: new Date().toISOString(),
     }).eq("id", row.id);
 
@@ -238,26 +277,46 @@ async function handleCreate(admin: any, backup_type: string, userId: string | nu
   }
 }
 
-// Verify a backup by re-downloading it and confirming it parses and contains the tenant.
-async function handleVerify(admin: any, backup_id: string) {
+// Verify a backup by re-downloading it, recomputing its checksum, and
+// confirming schema/tenant match. Rejects invalid backups.
+async function handleVerify(admin: any, backup_id: string, ownerTenantId: string | null) {
   const { data: row, error } = await admin.from("backup_history").select("*").eq("id", backup_id).single();
   if (error || !row?.storage_path) return json({ ok: false, error: "Backup not found" }, 404);
+  if (ownerTenantId && row.tenant_id !== ownerTenantId) {
+    return json({ ok: false, error: "You can only verify backups for your own account" }, 403);
+  }
   if (row.status === "failed") return json({ ok: false, error: row.error_message ?? "Backup failed" }, 400);
   const { data: file, error: dErr } = await admin.storage.from("system-backups").download(row.storage_path);
   if (dErr || !file) return json({ ok: false, error: dErr?.message ?? "Cannot download backup" }, 500);
   try {
+    const raw = await file.arrayBuffer();
+    const actualChecksum = await sha256Hex(raw);
+    const checksumOk = row.checksum_sha256 ? actualChecksum === row.checksum_sha256 : true;
     let text: string;
     if (row.storage_path.endsWith(".gz")) {
-      const ds = file.stream().pipeThrough(new DecompressionStream("gzip"));
+      const ds = new Blob([raw]).stream().pipeThrough(new DecompressionStream("gzip"));
       text = await new Response(ds).text();
     } else {
-      text = await file.text();
+      text = new TextDecoder().decode(raw);
     }
     const parsed = JSON.parse(text);
     const tables = Object.keys(parsed.data ?? parsed);
-    if (!tables.length) return json({ ok: false, error: "Backup contains no tables" }, 400);
-    if (row.tenant_id && !(parsed.data?.tenants?.length)) return json({ ok: false, error: "Tenant row missing from backup" }, 400);
-    return json({ ok: true, backup_id, tables: tables.length, file_size: row.file_size });
+    const schemaOk = !parsed.schema_version || parsed.schema_version === SCHEMA_VERSION;
+    const tenantOk = row.tenant_id ? (parsed.tenant_id === row.tenant_id && parsed.data?.tenants?.length === 1) : true;
+    const ok = checksumOk && schemaOk && tenantOk && tables.length > 0;
+    return json({
+      ok, backup_id, tables: tables.length, file_size: row.file_size,
+      checksum_ok: checksumOk, schema_ok: schemaOk, tenant_ok: tenantOk,
+      schema_version: parsed.schema_version ?? null,
+      counts: parsed.counts ?? row.table_counts ?? null,
+      backup_date: parsed.generated_at ?? row.completed_at,
+      checksum: actualChecksum,
+      error: ok ? undefined :
+        !checksumOk ? "Checksum mismatch — backup file corrupted"
+        : !schemaOk ? `Schema version mismatch (backup ${parsed.schema_version} vs current ${SCHEMA_VERSION})`
+        : !tenantOk ? "Tenant row missing or mismatched"
+        : "Backup contains no tables",
+    }, ok ? 200 : 400);
   } catch (e) {
     return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 500);
   }
@@ -296,38 +355,71 @@ async function handleCleanup(admin: any) {
   return json({ ok: true, deleted: deleted.length });
 }
 
-async function handleDownload(admin: any, backup_id: string) {
+async function handleDownload(admin: any, backup_id: string, ownerTenantId: string | null) {
   const { data: row, error } = await admin.from("backup_history").select("*").eq("id", backup_id).single();
   if (error || !row?.storage_path) return json({ error: "Backup not found" }, 404);
+  if (ownerTenantId && row.tenant_id !== ownerTenantId) {
+    return json({ error: "You can only download backups for your own account" }, 403);
+  }
   const { data: signed, error: sErr } = await admin.storage.from("system-backups")
     .createSignedUrl(row.storage_path, 300);
   if (sErr) return json({ error: sErr.message }, 500);
   return json({ ok: true, url: signed.signedUrl, filename: row.storage_path.split("/").pop() });
 }
 
-async function handleRestore(admin: any, body: any, userId: string | null) {
-  // 1. Take emergency pre-restore backup first
-  const preResp = await handleCreate(admin, "pre_restore", userId);
-  const preBody = await preResp.json().catch(() => ({}));
-  if (!preResp.ok || preBody.error) {
-    return json({ error: `Pre-restore backup failed: ${preBody.error ?? "unknown"}` }, 500);
+async function handleRestore(admin: any, body: any, userId: string | null, ownerTenantId: string | null) {
+  const isRollback = body._rolling_back === true;
+
+  // 0. Pre-load target backup metadata and enforce tenant scope for owners.
+  let sourceRow: any = null;
+  if (body.backup_id) {
+    const { data, error } = await admin.from("backup_history").select("*").eq("id", body.backup_id).single();
+    if (error || !data?.storage_path) return json({ error: "Backup not found" }, 404);
+    sourceRow = data;
+    if (ownerTenantId && sourceRow.tenant_id !== ownerTenantId) {
+      return json({ error: "You can only restore backups for your own account" }, 403);
+    }
+  }
+
+  // 1. Take emergency pre-restore backup first (skip during rollback to avoid recursion).
+  let preBackupId: string | null = null;
+  if (!isRollback) {
+    const preResp = await handleCreate(admin, "pre_restore", userId, sourceRow?.tenant_id ?? ownerTenantId ?? null);
+    const preBody = await preResp.json().catch(() => ({}));
+    if (!preResp.ok || preBody.error) {
+      return json({ error: `Pre-restore backup failed: ${preBody.error ?? "unknown"}` }, 500);
+    }
+    preBackupId = preBody.backup_id;
   }
 
   // 2. Load backup payload
   let payload: any;
   if (body.backup_id) {
-    const { data: row, error } = await admin.from("backup_history").select("*").eq("id", body.backup_id).single();
-    if (error || !row?.storage_path) return json({ error: "Backup not found" }, 404);
+    const row = sourceRow;
     const { data: file, error: dErr } = await admin.storage.from("system-backups").download(row.storage_path);
     if (dErr) return json({ error: dErr.message }, 500);
+    const raw = await file.arrayBuffer();
+    // Integrity gate — reject if checksum mismatches when we have one on file.
+    if (row.checksum_sha256) {
+      const actual = await sha256Hex(raw);
+      if (actual !== row.checksum_sha256) {
+        return json({ error: "Refusing to restore — backup checksum mismatch (file corrupted)" }, 400);
+      }
+    }
     let text: string;
     if (row.storage_path.endsWith(".gz")) {
-      const ds = file.stream().pipeThrough(new DecompressionStream("gzip"));
+      const ds = new Blob([raw]).stream().pipeThrough(new DecompressionStream("gzip"));
       text = await new Response(ds).text();
     } else {
-      text = await file.text();
+      text = new TextDecoder().decode(raw);
     }
     payload = JSON.parse(text);
+    if (payload.schema_version && payload.schema_version !== SCHEMA_VERSION) {
+      return json({ error: `Refusing to restore — schema version mismatch (${payload.schema_version} vs ${SCHEMA_VERSION})` }, 400);
+    }
+    if (ownerTenantId && payload.tenant_id !== ownerTenantId) {
+      return json({ error: "Refusing to restore — backup belongs to a different account" }, 403);
+    }
   } else if (body.backup) {
     payload = body.backup;
   } else {
@@ -355,32 +447,60 @@ async function handleRestore(admin: any, body: any, userId: string | null) {
   for (const t of order) {
     const rows = data[t];
     if (!Array.isArray(rows) || rows.length === 0) { results[t] = { restored: 0 }; continue; }
-    let payload = rows;
+    let rowPayload = rows;
     if (t === "user_roles") {
       // never duplicate-remove super admins; just upsert
-      payload = rows;
+      rowPayload = rows;
     }
-    const { error, count } = await admin.from(t).upsert(payload, { onConflict: "id", count: "exact" });
-    results[t] = { restored: count ?? payload.length, error: error?.message };
+    const { error, count } = await admin.from(t).upsert(rowPayload, { onConflict: "id", count: "exact" });
+    results[t] = { restored: count ?? rowPayload.length, error: error?.message };
+  }
+
+  const restoreErrors = Object.entries(results).filter(([, r]: any) => r?.error).map(([t, r]: any) => ({ table: t, error: r.error }));
+  const restoredTotal = Object.values(results).reduce((a, r: any) => a + (r.restored ?? 0), 0);
+
+  // Disaster recovery — if the restore hit any error and we have a pre-restore
+  // snapshot, roll back automatically so the database never remains partial.
+  let rolledBack = false;
+  let rollbackError: string | null = null;
+  if (!isRollback && restoreErrors.length > 0 && preBackupId) {
+    try {
+      const rbResp = await handleRestore(admin, { backup_id: preBackupId, _rolling_back: true }, userId, ownerTenantId);
+      const rbBody = await rbResp.json().catch(() => ({}));
+      rolledBack = !!rbBody.ok;
+      if (!rolledBack) rollbackError = rbBody.error ?? "Rollback failed";
+    } catch (e) {
+      rollbackError = e instanceof Error ? e.message : String(e);
+    }
   }
 
   // Audit trail — Requirement #8: restore operations must generate audit events.
-  const restoredTotal = Object.values(results).reduce((a, r: any) => a + (r.restored ?? 0), 0);
-  const restoreErrors = Object.entries(results).filter(([, r]: any) => r?.error).map(([t, r]: any) => ({ table: t, error: r.error }));
   await admin.from("activity_logs").insert({
-    action: "backup_restore",
+    action: isRollback ? "backup_rollback" : "backup_restore",
     entity: "backup_history",
     entity_id: body.backup_id ?? null,
     tenant_id: payload?.tenant_id ?? null,
     actor_user_id: userId,
     metadata: {
       backup_id: body.backup_id ?? null,
-      pre_restore_backup_id: preBody.backup_id,
+      pre_restore_backup_id: preBackupId,
       total_restored: restoredTotal,
       table_errors: restoreErrors,
       preserved_super_admins: [...superIds],
+      rolled_back: rolledBack,
+      rollback_error: rollbackError,
     },
   }).then(() => {}, () => {});
 
-  return json({ ok: true, pre_restore_backup_id: preBody.backup_id, results, preserved_super_admins: [...superIds] });
+  const ok = restoreErrors.length === 0;
+  return json({
+    ok,
+    pre_restore_backup_id: preBackupId,
+    results,
+    preserved_super_admins: [...superIds],
+    total_restored: restoredTotal,
+    table_errors: restoreErrors,
+    rolled_back: rolledBack,
+    rollback_error: rollbackError,
+  }, ok ? 200 : 500);
 }

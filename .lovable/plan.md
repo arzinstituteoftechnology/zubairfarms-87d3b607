@@ -1,117 +1,140 @@
-# Enterprise Users & Permissions — Phase 1
+# Enterprise Phase 4 — Backup & Disaster Recovery
 
-Accounting is frozen. This plan builds on the existing RBAC (roles, per-user overrides, disable, Super Admin override, `has_permission`, `activity_logs`) and adds the four capabilities you approved.
+The Super Admin already has a working backup pipeline (`system-backup` edge function, `backup_history`, `backup_settings`, Storage bucket `system-backups`). Phase 4 extends it to tenant Owners and adds the missing enterprise guarantees. **Nothing in accounting, inventory, reports, RBAC, or audit is touched.**
 
-## 1. Permission Audit Log
+## 1. Backup Center (tenant Owner)
 
-New table `permission_audit_log` (tenant-scoped, append-only):
-- actor_user_id, actor_email, actor_ip, actor_user_agent (browser/device)
-- target_user_id, target_email
-- action: `role_changed | status_changed | override_set | override_cleared | role_template_created | role_template_updated | role_template_deleted | bulk_role_applied | bulk_permissions_copied | bulk_permissions_reset | invite_sent | invite_resent | invite_revoked | invite_accepted`
-- previous_value / new_value (jsonb) — for role: `{role}`, for override: `{module, action, allowed}`, for template: full permission map snapshot
-- reason (text, required for role/status/template deletes)
-- created_at
+New page `/settings/backup-restore` (Owner-only, sidebar link under Users & Permissions).
 
-Existing triggers on `tenant_users`, `role_permissions`, `user_permission_overrides` already write to `activity_logs`. The new table is a **richer, structured mirror** dedicated to permission events, populated by:
-- A new trigger `audit_permission_event()` on the three tables that decodes op → action and writes the specific shape.
-- Edge functions (invites, bulk actions) that write directly with actor IP/UA from request headers.
+Header cards show:
+- Last Backup (name + time + status)
+- Next Scheduled Backup (from tenant settings)
+- Backup Status (last state + last error)
+- Total Backup Size (sum of `file_size` for tenant)
+- Storage Location (Lovable Cloud Storage — bucket `system-backups`)
+- Encryption Status (gzip + storage encryption at rest — Enabled)
+- Retention Policy (from tenant settings)
 
-New page `PermissionAudit.tsx` (Owner-only tab in Users & Permissions):
-- Filters: actor, target, action type, date range
-- Search across actor/target names + reason
-- Sortable table, pagination
-- Row expand → full before/after JSON diff
-- Exports: CSV, Excel (xlsx), PDF (jsPDF + autotable, reusing `reportExport.ts` from Reports Center)
+## 2. Manual Backup
 
-RLS: only Owner or Super Admin can read; only DB triggers and `service_role` can write (no user INSERT policy). Append-only trigger `activity_logs_append_only` pattern reused.
+Owner clicks "Create Backup Now" → calls `system-backup` edge function with `action: "create"`, `backup_type: "manual"`, `tenant_id: <owner tenant>`. Existing snapshot covers every listed table (users, roles, permissions, purchases, supplies, shops, farms, deliveries, trucks, expenses, recoveries, ledgers, inventory, mortality — via `stock_adjustments`, daily closing, closing history, reports data, settings, activity logs, role templates).
 
-## 2. Editable Role Templates
+## 3. Automatic Backup Scheduler (per tenant)
 
-New table `role_templates`:
-- tenant_id, name (unique per tenant), description
-- is_builtin (5 seed rows: owner/manager/cashier/data_entry/read_only, `tenant_id = NULL`)
-- created_by, created_at, updated_at
+New table `tenant_backup_settings`:
 
-New table `role_template_permissions`: template_id, module, action, allowed (unique constraint).
+- `tenant_id` PK
+- `schedule` enum: `off | hourly | every_6h | daily | weekly | monthly`
+- `retain_backups` int default 30
+- `next_run_at` timestamptz
+- `updated_by`, `updated_at`
 
-New table `role_template_versions`: template_id, version_no, snapshot (jsonb of full permission map), reason, created_by, created_at — one row per save enables rollback.
+Owner-scoped RLS + GRANTs. UI: schedule dropdown + retention input + "Save".
 
-Migration copies existing hardcoded 5-role permission matrix into `role_templates` + `role_template_permissions` with `is_builtin = true`, then rewrites `has_permission` to read from `role_template_permissions` joined via `tenant_users.role_template_id` (new column, default = matching built-in template id per role name). Backward compatible — existing `tenant_role` column stays; templates just extend it.
+Cron:
+- Reuse existing pg_cron infra. Add hourly job that calls a new edge function `tenant-backup-scheduler`, which iterates `tenant_backup_settings` where `next_run_at <= now()` and invokes `system-backup` with the tenant's id, then bumps `next_run_at` by the interval.
 
-New tab "Role Templates" in Users & Permissions:
-- List built-in + custom templates
-- Actions: **Clone** (opens editor pre-filled), **Rename** (custom only), **Edit permissions** (custom only; built-in are read-only), **Delete** (custom + zero assigned users only), **Version history** with restore
-- Editor: same MxA grid as existing per-user editor
-- Every save writes a version row + audit log entry with reason
+## 4. Restore Wizard
 
-Guard trigger `guard_role_template_delete`: reject if any `tenant_users.role_template_id` still references it or if `is_builtin`.
+Multi-step dialog on the Backup Center:
 
-## 3. Bulk Permission Actions
+1. Select Backup (from tenant's history)
+2. Validate → calls `action: "verify"` (schema check, checksum recompute, tenant match)
+3. Preview → shows `table_counts` from stored `health`
+4. Warning screen (destructive action banner + type "RESTORE" to confirm)
+5. Confirm → calls `action: "restore"` with `tenant_id`
+6. Progress → poll `backup_history` row for the pre-restore backup and result
+7. Finish → success/rollback summary
 
-New "Bulk Actions" toolbar on the Users table (multi-select checkboxes on each row):
-- **Assign role in bulk** → dialog picks target role → preview diff table (user | old role | new role | permission delta count) → Apply
-- **Copy permissions from user** → picker: source user → target users receive same role + overrides (previewed)
-- **Reset to template defaults** → clears all `user_permission_overrides` for selected users (previewed)
+Wizard state managed by a small lib `src/lib/backupWizard.ts` (pure state machine, testable).
 
-New edge function `bulk-permission-action` (Owner-only): validates permission, wraps everything in a single transaction via a new RPC `apply_bulk_permission_action(action, source_user_id, target_user_ids, new_role, reason)`, returns per-user success/failure, writes one audit row per user + one summary row.
+## 5. Backup Validation & Checksum
 
-## 4. Invite by Email
+Extend `system-backup`:
+- On create: compute SHA-256 of gzip bytes → store in new column `backup_history.checksum_sha256`. Include `schema_version = "1.0"` in payload.
+- On verify: recompute checksum, compare, verify `payload.schema_version`, verify `payload.tenant_id` matches row `tenant_id`, verify tenant row present. Return `{ ok, checksum_ok, schema_ok, tenant_ok, tables }`.
 
-New table `user_invitations`:
-- tenant_id, email (unique-active per tenant), tenant_role, role_template_id
-- token (opaque 64-byte random, hashed with sha256 for storage), token_hash
-- status: `pending | accepted | expired | cancelled`
-- expires_at (default now() + 72h), sent_at, accepted_at, cancelled_at
-- invited_by, accepted_user_id, resend_count, force_password_change (default true)
+Restore refuses to run when any check fails.
 
-Two edge functions:
-- `owner-invite-user`: Owner-only. Generates token, stores hash, sends email via existing Lovable Emails infrastructure (adds a new template `user-invitation` under `_shared/transactional-email-templates/`), returns invite id. If Lovable Emails is not yet configured, respond with a clear message and stop — do NOT scaffold email infra automatically (respects feature freeze scope for email).
-- `accept-user-invitation`: Public. Verifies token+expiry+one-time-use, creates auth user if new (or attaches existing), inserts `tenant_users` row with the invited role, marks invite accepted, sets `must_change_password = true` on `profiles`.
+## 6. Restore Preview
 
-New page `/invite/accept?token=…` (unauthenticated): validates token via edge function, shows accept form (name + password), on success sends to `/auth` for first login.
+Preview step displays `table_counts` (users, purchases, supplies, inventory, expenses, recoveries, settings, audit logs, closing history) + `Backup Date`, `Schema Version`, `Size`, `Checksum` (first 12 chars).
 
-Existing "Add User" dialog in `UsersPermissions.tsx` gets a segmented control: **Create directly** (existing flow, kept) | **Send invitation** (new). Invitations list shown below the users table with Resend / Revoke buttons and status badge.
+## 7. Point-in-Time Restore
 
-First-login flow: `useAuth` reads `profiles.must_change_password`; if true, redirects to a new `/change-password` gate before any protected route resolves.
+Owner can select any historical row from the tenant's `backup_history` and restore it. Existing SA flow keeps working unchanged.
 
-## 5. Files (new + edited)
+## 8. Backup Encryption
+
+- In-transit: HTTPS (Storage signed URL, 5-min TTL)
+- At-rest: Lovable Cloud Storage default AES encryption + gzip compression
+- Integrity: SHA-256 checksum stored + verified before every restore
+- No plaintext backup ever emitted from the edge function
+
+## 9. Backup History
+
+Table columns: Name, Date, Size, Created By, Manual/Automatic (from `backup_type`), Status, Restore, Download, Delete. Pagination + status filter.
+
+New RPC `delete_backup(_id uuid, _reason text)` (SECURITY DEFINER, Owner-of-tenant or Super Admin): removes storage object + row, writes `activity_logs` entry.
+
+## 10. Disaster Recovery / Rollback
+
+Extend `handleRestore` in `system-backup`:
+- Take pre_restore backup first (already done).
+- Run restore inside a try/catch; if any table upsert fails **or** post-restore verify fails, automatically call `handleRestore` again against the pre_restore backup id (safe: uses the same code path with `rolling_back: true` flag to skip creating another pre_restore).
+- Return `{ ok: false, rolled_back: true, error }` when rollback ran. UI surfaces this in the wizard's Finish step.
+
+## 11. Security
+
+- New RLS: `backup_history` gains `"tenant owner reads own tenant backups"` (SELECT scoped to `tenant_id = current_tenant_id()` AND `is_tenant_owner(auth.uid())`); existing Super Admin policy unchanged.
+- `tenant_backup_settings` gets full RLS (Owner-only for their tenant + Super Admin).
+- All create/verify/restore/delete operations already write to `activity_logs` (Phase 3 audit center picks them up).
+- Edge function permission: tenant Owner may only call actions scoped to their own tenant_id — enforced server-side by re-fetching `tenant_users` and rejecting mismatches.
+
+## 12. Performance
+
+- Snapshots already gzip'd + streamed. No change.
+- Restore uses upsert-in-order (parents → children); unchanged.
+- Wizard shows a busy state during long calls.
+- Progress hook polls `backup_history` row every 2s.
+
+## 13. Testing
+
+Unit tests (vitest):
+- `src/lib/backupChecksum.test.ts` — SHA-256 hex over known bytes, `verifyChecksum` accept/reject.
+- `src/lib/backupWizard.test.ts` — state machine: forward transitions, reject on validation failure, rollback path, cannot skip Warning step.
+- `src/lib/backupSchedule.test.ts` — `nextRunAt(schedule, from)` for hourly/6h/daily/weekly/monthly.
+
+Existing SA Backups page and edge function stay green (no signature changes; only additive columns + new payload field + new checksum logic; all pre-existing calls remain compatible).
+
+Acceptance:
+- `tsgo --noEmit` clean
+- Production build clean
+- All 53+ new tests pass, existing suite still green
+
+## Files
 
 New:
-- `supabase/migrations/…_enterprise_rbac_phase1.sql` (one migration; all tables, RLS, GRANTs, triggers, seed data, `apply_bulk_permission_action` RPC, `must_change_password` column on profiles)
-- `supabase/functions/owner-invite-user/index.ts`
-- `supabase/functions/accept-user-invitation/index.ts`
-- `supabase/functions/bulk-permission-action/index.ts`
-- `supabase/functions/_shared/transactional-email-templates/user-invitation.tsx`
-- `src/pages/PermissionAudit.tsx`
-- `src/pages/RoleTemplates.tsx`
-- `src/pages/AcceptInvite.tsx`
-- `src/pages/ChangePassword.tsx`
-- `src/components/permissions/BulkActionsBar.tsx`
-- `src/components/permissions/InvitationsList.tsx`
-- `src/lib/permissionAuditExport.ts`
-- Test files for each new lib/util + integration test for `apply_bulk_permission_action`
+- Migration (`backup_history.checksum_sha256`, `backup_history.schema_version`, `tenant_backup_settings` table + RLS + GRANTs, RLS policy addition on `backup_history`, `delete_backup` RPC)
+- `supabase/functions/tenant-backup-scheduler/index.ts`
+- `src/pages/BackupRestore.tsx`
+- `src/components/backup/RestoreWizard.tsx`
+- `src/lib/backupChecksum.ts` + `.test.ts`
+- `src/lib/backupWizard.ts` + `.test.ts`
+- `src/lib/backupSchedule.ts` + `.test.ts`
 
 Edited:
-- `src/pages/UsersPermissions.tsx` — tabs (Users / Invitations / Role Templates / Audit), multi-select rows, Bulk Actions bar, Invite variant of Add User dialog
-- `src/hooks/usePermissions.tsx` — respects `role_template_id` when set (falls back to `tenant_role`)
-- `src/App.tsx` — routes for `/invite/accept`, `/change-password`, and sub-routes of `/users`
-- `src/hooks/useAuth.tsx` — expose `mustChangePassword`, redirect gate
+- `supabase/functions/system-backup/index.ts` (checksum, schema_version, verify checks, rollback, tenant Owner authorization)
+- `src/App.tsx` (route)
+- `src/components/AppLayout.tsx` (sidebar link)
 
-## 6. Enterprise guarantees
+Cron job registered via `supabase--insert` (not migration — contains project URL + anon key).
 
-- Zero regression: existing per-user override editor, Owner-only guard, disable-user, Super Admin override all preserved.
-- RLS: every new table has policies + GRANTs following the standard pattern (Owner-scoped reads; writes gated by RPC/edge functions where needed).
-- Tenant isolation: every table has `tenant_id` + `current_tenant_id()` filter; invitations key on `(tenant_id, email)`.
-- Audit integrity: `permission_audit_log` and `role_template_versions` are append-only (delete/update policies denied).
-- Tests: unit tests for token hashing, expiry math, bulk-diff computation; integration tests via `supabase.functions.invoke` mocks; existing 41 tests must remain green.
-- Types: `tsgo --noEmit` clean. Production build clean.
+## Order of execution
 
-## 7. Order of execution
-
-1. Migration (creates schema; user approves it separately before code lands)
-2. After approval: edge functions + templates + pages + wiring
-3. Tests
-4. `tsgo` + build + full vitest run
-5. Final report with pass/fail per acceptance check
-
-Nothing in Phase 2 (Audit Logs viewer for all events) or Phase 3 (Backup/Restore) is included — those ship after Phase 1 is signed off.
+1. Migration (schema + RLS + RPC)
+2. Edge function updates (system-backup + new tenant-backup-scheduler)
+3. Cron registration
+4. UI (page + wizard + libs + tests)
+5. Verify: `tsgo`, `vitest run`, build
+6. Final report
