@@ -15,6 +15,11 @@ import { Plus, UserPlus, ShieldAlert, Trash2, Settings2, Mail, RotateCw, Ban, Co
 import { toast } from "@/components/ui/use-toast";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import { BulkActionsBar } from "@/components/permissions/BulkActionsBar";
+import RoleTemplates from "./RoleTemplates";
+import { downloadAuditCSV, downloadAuditXLSX, downloadAuditPDF, type AuditRow } from "@/lib/permissionAuditExport";
+import { FileDown } from "lucide-react";
 
 const ROLES: { value: TenantRole; label: string; desc: string }[] = [
   { value: "owner", label: "Owner", desc: "Full access to every tenant module" },
@@ -81,6 +86,12 @@ export default function UsersPermissions() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditFilter, setAuditFilter] = useState({ action: "all", q: "" });
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggleSelect = (id: string) => setSelected((s) => {
+    const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
+  const selectAll = (all: boolean) => setSelected(all ? new Set(rows.filter((r) => r.tenant_role !== "owner").map((r) => r.user_id)) : new Set());
 
   const load = async () => {
     setLoading(true);
@@ -326,14 +337,29 @@ export default function UsersPermissions() {
         <TabsList>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="invitations">Invitations</TabsTrigger>
+          <TabsTrigger value="templates">Role templates</TabsTrigger>
           <TabsTrigger value="audit">Audit log</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
+          <div className="mb-3">
+            <BulkActionsBar
+              selected={rows.filter((r) => selected.has(r.user_id)).map((r) => ({ user_id: r.user_id, full_name: r.full_name, email: r.email }))}
+              allUsers={rows.map((r) => ({ user_id: r.user_id, full_name: r.full_name, email: r.email }))}
+              onDone={() => { setSelected(new Set()); load(); refresh(); }}
+              onClear={() => setSelected(new Set())}
+            />
+          </div>
           <Card className="p-0 overflow-x-auto">
             <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-8">
+                <Checkbox
+                  checked={selected.size > 0 && selected.size === rows.filter((r) => r.tenant_role !== "owner").length}
+                  onCheckedChange={(v) => selectAll(!!v)}
+                />
+              </TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Status</TableHead>
@@ -343,13 +369,20 @@ export default function UsersPermissions() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
             ) : rows.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No users yet.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No users yet.</TableCell></TableRow>
             ) : rows.map((r) => {
               const isSelf = r.user_id === session?.user?.id;
               return (
                 <TableRow key={r.id}>
+                  <TableCell>
+                    <Checkbox
+                      checked={selected.has(r.user_id)}
+                      onCheckedChange={() => toggleSelect(r.user_id)}
+                      disabled={r.tenant_role === "owner"}
+                    />
+                  </TableCell>
                   <TableCell><div className="font-medium">{r.full_name}</div></TableCell>
                   <TableCell>
                     <Select value={r.tenant_role} onValueChange={(v: TenantRole) => setUserRole(r, v)} disabled={isSelf && r.tenant_role === "owner"}>
@@ -428,6 +461,10 @@ export default function UsersPermissions() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="templates">
+          <RoleTemplates />
+        </TabsContent>
+
         <TabsContent value="audit">
           <Card className="p-4 space-y-3">
             <div className="flex flex-wrap gap-2 items-end">
@@ -448,6 +485,10 @@ export default function UsersPermissions() {
                 <Input value={auditFilter.q} onChange={(e) => setAuditFilter((s) => ({ ...s, q: e.target.value }))} placeholder="actor, target, reason, module" onKeyDown={(e) => { if (e.key === "Enter") loadAudit(); }} />
               </div>
               <Button variant="outline" onClick={loadAudit}>Apply</Button>
+              <div className="flex-1" />
+              <Button variant="outline" size="sm" onClick={() => downloadAuditCSV(audit as AuditRow[])} disabled={audit.length === 0}><FileDown className="h-4 w-4" /> CSV</Button>
+              <Button variant="outline" size="sm" onClick={() => downloadAuditXLSX(audit as AuditRow[])} disabled={audit.length === 0}><FileDown className="h-4 w-4" /> Excel</Button>
+              <Button variant="outline" size="sm" onClick={() => downloadAuditPDF(audit as AuditRow[])} disabled={audit.length === 0}><FileDown className="h-4 w-4" /> PDF</Button>
             </div>
             <div className="overflow-x-auto rounded-md border">
               <table className="w-full text-sm">
@@ -505,7 +546,7 @@ export default function UsersPermissions() {
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-muted-foreground">Showing latest 300 entries. Role template editor and bulk actions ship in the next update.</p>
+            <p className="text-xs text-muted-foreground">Showing latest 300 entries. Use the filters and export to CSV/Excel/PDF for offline review.</p>
           </Card>
         </TabsContent>
       </Tabs>
