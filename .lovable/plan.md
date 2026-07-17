@@ -1,93 +1,117 @@
-# Final Phase — Regression Fixes + Reports Center
+# Enterprise Users & Permissions — Phase 1
 
-Feature-frozen scope. No new accounting/inventory/closing features. Two strict phases; Phase 2 does not start until Phase 1's critical tests pass.
+Accounting is frozen. This plan builds on the existing RBAC (roles, per-user overrides, disable, Super Admin override, `has_permission`, `activity_logs`) and adds the four capabilities you approved.
 
-## Phase 1 — Regression audit & bug fixing
+## 1. Permission Audit Log
 
-### 1.1 Reconciliation harness (source-of-truth checks)
-Add a temporary, tenant-scoped SQL audit script (not shipped) that, for each tenant + date, compares:
+New table `permission_audit_log` (tenant-scoped, append-only):
+- actor_user_id, actor_email, actor_ip, actor_user_agent (browser/device)
+- target_user_id, target_email
+- action: `role_changed | status_changed | override_set | override_cleared | role_template_created | role_template_updated | role_template_deleted | bulk_role_applied | bulk_permissions_copied | bulk_permissions_reset | invite_sent | invite_resent | invite_revoked | invite_accepted`
+- previous_value / new_value (jsonb) — for role: `{role}`, for override: `{module, action, allowed}`, for template: full permission map snapshot
+- reason (text, required for role/status/template deletes)
+- created_at
 
-- Expected Closing (raw source-table sum) vs `computeExpectedClosing` helper vs `stock_closings.expected_closing_kg`.
-- Gross Profit (raw supplies) vs `computeGrossProfit` vs Dashboard KPI.
-- Net Profit (formula) vs Dashboard KPI vs `finalize_stock_closing` shortage_cost snapshot.
-- Farm Payable (raw purchases − farm_payments − reversal offsets) vs `farmPayable.ts`.
-- Shop Receivable (raw supplies + opening + adj − recoveries − reversals) vs `shopReceivable.ts`.
-- Next-day opening = latest finalized unreversed physical closing.
+Existing triggers on `tenant_users`, `role_permissions`, `user_permission_overrides` already write to `activity_logs`. The new table is a **richer, structured mirror** dedicated to permission events, populated by:
+- A new trigger `audit_permission_event()` on the three tables that decodes op → action and writes the specific shape.
+- Edge functions (invites, bulk actions) that write directly with actor IP/UA from request headers.
 
-Run for 3 sampled tenants × 3 dates (balanced / shortage / surplus). Only mismatches drive fixes.
+New page `PermissionAudit.tsx` (Owner-only tab in Users & Permissions):
+- Filters: actor, target, action type, date range
+- Search across actor/target names + reason
+- Sortable table, pagination
+- Row expand → full before/after JSON diff
+- Exports: CSV, Excel (xlsx), PDF (jsPDF + autotable, reusing `reportExport.ts` from Reports Center)
 
-### 1.2 Scenario tests (unit + integration)
-Extend the existing vitest suite. One test per scenario, each asserting exact numeric equality with the raw source-table calculation:
+RLS: only Owner or Super Admin can read; only DB triggers and `service_role` can write (no user INSERT policy). Append-only trigger `activity_logs_append_only` pattern reused.
 
-- Balanced, Shortage, Surplus, Draft, Finalized, Reversed closing
-- Mortality, Weight loss, Positive adj, Negative adj
-- Purchase / Supply / Recovery / Farm-payment reversal
-- Expense + Delivery expense inclusion (no double count)
-- Duplicate transaction guard (idempotency keys, unique constraints)
-- Cross-tenant leakage guard (RLS via `rls-isolation-test` edge fn)
-- Selected-date switching (no stale cache)
-- Prev-day finalized → next-day opening rollover
-- Draft closing does NOT affect profit or opening
-- Reversed closing restores stock + profit + KPIs
+## 2. Editable Role Templates
 
-### 1.3 Fix policy
-- Fix only confirmed mismatches / failing tests.
-- Root-cause each: identify source (helper / RPC / query / trigger) and fix at the source, not the report.
-- Every schema/RPC/trigger fix ships as one migration with a plain-English description.
-- Every data-repair action logs to `activity_logs`.
-- Do not rewrite passing formulas.
+New table `role_templates`:
+- tenant_id, name (unique per tenant), description
+- is_builtin (5 seed rows: owner/manager/cashier/data_entry/read_only, `tenant_id = NULL`)
+- created_by, created_at, updated_at
 
-### 1.4 Gate to Phase 2
-Phase 2 does not begin until: tsgo clean, `bun test` green, all 1.2 scenarios pass, and 1.1 harness reports zero mismatches on the sampled tenants/dates.
+New table `role_template_permissions`: template_id, module, action, allowed (unique constraint).
 
-## Phase 2 — Reports Center
+New table `role_template_versions`: template_id, version_no, snapshot (jsonb of full permission map), reason, created_by, created_at — one row per save enables rollback.
 
-One `Reports.tsx` shell with a left-side report picker and shared filter bar. All reports read via existing helpers / RPCs — no new calculation formulas.
+Migration copies existing hardcoded 5-role permission matrix into `role_templates` + `role_template_permissions` with `is_builtin = true`, then rewrites `has_permission` to read from `role_template_permissions` joined via `tenant_users.role_template_id` (new column, default = matching built-in template id per role name). Backward compatible — existing `tenant_role` column stays; templates just extend it.
 
-### 2.1 Shared infrastructure
-- `src/components/reports/ReportShell.tsx` — title, filter bar, summary cards, table, export buttons, loading / empty / error states, tenant + company header for exports.
-- `src/components/reports/FilterBar.tsx` — From, To, quick ranges (Today / Week / Month / Custom), Meat Type, Farm, Shop, Variance Type, Closing Status, Reason, Created By, Finalized By, Reversal Status. Filters that don't apply to a report are hidden per-report.
-- `src/lib/reportExport.ts` — CSV, XLSX (xlsx-js-style or SheetJS already usable via CSV fallback if not installed), PDF (jsPDF + autotable) and Print. All four consume the same filtered dataset returned by the report hook — never a re-query. Header block: company name, tenant name, report title, active filters, generated-at, page numbers.
-- `src/hooks/useReportData.ts` — generic wrapper: takes report id + filters, calls the report's tenant-scoped fetcher, returns `{ data, summary, loading, error, retry }`.
+New tab "Role Templates" in Users & Permissions:
+- List built-in + custom templates
+- Actions: **Clone** (opens editor pre-filled), **Rename** (custom only), **Edit permissions** (custom only; built-in are read-only), **Delete** (custom + zero assigned users only), **Version history** with restore
+- Editor: same MxA grid as existing per-user editor
+- Every save writes a version row + audit log entry with reason
 
-### 2.2 The 10 reports
-Each is a thin fetcher + column definition. All fetchers strictly tenant-scoped, exclude reversed rows where required, respect selected date range.
+Guard trigger `guard_role_template_delete`: reject if any `tenant_users.role_template_id` still references it or if `is_builtin`.
 
-1. Daily Closing Report — full `stock_closings` row expansion (all columns from spec).
-2. Shortage Report — `status='finalized' AND reversed_at IS NULL AND variance_type='shortage'`.
-3. Surplus Report — same filter, `variance_type='surplus'`. Info-only, does not feed profit.
-4. Inventory Variance Report — Expected vs Physical, variance %, daily/weekly/monthly rollups via SQL `date_trunc`.
-5. Mortality Analysis — from `mortality_register` (or existing source), joined to farms.
-6. Weight Loss Analysis — from `stock_adjustments` where reason='water_loss' / weight-loss category.
-7. Stock Adjustment Analysis — positive vs negative split with reversal status.
-8. Profit Reconciliation Report — Gross − General Exp − Delivery Exp − Finalized Shortage = Net. Must equal Dashboard Profit KPI for the same range; asserted in an integration test.
-9. Payable & Receivable Report — farm payables + shop receivables + net working capital + top-N lists, reusing `farmPayable` / `shopReceivable` helpers.
-10. Reversal & Audit Report — from `activity_logs` filtered to reversal actions, joined to original entity.
+## 3. Bulk Permission Actions
 
-### 2.3 UI details
-- Responsive (mobile: card list; tablet+: table).
-- Sortable columns, search, pagination, summary cards above table.
-- Row click → drill-down modal (existing detail dialogs where available; otherwise read-only JSON view of the row).
-- Status badges + colour rules (red = shortage/loss, green = surplus/healthy, neutral = balanced).
-- Warning banner when a draft/missing closing exists in the selected range.
+New "Bulk Actions" toolbar on the Users table (multi-select checkboxes on each row):
+- **Assign role in bulk** → dialog picks target role → preview diff table (user | old role | new role | permission delta count) → Apply
+- **Copy permissions from user** → picker: source user → target users receive same role + overrides (previewed)
+- **Reset to template defaults** → clears all `user_permission_overrides` for selected users (previewed)
 
-### 2.4 Acceptance tests (must all pass)
-Automated integration tests in `src/lib/reportReconciliation.test.ts`:
+New edge function `bulk-permission-action` (Owner-only): validates permission, wraps everything in a single transaction via a new RPC `apply_bulk_permission_action(action, source_user_id, target_user_ids, new_role, reason)`, returns per-user success/failure, writes one audit row per user + one summary row.
 
-- For 3 fixture dates (balanced / shortage / surplus):
-  - Dashboard totals == Reports Center totals
-  - Closing History totals == Reports Center totals
-  - Inventory totals == Reports Center totals
-  - Net Profit == reconciliation formula
-  - Shortage cost counted exactly once
-  - Reversed rows excluded from active totals
-  - Draft closing excluded from finalized totals
-  - Next-day opening == latest finalized physical closing
-- Export tests: CSV / XLSX / PDF payload totals match on-screen totals (assert on the exporter's input array, not the rendered file).
-- `tsgo` clean, production `vite build` clean, no console errors on report navigation, no duplicate realtime channels (guard already in place; assert).
+## 4. Invite by Email
 
-## Deliverables at end
-Final implementation report with: confirmed bugs, root causes, files changed, migrations, RPC/trigger changes, tests executed with pass/fail, before/after evidence for each fixed calculation, dashboard↔reports reconciliation table, and any remaining limitations. Daily Closing, Inventory Variance and Reports Center marked FEATURE COMPLETE only after all acceptance tests pass.
+New table `user_invitations`:
+- tenant_id, email (unique-active per tenant), tenant_role, role_template_id
+- token (opaque 64-byte random, hashed with sha256 for storage), token_hash
+- status: `pending | accepted | expired | cancelled`
+- expires_at (default now() + 72h), sent_at, accepted_at, cancelled_at
+- invited_by, accepted_user_id, resend_count, force_password_change (default true)
 
-## Out of scope
-No new accounting rules, no surplus-into-profit, no new KPIs, no unrelated UI redesign, no new tables (audit uses existing `activity_logs`).
+Two edge functions:
+- `owner-invite-user`: Owner-only. Generates token, stores hash, sends email via existing Lovable Emails infrastructure (adds a new template `user-invitation` under `_shared/transactional-email-templates/`), returns invite id. If Lovable Emails is not yet configured, respond with a clear message and stop — do NOT scaffold email infra automatically (respects feature freeze scope for email).
+- `accept-user-invitation`: Public. Verifies token+expiry+one-time-use, creates auth user if new (or attaches existing), inserts `tenant_users` row with the invited role, marks invite accepted, sets `must_change_password = true` on `profiles`.
+
+New page `/invite/accept?token=…` (unauthenticated): validates token via edge function, shows accept form (name + password), on success sends to `/auth` for first login.
+
+Existing "Add User" dialog in `UsersPermissions.tsx` gets a segmented control: **Create directly** (existing flow, kept) | **Send invitation** (new). Invitations list shown below the users table with Resend / Revoke buttons and status badge.
+
+First-login flow: `useAuth` reads `profiles.must_change_password`; if true, redirects to a new `/change-password` gate before any protected route resolves.
+
+## 5. Files (new + edited)
+
+New:
+- `supabase/migrations/…_enterprise_rbac_phase1.sql` (one migration; all tables, RLS, GRANTs, triggers, seed data, `apply_bulk_permission_action` RPC, `must_change_password` column on profiles)
+- `supabase/functions/owner-invite-user/index.ts`
+- `supabase/functions/accept-user-invitation/index.ts`
+- `supabase/functions/bulk-permission-action/index.ts`
+- `supabase/functions/_shared/transactional-email-templates/user-invitation.tsx`
+- `src/pages/PermissionAudit.tsx`
+- `src/pages/RoleTemplates.tsx`
+- `src/pages/AcceptInvite.tsx`
+- `src/pages/ChangePassword.tsx`
+- `src/components/permissions/BulkActionsBar.tsx`
+- `src/components/permissions/InvitationsList.tsx`
+- `src/lib/permissionAuditExport.ts`
+- Test files for each new lib/util + integration test for `apply_bulk_permission_action`
+
+Edited:
+- `src/pages/UsersPermissions.tsx` — tabs (Users / Invitations / Role Templates / Audit), multi-select rows, Bulk Actions bar, Invite variant of Add User dialog
+- `src/hooks/usePermissions.tsx` — respects `role_template_id` when set (falls back to `tenant_role`)
+- `src/App.tsx` — routes for `/invite/accept`, `/change-password`, and sub-routes of `/users`
+- `src/hooks/useAuth.tsx` — expose `mustChangePassword`, redirect gate
+
+## 6. Enterprise guarantees
+
+- Zero regression: existing per-user override editor, Owner-only guard, disable-user, Super Admin override all preserved.
+- RLS: every new table has policies + GRANTs following the standard pattern (Owner-scoped reads; writes gated by RPC/edge functions where needed).
+- Tenant isolation: every table has `tenant_id` + `current_tenant_id()` filter; invitations key on `(tenant_id, email)`.
+- Audit integrity: `permission_audit_log` and `role_template_versions` are append-only (delete/update policies denied).
+- Tests: unit tests for token hashing, expiry math, bulk-diff computation; integration tests via `supabase.functions.invoke` mocks; existing 41 tests must remain green.
+- Types: `tsgo --noEmit` clean. Production build clean.
+
+## 7. Order of execution
+
+1. Migration (creates schema; user approves it separately before code lands)
+2. After approval: edge functions + templates + pages + wiring
+3. Tests
+4. `tsgo` + build + full vitest run
+5. Final report with pass/fail per acceptance check
+
+Nothing in Phase 2 (Audit Logs viewer for all events) or Phase 3 (Backup/Restore) is included — those ship after Phase 1 is signed off.
