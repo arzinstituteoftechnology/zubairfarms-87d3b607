@@ -53,7 +53,8 @@ describe("activityToCSV", () => {
   });
   it("escapes quotes in metadata", () => {
     const csv = activityToCSV([row({ metadata: { note: 'say "hi"' } })]);
-    expect(csv).toContain('""hi""');
+    // JSON.stringify escapes " as \" and the CSV escaper then doubles the "
+    expect(csv).toContain('\\""hi\\""');
   });
   it("handles empty list", () => {
     expect(activityToCSV([]).split("\n")).toHaveLength(1);
