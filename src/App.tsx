@@ -47,6 +47,7 @@ import Trust from "./pages/Trust";
 import { SuperAdminAuthProvider } from "@/hooks/useSuperAdminAuth";
 import UsersPermissions from "./pages/UsersPermissions";
 import Notifications from "./pages/Notifications";
+import AcceptInvite from "./pages/AcceptInvite";
 
 const queryClient = new QueryClient();
 
@@ -117,6 +118,7 @@ const App = () => (
               <Route path="/notifications" element={<Notifications />} />
             </Route>
             <Route path="/invoice/:id" element={<Invoice />} />
+            <Route path="/invite/accept" element={<AcceptInvite />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
