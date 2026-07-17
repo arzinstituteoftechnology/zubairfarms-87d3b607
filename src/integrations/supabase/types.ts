@@ -274,6 +274,7 @@ export type Database = {
         Row: {
           backup_name: string | null
           backup_type: string
+          checksum_sha256: string | null
           completed_at: string | null
           created_at: string
           created_by: string | null
@@ -283,6 +284,7 @@ export type Database = {
           file_size: number | null
           health: Json | null
           id: string
+          schema_version: string | null
           status: string
           storage_path: string | null
           table_counts: Json | null
@@ -292,6 +294,7 @@ export type Database = {
         Insert: {
           backup_name?: string | null
           backup_type: string
+          checksum_sha256?: string | null
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
@@ -301,6 +304,7 @@ export type Database = {
           file_size?: number | null
           health?: Json | null
           id?: string
+          schema_version?: string | null
           status?: string
           storage_path?: string | null
           table_counts?: Json | null
@@ -310,6 +314,7 @@ export type Database = {
         Update: {
           backup_name?: string | null
           backup_type?: string
+          checksum_sha256?: string | null
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
@@ -319,6 +324,7 @@ export type Database = {
           file_size?: number | null
           health?: Json | null
           id?: string
+          schema_version?: string | null
           status?: string
           storage_path?: string | null
           table_counts?: Json | null
@@ -2433,6 +2439,44 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_backup_settings: {
+        Row: {
+          last_run_at: string | null
+          next_run_at: string | null
+          retain_backups: number
+          schedule: string
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          last_run_at?: string | null
+          next_run_at?: string | null
+          retain_backups?: number
+          schedule?: string
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          last_run_at?: string | null
+          next_run_at?: string | null
+          retain_backups?: number
+          schedule?: string
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_backup_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_users: {
         Row: {
           created_at: string
@@ -2806,6 +2850,10 @@ export type Database = {
         Returns: number
       }
       current_tenant_id: { Args: never; Returns: string }
+      delete_backup: {
+        Args: { _id: string; _reason?: string }
+        Returns: boolean
+      }
       delete_job: { Args: { _id: string }; Returns: undefined }
       enqueue_job: {
         Args: {
