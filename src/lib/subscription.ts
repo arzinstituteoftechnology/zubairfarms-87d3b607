@@ -72,7 +72,8 @@ export function isValidLicenseKey(key: string | null | undefined): boolean {
 
 export function pickNotifyWindow(daysLeft: number): number | null {
   if (daysLeft <= 0) return 0;
-  for (const w of NOTIFY_WINDOWS) {
+  const asc = [...NOTIFY_WINDOWS].sort((a, b) => a - b);
+  for (const w of asc) {
     if (daysLeft <= w) return w;
   }
   return null;
