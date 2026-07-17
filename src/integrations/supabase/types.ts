@@ -885,6 +885,36 @@ export type Database = {
           },
         ]
       }
+      maintenance_mode: {
+        Row: {
+          enabled: boolean
+          estimated_return_at: string | null
+          message: string | null
+          read_only: boolean
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          enabled?: boolean
+          estimated_return_at?: string | null
+          message?: string | null
+          read_only?: boolean
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          enabled?: boolean
+          estimated_return_at?: string | null
+          message?: string | null
+          read_only?: boolean
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       meat_types: {
         Row: {
           color: string
@@ -3026,6 +3056,17 @@ export type Database = {
         Args: { _event: string; _metadata?: Json; _success?: boolean }
         Returns: string
       }
+      log_frontend_error: {
+        Args: {
+          _context?: Json
+          _message: string
+          _module: string
+          _request_path?: string
+          _severity?: string
+          _stack?: string
+        }
+        Returns: string
+      }
       log_subscription_event: {
         Args: {
           _event_type: string
@@ -3142,6 +3183,7 @@ export type Database = {
         Args: { _tenant_id: string }
         Returns: boolean
       }
+      tenant_health_snapshot: { Args: { _tenant_id: string }; Returns: Json }
       tenant_usage: { Args: { _tenant_id: string }; Returns: Json }
     }
     Enums: {

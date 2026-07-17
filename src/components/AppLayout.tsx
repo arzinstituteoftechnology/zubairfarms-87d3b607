@@ -19,7 +19,7 @@ import { useModuleFlags } from "@/hooks/useModuleFlags";
 import { PermissionsProvider, usePermissions, ROUTE_MODULE } from "@/hooks/usePermissions";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useLocation } from "react-router-dom";
-import { UsersRound, Activity, DatabaseBackup, ShieldCheck } from "lucide-react";
+import { UsersRound, Activity, DatabaseBackup, ShieldCheck, HeartPulse } from "lucide-react";
 
 const navItems = [
   { to: "/", key: "dashboard", icon: LayoutDashboard, end: true },
@@ -133,6 +133,18 @@ const SidebarContent = ({ role, onSignOut, customersEnabled }: { role: string | 
           )}
         >
           <ShieldCheck className="h-4 w-4" /> Subscription
+        </NavLink>
+      )}
+      {isOwner && (
+        <NavLink
+          to="/settings/system-health"
+          className={({ isActive }) => cn(
+            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+            isActive ? "bg-sidebar-primary text-sidebar-primary-foreground"
+              : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          )}
+        >
+          <HeartPulse className="h-4 w-4" /> System Health
         </NavLink>
       )}
     </nav>
