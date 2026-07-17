@@ -154,7 +154,7 @@ const SmsNotifications = () => {
 
   return (
     <>
-      <SeoHead title="SMS Notifications | MeatFlow" description="Configure the enterprise SMS notification system." />
+      <SeoHead title="SMS Notifications | MeatFlow" description="Configure the enterprise SMS notification system." path="/settings/sms-notifications" />
       <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold">SMS Notifications</h1>
