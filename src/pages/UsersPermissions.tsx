@@ -11,8 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, UserPlus, ShieldAlert, Trash2, Settings2 } from "lucide-react";
+import { Plus, UserPlus, ShieldAlert, Trash2, Settings2, Mail, RotateCw, Ban, Copy, ScrollText, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 const ROLES: { value: TenantRole; label: string; desc: string }[] = [
   { value: "owner", label: "Owner", desc: "Full access to every tenant module" },
@@ -54,9 +56,31 @@ export default function UsersPermissions() {
   const [openNew, setOpenNew] = useState(false);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ full_name: "", email: "", password: "", tenant_role: "manager" as TenantRole });
+  const [mode, setMode] = useState<"direct" | "invite">("invite");
+  const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
   const [editUser, setEditUser] = useState<Row | null>(null);
   const [rolePermsMap, setRolePermsMap] = useState<Record<string, boolean>>({});
   const [overridesMap, setOverridesMap] = useState<Record<string, boolean | undefined>>({});
+
+  // ---- Invitations state ----
+  type Invitation = {
+    id: string; email: string; full_name: string | null; tenant_role: TenantRole;
+    status: "pending" | "accepted" | "expired" | "cancelled";
+    expires_at: string; sent_at: string; resend_count: number;
+  };
+  const [invites, setInvites] = useState<Invitation[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+
+  // ---- Audit state ----
+  type Audit = {
+    id: string; created_at: string; actor_email: string | null; target_email: string | null;
+    action: string; module: string | null; permission_action: string | null;
+    previous_value: any; new_value: any; reason: string | null; actor_ip: string | null; actor_user_agent: string | null;
+  };
+  const [audit, setAudit] = useState<Audit[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditFilter, setAuditFilter] = useState({ action: "all", q: "" });
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   const load = async () => {
     setLoading(true);
@@ -75,7 +99,36 @@ export default function UsersPermissions() {
 
   useEffect(() => { load(); }, []);
 
+  const loadInvites = async () => {
+    setInvitesLoading(true);
+    const { data } = await (supabase as any)
+      .from("user_invitations")
+      .select("id, email, full_name, tenant_role, status, expires_at, sent_at, resend_count")
+      .order("created_at", { ascending: false });
+    setInvites((data ?? []) as Invitation[]);
+    setInvitesLoading(false);
+  };
+  useEffect(() => { if (isOwner) loadInvites(); }, [isOwner]);
+
+  const loadAudit = async () => {
+    setAuditLoading(true);
+    let q = (supabase as any).from("permission_audit_log")
+      .select("id, created_at, actor_email, target_email, action, module, permission_action, previous_value, new_value, reason, actor_ip, actor_user_agent")
+      .order("created_at", { ascending: false }).limit(300);
+    if (auditFilter.action !== "all") q = q.eq("action", auditFilter.action);
+    const { data } = await q;
+    let list = (data ?? []) as Audit[];
+    if (auditFilter.q) {
+      const needle = auditFilter.q.toLowerCase();
+      list = list.filter((r) => [r.actor_email, r.target_email, r.reason, r.module].filter(Boolean).some((v: any) => String(v).toLowerCase().includes(needle)));
+    }
+    setAudit(list);
+    setAuditLoading(false);
+  };
+  useEffect(() => { if (isOwner) loadAudit(); /* eslint-disable-next-line */ }, [isOwner, auditFilter.action]);
+
   const createUser = async () => {
+    if (mode === "invite") return sendInvite();
     if (!form.email || !form.password || !form.full_name) {
       toast({ title: "Missing fields", description: "Name, email, and password are required", variant: "destructive" });
       return;
@@ -97,6 +150,43 @@ export default function UsersPermissions() {
     setOpenNew(false);
     setForm({ full_name: "", email: "", password: "", tenant_role: "manager" });
     await load();
+  };
+
+  const sendInvite = async () => {
+    if (!form.email || !form.full_name) {
+      toast({ title: "Missing fields", description: "Name and email are required", variant: "destructive" });
+      return;
+    }
+    setBusy(true);
+    const { data, error } = await supabase.functions.invoke("owner-invite-user", {
+      body: { action: "invite", full_name: form.full_name, email: form.email, tenant_role: form.tenant_role },
+    });
+    setBusy(false);
+    if (error || (data as any)?.error) {
+      toast({ title: "Invitation failed", description: (data as any)?.error ?? error?.message, variant: "destructive" });
+      return;
+    }
+    const url = (data as any).accept_url as string;
+    setLastInviteUrl(url);
+    try { await navigator.clipboard.writeText(url); } catch { /* ignore */ }
+    toast({ title: "Invitation created", description: "Accept link copied to clipboard" });
+    setForm({ full_name: "", email: "", password: "", tenant_role: "manager" });
+    await loadInvites();
+  };
+
+  const resendInvite = async (id: string) => {
+    const { data, error } = await supabase.functions.invoke("owner-invite-user", { body: { action: "resend", invitation_id: id } });
+    if (error || (data as any)?.error) return toast({ title: "Resend failed", description: (data as any)?.error ?? error?.message, variant: "destructive" });
+    try { await navigator.clipboard.writeText((data as any).accept_url); } catch {}
+    toast({ title: "New link generated", description: "Copied to clipboard" });
+    loadInvites();
+  };
+  const revokeInvite = async (id: string) => {
+    if (!confirm("Revoke this invitation? The link will stop working.")) return;
+    const { data, error } = await supabase.functions.invoke("owner-invite-user", { body: { action: "revoke", invitation_id: id } });
+    if (error || (data as any)?.error) return toast({ title: "Revoke failed", description: (data as any)?.error ?? error?.message, variant: "destructive" });
+    toast({ title: "Invitation revoked" });
+    loadInvites();
   };
 
   const setUserStatus = async (row: Row, status: "active" | "disabled") => {
@@ -179,7 +269,7 @@ export default function UsersPermissions() {
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Users & Permissions</h1>
-          <p className="text-sm text-muted-foreground">Create tenant users, assign roles, and fine-tune per-user permissions.</p>
+          <p className="text-sm text-muted-foreground">Invite users, assign roles, fine-tune per-user permissions, and audit every change.</p>
         </div>
         <Dialog open={openNew} onOpenChange={setOpenNew}>
           <DialogTrigger asChild>
@@ -188,9 +278,19 @@ export default function UsersPermissions() {
           <DialogContent>
             <DialogHeader><DialogTitle>Add tenant user</DialogTitle></DialogHeader>
             <div className="space-y-3">
+              <RadioGroup value={mode} onValueChange={(v: any) => setMode(v)} className="grid grid-cols-2 gap-2">
+                <label className={`flex items-center gap-2 border rounded-md p-2 cursor-pointer ${mode==="invite"?"border-primary":""}`}>
+                  <RadioGroupItem value="invite" /> <Mail className="h-4 w-4" /> Send invitation
+                </label>
+                <label className={`flex items-center gap-2 border rounded-md p-2 cursor-pointer ${mode==="direct"?"border-primary":""}`}>
+                  <RadioGroupItem value="direct" /> <UserPlus className="h-4 w-4" /> Create directly
+                </label>
+              </RadioGroup>
               <div><Label>Full name</Label><Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
               <div><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-              <div><Label>Temporary password</Label><Input type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Min 8 characters" /></div>
+              {mode === "direct" && (
+                <div><Label>Temporary password</Label><Input type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Min 8 characters" /></div>
+              )}
               <div>
                 <Label>Role</Label>
                 <Select value={form.tenant_role} onValueChange={(v: TenantRole) => setForm({ ...form, tenant_role: v })}>
@@ -207,17 +307,31 @@ export default function UsersPermissions() {
                   </SelectContent>
                 </Select>
               </div>
+              {lastInviteUrl && (
+                <div className="border rounded-md p-2 text-xs bg-muted/50 break-all">
+                  <div className="font-medium mb-1">Last invitation link (copied):</div>
+                  <div>{lastInviteUrl}</div>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpenNew(false)}>Cancel</Button>
-              <Button onClick={createUser} disabled={busy}>{busy ? "Creating…" : "Create user"}</Button>
+              <Button onClick={createUser} disabled={busy}>{busy ? (mode==="invite"?"Sending…":"Creating…") : (mode==="invite"?"Send invitation":"Create user")}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
 
-      <Card className="p-0 overflow-x-auto">
-        <Table>
+      <Tabs defaultValue="users" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="invitations">Invitations</TabsTrigger>
+          <TabsTrigger value="audit">Audit log</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="users">
+          <Card className="p-0 overflow-x-auto">
+            <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
@@ -266,8 +380,135 @@ export default function UsersPermissions() {
               );
             })}
           </TableBody>
-        </Table>
-      </Card>
+            </Table>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="invitations">
+          <Card className="p-0 overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Expires</TableHead>
+                  <TableHead>Resent</TableHead>
+                  <TableHead className="text-end">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invitesLoading ? (
+                  <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+                ) : invites.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No invitations yet.</TableCell></TableRow>
+                ) : invites.map((i) => (
+                  <TableRow key={i.id}>
+                    <TableCell><div className="font-medium">{i.email}</div>{i.full_name && <div className="text-xs text-muted-foreground">{i.full_name}</div>}</TableCell>
+                    <TableCell className="capitalize">{i.tenant_role.replace("_", " ")}</TableCell>
+                    <TableCell>
+                      <Badge variant={i.status === "pending" ? "default" : i.status === "accepted" ? "secondary" : "destructive"}>{i.status}</Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {new Date(i.expires_at).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{i.resend_count}</TableCell>
+                    <TableCell className="text-end">
+                      {i.status === "pending" && (
+                        <div className="flex gap-1 justify-end">
+                          <Button size="sm" variant="outline" onClick={() => resendInvite(i.id)}><RotateCw className="h-4 w-4" /> Resend</Button>
+                          <Button size="sm" variant="ghost" onClick={() => revokeInvite(i.id)}><Ban className="h-4 w-4" /></Button>
+                        </div>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="audit">
+          <Card className="p-4 space-y-3">
+            <div className="flex flex-wrap gap-2 items-end">
+              <div className="flex flex-col">
+                <Label className="text-xs">Action</Label>
+                <Select value={auditFilter.action} onValueChange={(v) => setAuditFilter((s) => ({ ...s, action: v }))}>
+                  <SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All actions</SelectItem>
+                    {["role_changed","status_changed","override_set","override_cleared","invite_sent","invite_resent","invite_revoked","invite_accepted","bulk_role_applied","bulk_permissions_copied","bulk_permissions_reset","role_template_created","role_template_updated","role_template_deleted"].map((a) => (
+                      <SelectItem key={a} value={a}>{a.replace(/_/g, " ")}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col flex-1 min-w-[200px]">
+                <Label className="text-xs">Search</Label>
+                <Input value={auditFilter.q} onChange={(e) => setAuditFilter((s) => ({ ...s, q: e.target.value }))} placeholder="actor, target, reason, module" onKeyDown={(e) => { if (e.key === "Enter") loadAudit(); }} />
+              </div>
+              <Button variant="outline" onClick={loadAudit}>Apply</Button>
+            </div>
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted"><tr>
+                  <th className="p-2 text-start"></th>
+                  <th className="p-2 text-start">Time</th>
+                  <th className="p-2 text-start">Actor</th>
+                  <th className="p-2 text-start">Target</th>
+                  <th className="p-2 text-start">Action</th>
+                  <th className="p-2 text-start">Details</th>
+                </tr></thead>
+                <tbody>
+                  {auditLoading ? (
+                    <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">Loading…</td></tr>
+                  ) : audit.length === 0 ? (
+                    <tr><td colSpan={6} className="text-center py-8 text-muted-foreground">No audit entries.</td></tr>
+                  ) : audit.map((r) => (
+                    <>
+                      <tr key={r.id} className="border-t">
+                        <td className="p-2 align-top">
+                          <button className="text-muted-foreground" onClick={() => setExpanded((s) => ({ ...s, [r.id]: !s[r.id] }))}>
+                            {expanded[r.id] ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                          </button>
+                        </td>
+                        <td className="p-2 whitespace-nowrap text-muted-foreground">{new Date(r.created_at).toLocaleString()}</td>
+                        <td className="p-2">{r.actor_email ?? <span className="text-muted-foreground">system</span>}</td>
+                        <td className="p-2">{r.target_email ?? "—"}</td>
+                        <td className="p-2 capitalize">{r.action.replace(/_/g, " ")}</td>
+                        <td className="p-2 text-muted-foreground">
+                          {r.module ? `${r.module}${r.permission_action ? " · " + r.permission_action : ""}` : ""}
+                          {r.reason ? <span> — {r.reason}</span> : null}
+                        </td>
+                      </tr>
+                      {expanded[r.id] && (
+                        <tr className="bg-muted/40">
+                          <td colSpan={6} className="p-3">
+                            <div className="grid md:grid-cols-2 gap-3 text-xs">
+                              <div>
+                                <div className="font-medium mb-1">Previous</div>
+                                <pre className="bg-background p-2 rounded overflow-auto max-h-40">{JSON.stringify(r.previous_value ?? null, null, 2)}</pre>
+                              </div>
+                              <div>
+                                <div className="font-medium mb-1">New</div>
+                                <pre className="bg-background p-2 rounded overflow-auto max-h-40">{JSON.stringify(r.new_value ?? null, null, 2)}</pre>
+                              </div>
+                              <div className="md:col-span-2 text-muted-foreground">
+                                IP: {r.actor_ip ?? "—"} · Device: {r.actor_user_agent ?? "—"}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-muted-foreground">Showing latest 300 entries. Role template editor and bulk actions ship in the next update.</p>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={!!editUser} onOpenChange={(o) => { if (!o) { setEditUser(null); refresh(); } }}>
         <DialogContent className="max-w-5xl">
