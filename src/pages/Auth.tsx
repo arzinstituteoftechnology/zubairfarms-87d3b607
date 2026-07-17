@@ -31,8 +31,16 @@ const Auth = () => {
     setBusy(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setBusy(false);
-    if (error) toast.error(error.message);
-    else navigate("/", { replace: true });
+    if (error) {
+      toast.error(error.message);
+      try {
+        await (supabase as any).rpc("log_auth_event", {
+          _event: "failed_login",
+          _success: false,
+          _metadata: { email, error: error.message, user_agent: navigator.userAgent },
+        });
+      } catch { /* ignore */ }
+    } else navigate("/", { replace: true });
   };
 
   const onForgot = async (e: React.FormEvent) => {
