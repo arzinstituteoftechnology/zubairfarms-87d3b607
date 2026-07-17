@@ -355,38 +355,71 @@ async function handleCleanup(admin: any) {
   return json({ ok: true, deleted: deleted.length });
 }
 
-async function handleDownload(admin: any, backup_id: string) {
+async function handleDownload(admin: any, backup_id: string, ownerTenantId: string | null) {
   const { data: row, error } = await admin.from("backup_history").select("*").eq("id", backup_id).single();
   if (error || !row?.storage_path) return json({ error: "Backup not found" }, 404);
+  if (ownerTenantId && row.tenant_id !== ownerTenantId) {
+    return json({ error: "You can only download backups for your own account" }, 403);
+  }
   const { data: signed, error: sErr } = await admin.storage.from("system-backups")
     .createSignedUrl(row.storage_path, 300);
   if (sErr) return json({ error: sErr.message }, 500);
   return json({ ok: true, url: signed.signedUrl, filename: row.storage_path.split("/").pop() });
 }
 
-async function handleRestore(admin: any, body: any, userId: string | null) {
-  // 1. Take emergency pre-restore backup first
-  const preResp = await handleCreate(admin, "pre_restore", userId);
-  const preBody = await preResp.json().catch(() => ({}));
-  if (!preResp.ok || preBody.error) {
-    return json({ error: `Pre-restore backup failed: ${preBody.error ?? "unknown"}` }, 500);
+async function handleRestore(admin: any, body: any, userId: string | null, ownerTenantId: string | null) {
+  const isRollback = body._rolling_back === true;
+
+  // 0. Pre-load target backup metadata and enforce tenant scope for owners.
+  let sourceRow: any = null;
+  if (body.backup_id) {
+    const { data, error } = await admin.from("backup_history").select("*").eq("id", body.backup_id).single();
+    if (error || !data?.storage_path) return json({ error: "Backup not found" }, 404);
+    sourceRow = data;
+    if (ownerTenantId && sourceRow.tenant_id !== ownerTenantId) {
+      return json({ error: "You can only restore backups for your own account" }, 403);
+    }
+  }
+
+  // 1. Take emergency pre-restore backup first (skip during rollback to avoid recursion).
+  let preBackupId: string | null = null;
+  if (!isRollback) {
+    const preResp = await handleCreate(admin, "pre_restore", userId, sourceRow?.tenant_id ?? ownerTenantId ?? null);
+    const preBody = await preResp.json().catch(() => ({}));
+    if (!preResp.ok || preBody.error) {
+      return json({ error: `Pre-restore backup failed: ${preBody.error ?? "unknown"}` }, 500);
+    }
+    preBackupId = preBody.backup_id;
   }
 
   // 2. Load backup payload
   let payload: any;
   if (body.backup_id) {
-    const { data: row, error } = await admin.from("backup_history").select("*").eq("id", body.backup_id).single();
-    if (error || !row?.storage_path) return json({ error: "Backup not found" }, 404);
+    const row = sourceRow;
     const { data: file, error: dErr } = await admin.storage.from("system-backups").download(row.storage_path);
     if (dErr) return json({ error: dErr.message }, 500);
+    const raw = await file.arrayBuffer();
+    // Integrity gate — reject if checksum mismatches when we have one on file.
+    if (row.checksum_sha256) {
+      const actual = await sha256Hex(raw);
+      if (actual !== row.checksum_sha256) {
+        return json({ error: "Refusing to restore — backup checksum mismatch (file corrupted)" }, 400);
+      }
+    }
     let text: string;
     if (row.storage_path.endsWith(".gz")) {
-      const ds = file.stream().pipeThrough(new DecompressionStream("gzip"));
+      const ds = new Blob([raw]).stream().pipeThrough(new DecompressionStream("gzip"));
       text = await new Response(ds).text();
     } else {
-      text = await file.text();
+      text = new TextDecoder().decode(raw);
     }
     payload = JSON.parse(text);
+    if (payload.schema_version && payload.schema_version !== SCHEMA_VERSION) {
+      return json({ error: `Refusing to restore — schema version mismatch (${payload.schema_version} vs ${SCHEMA_VERSION})` }, 400);
+    }
+    if (ownerTenantId && payload.tenant_id !== ownerTenantId) {
+      return json({ error: "Refusing to restore — backup belongs to a different account" }, 403);
+    }
   } else if (body.backup) {
     payload = body.backup;
   } else {
@@ -414,32 +447,60 @@ async function handleRestore(admin: any, body: any, userId: string | null) {
   for (const t of order) {
     const rows = data[t];
     if (!Array.isArray(rows) || rows.length === 0) { results[t] = { restored: 0 }; continue; }
-    let payload = rows;
+    let rowPayload = rows;
     if (t === "user_roles") {
       // never duplicate-remove super admins; just upsert
-      payload = rows;
+      rowPayload = rows;
     }
-    const { error, count } = await admin.from(t).upsert(payload, { onConflict: "id", count: "exact" });
-    results[t] = { restored: count ?? payload.length, error: error?.message };
+    const { error, count } = await admin.from(t).upsert(rowPayload, { onConflict: "id", count: "exact" });
+    results[t] = { restored: count ?? rowPayload.length, error: error?.message };
+  }
+
+  const restoreErrors = Object.entries(results).filter(([, r]: any) => r?.error).map(([t, r]: any) => ({ table: t, error: r.error }));
+  const restoredTotal = Object.values(results).reduce((a, r: any) => a + (r.restored ?? 0), 0);
+
+  // Disaster recovery — if the restore hit any error and we have a pre-restore
+  // snapshot, roll back automatically so the database never remains partial.
+  let rolledBack = false;
+  let rollbackError: string | null = null;
+  if (!isRollback && restoreErrors.length > 0 && preBackupId) {
+    try {
+      const rbResp = await handleRestore(admin, { backup_id: preBackupId, _rolling_back: true }, userId, ownerTenantId);
+      const rbBody = await rbResp.json().catch(() => ({}));
+      rolledBack = !!rbBody.ok;
+      if (!rolledBack) rollbackError = rbBody.error ?? "Rollback failed";
+    } catch (e) {
+      rollbackError = e instanceof Error ? e.message : String(e);
+    }
   }
 
   // Audit trail — Requirement #8: restore operations must generate audit events.
-  const restoredTotal = Object.values(results).reduce((a, r: any) => a + (r.restored ?? 0), 0);
-  const restoreErrors = Object.entries(results).filter(([, r]: any) => r?.error).map(([t, r]: any) => ({ table: t, error: r.error }));
   await admin.from("activity_logs").insert({
-    action: "backup_restore",
+    action: isRollback ? "backup_rollback" : "backup_restore",
     entity: "backup_history",
     entity_id: body.backup_id ?? null,
     tenant_id: payload?.tenant_id ?? null,
     actor_user_id: userId,
     metadata: {
       backup_id: body.backup_id ?? null,
-      pre_restore_backup_id: preBody.backup_id,
+      pre_restore_backup_id: preBackupId,
       total_restored: restoredTotal,
       table_errors: restoreErrors,
       preserved_super_admins: [...superIds],
+      rolled_back: rolledBack,
+      rollback_error: rollbackError,
     },
   }).then(() => {}, () => {});
 
-  return json({ ok: true, pre_restore_backup_id: preBody.backup_id, results, preserved_super_admins: [...superIds] });
+  const ok = restoreErrors.length === 0;
+  return json({
+    ok,
+    pre_restore_backup_id: preBackupId,
+    results,
+    preserved_super_admins: [...superIds],
+    total_restored: restoredTotal,
+    table_errors: restoreErrors,
+    rolled_back: rolledBack,
+    rollback_error: rollbackError,
+  }, ok ? 200 : 500);
 }
