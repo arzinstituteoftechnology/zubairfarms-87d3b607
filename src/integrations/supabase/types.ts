@@ -2883,6 +2883,10 @@ export type Database = {
       is_business_user: { Args: { _uid: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
       is_tenant_owner: { Args: { _uid: string }; Returns: boolean }
+      log_auth_event: {
+        Args: { _event: string; _metadata?: Json; _success?: boolean }
+        Returns: string
+      }
       log_system_error: {
         Args: {
           _context?: Json
