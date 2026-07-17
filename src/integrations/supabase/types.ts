@@ -1821,6 +1821,264 @@ export type Database = {
           },
         ]
       }
+      sms_delivery_logs: {
+        Row: {
+          created_at: string
+          delivered_at: string | null
+          error_code: string | null
+          error_message: string | null
+          event_type: string
+          id: string
+          phone_number_masked: string
+          provider_message_id: string | null
+          provider_response: Json
+          sent_at: string | null
+          sms_queue_id: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          delivered_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          event_type: string
+          id?: string
+          phone_number_masked: string
+          provider_message_id?: string | null
+          provider_response?: Json
+          sent_at?: string | null
+          sms_queue_id?: string | null
+          status: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          delivered_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          phone_number_masked?: string
+          provider_message_id?: string | null
+          provider_response?: Json
+          sent_at?: string | null
+          sms_queue_id?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_delivery_logs_sms_queue_id_fkey"
+            columns: ["sms_queue_id"]
+            isOneToOne: false
+            referencedRelation: "sms_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_delivery_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_queue: {
+        Row: {
+          attempt_count: number
+          created_at: string
+          error_message: string | null
+          event_type: string
+          failed_at: string | null
+          id: string
+          idempotency_key: string
+          max_attempts: number
+          message_body: string
+          phone_number: string
+          provider: string
+          provider_message_id: string | null
+          provider_status: string | null
+          recipient_name: string | null
+          recipient_type: string
+          related_record_id: string | null
+          related_table: string | null
+          scheduled_at: string
+          sent_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          created_at?: string
+          error_message?: string | null
+          event_type: string
+          failed_at?: string | null
+          id?: string
+          idempotency_key: string
+          max_attempts?: number
+          message_body: string
+          phone_number: string
+          provider?: string
+          provider_message_id?: string | null
+          provider_status?: string | null
+          recipient_name?: string | null
+          recipient_type: string
+          related_record_id?: string | null
+          related_table?: string | null
+          scheduled_at?: string
+          sent_at?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          created_at?: string
+          error_message?: string | null
+          event_type?: string
+          failed_at?: string | null
+          id?: string
+          idempotency_key?: string
+          max_attempts?: number
+          message_body?: string
+          phone_number?: string
+          provider?: string
+          provider_message_id?: string | null
+          provider_status?: string | null
+          recipient_name?: string | null
+          recipient_type?: string
+          related_record_id?: string | null
+          related_table?: string | null
+          scheduled_at?: string
+          sent_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_queue_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_settings: {
+        Row: {
+          admin_notification_types: Json
+          admin_phone: string | null
+          country_code: string
+          created_at: string
+          customer_notification_types: Json
+          id: string
+          is_enabled: boolean
+          notify_admin: boolean
+          notify_customer: boolean
+          provider: string
+          quiet_hours_enabled: boolean
+          quiet_hours_end: string | null
+          quiet_hours_start: string | null
+          sender_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          admin_notification_types?: Json
+          admin_phone?: string | null
+          country_code?: string
+          created_at?: string
+          customer_notification_types?: Json
+          id?: string
+          is_enabled?: boolean
+          notify_admin?: boolean
+          notify_customer?: boolean
+          provider?: string
+          quiet_hours_enabled?: boolean
+          quiet_hours_end?: string | null
+          quiet_hours_start?: string | null
+          sender_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          admin_notification_types?: Json
+          admin_phone?: string | null
+          country_code?: string
+          created_at?: string
+          customer_notification_types?: Json
+          id?: string
+          is_enabled?: boolean
+          notify_admin?: boolean
+          notify_customer?: boolean
+          provider?: string
+          quiet_hours_enabled?: boolean
+          quiet_hours_end?: string | null
+          quiet_hours_start?: string | null
+          sender_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_templates: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          is_active: boolean
+          language: string
+          message_body: string
+          recipient_type: string
+          template_name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          is_active?: boolean
+          language?: string
+          message_body: string
+          recipient_type: string
+          template_name: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          is_active?: boolean
+          language?: string
+          message_body?: string
+          recipient_type?: string
+          template_name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_adjustment_reasons: {
         Row: {
           code: string
@@ -2988,6 +3246,33 @@ export type Database = {
         }
         Returns: string
       }
+      ensure_sms_settings: {
+        Args: { _tenant_id: string }
+        Returns: {
+          admin_notification_types: Json
+          admin_phone: string | null
+          country_code: string
+          created_at: string
+          customer_notification_types: Json
+          id: string
+          is_enabled: boolean
+          notify_admin: boolean
+          notify_customer: boolean
+          provider: string
+          quiet_hours_enabled: boolean
+          quiet_hours_end: string | null
+          quiet_hours_start: string | null
+          sender_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "sms_settings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       fail_job: {
         Args: { _details?: Json; _error: string; _id: string }
         Returns: undefined
@@ -3178,6 +3463,10 @@ export type Database = {
         Returns: string
       }
       run_job_now: { Args: { _id: string }; Returns: undefined }
+      seed_sms_default_templates: {
+        Args: { _tenant_id: string }
+        Returns: undefined
+      }
       seed_tenant_settings: { Args: { _tid: string }; Returns: undefined }
       soft_delete_notification: { Args: { _id: string }; Returns: undefined }
       subscription_state: { Args: { _tenant_id: string }; Returns: Json }
