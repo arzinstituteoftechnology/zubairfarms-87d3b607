@@ -49,6 +49,7 @@ import UsersPermissions from "./pages/UsersPermissions";
 import Notifications from "./pages/Notifications";
 import AcceptInvite from "./pages/AcceptInvite";
 import ActivityCenter from "./pages/ActivityCenter";
+import BackupRestore from "./pages/BackupRestore";
 
 const queryClient = new QueryClient();
 
@@ -117,6 +118,7 @@ const App = () => (
               <Route path="/settings" element={<Settings />} />
               <Route path="/settings/users" element={<UsersPermissions />} />
               <Route path="/settings/activity" element={<ActivityCenter />} />
+              <Route path="/settings/backup-restore" element={<BackupRestore />} />
               <Route path="/notifications" element={<Notifications />} />
             </Route>
             <Route path="/invoice/:id" element={<Invoice />} />
