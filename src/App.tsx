@@ -51,6 +51,7 @@ import AcceptInvite from "./pages/AcceptInvite";
 import ActivityCenter from "./pages/ActivityCenter";
 import BackupRestore from "./pages/BackupRestore";
 import Subscription from "./pages/Subscription";
+import SystemHealth from "./pages/SystemHealth";
 
 const queryClient = new QueryClient();
 
@@ -121,6 +122,7 @@ const App = () => (
               <Route path="/settings/activity" element={<ActivityCenter />} />
               <Route path="/settings/backup-restore" element={<BackupRestore />} />
               <Route path="/settings/subscription" element={<Subscription />} />
+              <Route path="/settings/system-health" element={<SystemHealth />} />
               <Route path="/notifications" element={<Notifications />} />
             </Route>
             <Route path="/invoice/:id" element={<Invoice />} />
