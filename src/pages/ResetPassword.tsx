@@ -69,9 +69,12 @@ const ResetPassword = () => {
           return;
         }
 
-        // If Supabase already consumed the URL tokens before this effect ran,
-        // allow the form only when a real session is present.
-        if (!(await markReadyIfSessionExists())) fail();
+        // No recovery token was supplied. Give the auth client a brief window
+        // to emit PASSWORD_RECOVERY if it already consumed the URL hash, but do
+        // not allow ordinary signed-in sessions to use this recovery page.
+        window.setTimeout(() => {
+          if (!cancelled) fail();
+        }, 1500);
       } catch {
         fail();
       }
