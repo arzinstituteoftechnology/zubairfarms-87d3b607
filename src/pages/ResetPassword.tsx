@@ -119,8 +119,8 @@ const ResetPassword = () => {
           ) : recoveryState === "invalid" ? (
             <div className="space-y-4 text-center">
               <p className="text-sm text-muted-foreground">{INVALID_RESET_LINK_MESSAGE}</p>
-              <Button type="button" className="w-full" onClick={() => navigate("/auth", { replace: true })}>
-                {t("auth.back_to_signin")}
+              <Button type="button" className="w-full" onClick={() => navigate("/auth?mode=forgot", { replace: true })}>
+                Request a new reset link
               </Button>
             </div>
           ) : (
