@@ -4,11 +4,19 @@ import logoAsset from "@/assets/logo.png.asset.json";
 const TOTAL_MS = 2500;
 const EXIT_MS = 600;
 
+// Module-level flag: ensures the splash only shows once per full page load,
+// even if the component's parent tree re-mounts (auth changes, HMR, etc.).
+// A real browser refresh reloads this module and resets the flag.
+let hasShownThisPageLoad = false;
+
 export const SplashScreen = () => {
-  const [mounted, setMounted] = useState(true);
+  const [mounted, setMounted] = useState(() => !hasShownThisPageLoad);
   const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
+    if (hasShownThisPageLoad) return;
+    hasShownThisPageLoad = true;
+
     const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const exitDuration = prefersReduced ? 300 : EXIT_MS;
     const holdMs = TOTAL_MS - exitDuration;
