@@ -484,11 +484,12 @@ async function resetTenant(
     remaining_counts: verification_failed ? remaining_counts : undefined,
     verification_failed,
     backup,
+    retained_tables: Array.from(RETAINED_TABLES),
     message: verification_failed
       ? `Reset incomplete — ${Object.keys(remaining_counts).length} table(s) still contain data for this tenant: ${Object.keys(remaining_counts).join(", ")}.`
       : mode === "business_reset"
-        ? `Business Data Reset Successfully. ${total} record(s) removed. Master data (farms, shops, suppliers, trucks, customers) preserved.`
-        : `Factory Reset Completed Successfully. ${total} record(s) removed. Owner account, subscription and organization profile preserved.`,
+        ? `Business Data Reset Successfully. ${total} record(s) removed. Master data (farms, shops, suppliers, trucks, customers) preserved. Security audit logs are retained by policy.`
+        : `Factory Reset Completed Successfully. ${total} record(s) removed. Owner account, subscription and organization profile preserved. Security audit logs are retained by policy.`,
   });
 }
 
