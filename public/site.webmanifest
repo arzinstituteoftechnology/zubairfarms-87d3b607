@@ -1,0 +1,13 @@
+{
+  "name": "Zubair MeatFlow",
+  "short_name": "MeatFlow",
+  "description": "Poultry & Meat Supply Manager",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#a11414",
+  "icons": [
+    { "src": "/icon-192.png?v=2", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png?v=2", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
