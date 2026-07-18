@@ -420,8 +420,8 @@ const Suppliers = () => {
                 rows: filteredEntries as any,
                 totals: [
                   { label: "Opening", value: fmtMoney(ledger.opening_balance) },
-                  { label: "Total Purchased", value: fmtMoney(filteredEntries.reduce((s, e: any) => s + Number(e.debit || 0), 0)) },
-                  { label: "Total Paid", value: fmtMoney(filteredEntries.reduce((s, e: any) => s + Number(e.credit || 0), 0)) },
+                  { label: "Active Purchased", value: fmtMoney(ledger.purchased) },
+                  { label: "Active Paid", value: fmtMoney(ledger.paid) },
                   { label: "Current Balance", value: fmtMoney(ledger.balance) },
                 ],
                 footer: `Printed by ${user?.email ?? ""}`,
