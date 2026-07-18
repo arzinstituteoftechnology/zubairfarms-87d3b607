@@ -5,12 +5,9 @@ let cached: { customers_module_enabled: boolean } | null = null;
 const listeners = new Set<(v: { customers_module_enabled: boolean }) => void>();
 
 async function load() {
-  const { data } = await supabase
-    .from("system_settings")
-    .select("customers_module_enabled")
-    .eq("id", 1)
-    .maybeSingle();
-  cached = { customers_module_enabled: !!(data as any)?.customers_module_enabled };
+  const { data } = await (supabase as any).rpc("get_module_flags");
+  const row = Array.isArray(data) ? data[0] : data;
+  cached = { customers_module_enabled: !!row?.customers_module_enabled };
   listeners.forEach((l) => l(cached!));
   return cached;
 }

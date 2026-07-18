@@ -3323,6 +3323,12 @@ export type Database = {
       }
       generate_license_key: { Args: never; Returns: string }
       get_live_metrics: { Args: { _window_minutes?: number }; Returns: Json }
+      get_module_flags: {
+        Args: never
+        Returns: {
+          customers_module_enabled: boolean
+        }[]
+      }
       has_permission: {
         Args: { _action: string; _module: string; _uid: string }
         Returns: boolean
