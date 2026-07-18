@@ -40,10 +40,13 @@ describe("supplierLedger — fully reversed Almas Farm scenario", () => {
 
   it("audit rows survive in the chronological ledger with correct 0 running balance", () => {
     const rows = buildSupplierLedgerRows(0 /* opening reversed */, purchases, payments, ledger);
+    // Sorted by (date, created_at). All same date so created_at wins:
+    // opening (17:21) → purchase (17:28) → payment (18:07:17) →
+    // reversed_opening (18:07:34) → reversed_payment (18:10:58) →
+    // reversed_purchase (18:11:19)
     expect(rows.map(r => r.kind)).toEqual([
-      "opening", "reversed_opening_balance",
-      "payment", "reversed_payment",
-      "purchase", "reversed_purchase",
+      "opening", "purchase", "payment",
+      "reversed_opening_balance", "reversed_payment", "reversed_purchase",
     ]);
     // Every running balance must be 0 because opening was reversed and
     // every subsequent original was reversed.
