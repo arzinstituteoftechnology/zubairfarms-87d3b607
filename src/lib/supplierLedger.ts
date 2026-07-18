@@ -138,18 +138,9 @@ export function computeSupplierBalances(
     }
 
     // Reversal audit rows never add to active totals — they only mirror the
-    // canceled original for the audit trail.
-    if (isReversal) {
-      // Classify into "reversedGross" bucket by the mirrored type.
-      const t = x.entry_type;
-      if (t === "reversed_opening_balance") bumpRev(id).openings += amt;
-      else if (t === "reversed_purchase" || t === "reversed_manual_purchase")
-        bumpRev(id).purchases += amt;
-      else if (t === "reversed_payment" || t === "reversed_manual_payment")
-        bumpRev(id).payments += amt;
-      else bumpRev(id).adjustments += amt;
-      return;
-    }
+    // canceled original for the audit trail. Do NOT re-count into reversedGross
+    // either (the original leg already booked the same amount there).
+    if (isReversal) return;
 
     // Originals that were later reversed → audit only.
     if (x.reversed_at) {
