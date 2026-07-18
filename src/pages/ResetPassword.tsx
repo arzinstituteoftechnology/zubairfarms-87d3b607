@@ -4,32 +4,83 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/PasswordInput";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Beef } from "lucide-react";
+import { Beef, Loader2 } from "lucide-react";
+
+type RecoveryState = "loading" | "ready" | "invalid";
+
+const INVALID_RESET_LINK_MESSAGE = "This password reset link is invalid or expired. Please request a new link.";
 
 const ResetPassword = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const [ready, setReady] = useState(false);
+  const [recoveryState, setRecoveryState] = useState<RecoveryState>("loading");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    // Supabase puts recovery tokens in the URL hash; the client picks them up
-    // automatically and emits PASSWORD_RECOVERY. We wait for it so the user
-    // can actually update their password.
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") setReady(true);
+    let cancelled = false;
+
+    const markReadyIfSessionExists = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!cancelled && data.session?.access_token) setRecoveryState("ready");
+      return Boolean(data.session?.access_token);
+    };
+
+    const fail = () => {
+      if (!cancelled) setRecoveryState("invalid");
+    };
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (cancelled) return;
+      if (event === "PASSWORD_RECOVERY" && session?.access_token) {
+        setRecoveryState("ready");
+      }
     });
-    // Fallback: if session already exists (hash already processed), allow update.
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) setReady(true);
-    });
+
+    const establishRecoverySession = async () => {
+      setRecoveryState("loading");
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get("code");
+      const hashParams = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : url.hash);
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+      const hashType = hashParams.get("type");
+
+      try {
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) return fail();
+          if (!(await markReadyIfSessionExists())) fail();
+          return;
+        }
+
+        if (accessToken && refreshToken && (!hashType || hashType === "recovery")) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (error) return fail();
+          if (!(await markReadyIfSessionExists())) fail();
+          return;
+        }
+
+        // No recovery token was supplied. Give the auth client a brief window
+        // to emit PASSWORD_RECOVERY if it already consumed the URL hash, but do
+        // not allow ordinary signed-in sessions to use this recovery page.
+        window.setTimeout(() => {
+          if (!cancelled) fail();
+        }, 1500);
+      } catch {
+        fail();
+      }
+    };
+
+    void establishRecoverySession();
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -37,12 +88,18 @@ const ResetPassword = () => {
     e.preventDefault();
     if (password.length < 6) return toast.error(t("auth.password_too_short"));
     if (password !== confirm) return toast.error(t("auth.passwords_dont_match"));
+    const { data } = await supabase.auth.getSession();
+    if (!data.session?.access_token) {
+      setRecoveryState("invalid");
+      return toast.error(INVALID_RESET_LINK_MESSAGE);
+    }
     setBusy(true);
     const { error } = await supabase.auth.updateUser({ password });
     setBusy(false);
     if (error) return toast.error(error.message);
-    toast.success(t("auth.password_updated"));
-    navigate("/", { replace: true });
+    await supabase.auth.signOut();
+    toast.success("Password updated successfully. Please sign in.");
+    navigate("/auth", { replace: true });
   };
 
   return (
@@ -57,10 +114,18 @@ const ResetPassword = () => {
           <CardDescription>{t("auth.reset_subtitle")}</CardDescription>
         </CardHeader>
         <CardContent>
-          {!ready ? (
+          {recoveryState === "loading" ? (
             <p className="text-sm text-muted-foreground text-center">
+              <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin text-primary" />
               {t("auth.waiting_recovery")}
             </p>
+          ) : recoveryState === "invalid" ? (
+            <div className="space-y-4 text-center">
+              <p className="text-sm text-muted-foreground">{INVALID_RESET_LINK_MESSAGE}</p>
+              <Button type="button" className="w-full" onClick={() => navigate("/auth?mode=forgot", { replace: true })}>
+                Request a new reset link
+              </Button>
+            </div>
           ) : (
             <form onSubmit={onSubmit} className="space-y-3">
               <div className="space-y-1.5">

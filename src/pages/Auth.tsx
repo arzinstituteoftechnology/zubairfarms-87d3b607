@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "react-i18next";
@@ -15,9 +15,13 @@ import { SeoHead } from "@/components/SeoHead";
 
 const Auth = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { session, loading } = useAuth();
   const { t } = useTranslation();
-  const [mode, setMode] = useState<"signin" | "forgot">("signin");
+  const [mode, setMode] = useState<"signin" | "forgot">(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("mode") === "forgot" ? "forgot" : "signin";
+  });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
