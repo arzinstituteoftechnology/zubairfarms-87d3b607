@@ -490,17 +490,33 @@ const StockClosing = () => {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Select
-                          value={isZero ? "__none__" : (r.reason || undefined)}
+                          <Select
+                          value={diff == null ? undefined : (isZero ? "__none__" : (r.reason || undefined))}
                           onValueChange={(v) => updateRow(i, { reason: v as Reason })}
-                          disabled={isZero || r.status === "finalized" || r.reversed}
+                          disabled={diff == null || isZero || r.status === "finalized" || r.reversed}
                         >
-                          <SelectTrigger className="h-8 w-[160px]">
-                            <SelectValue placeholder={isZero ? "None" : "Select reason"} />
+                          <SelectTrigger className="h-8 w-[180px]">
+                            <SelectValue placeholder={
+                              diff == null ? "Enter physical stock" :
+                              isZero ? "None (matched)" :
+                              "Select reason"
+                            } />
                           </SelectTrigger>
-                          <SelectContent>
-                            {isZero && <SelectItem value="__none__">None</SelectItem>}
-                            {reasonsForDiff(diff).map((x) => <SelectItem key={x.value} value={x.value}>{x.label}</SelectItem>)}
+                          <SelectContent
+                            position="popper"
+                            className="z-[60] max-h-72 overflow-auto bg-popover text-popover-foreground"
+                          >
+                            {isZero ? (
+                              <SelectItem value="__none__">None</SelectItem>
+                            ) : reasonsForDiff(diff).length === 0 ? (
+                              <div className="px-3 py-2 text-xs text-muted-foreground">
+                                No active reasons found
+                              </div>
+                            ) : (
+                              reasonsForDiff(diff).map((x) => (
+                                <SelectItem key={x.value} value={x.value}>{x.label}</SelectItem>
+                              ))
+                            )}
                           </SelectContent>
                         </Select>
                       </TableCell>
