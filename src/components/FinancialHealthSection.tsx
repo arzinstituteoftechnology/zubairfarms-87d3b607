@@ -196,7 +196,9 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
       supabase.from("shop_recoveries").select("ledger_entry_id, reversed_at").not("reversed_at", "is", null),
       supabase.from("purchases").select("farm_id, total_amount, paid_amount, purchase_date, reversed_at").lte("purchase_date", end),
       supabase.from("farm_payments").select("farm_id, amount, payment_date, reversed_at").lte("payment_date", end),
-      supabase.from("supplier_ledger_entries").select("farm_id, entry_type, amount, entry_date, reversed_at, original_entry_id").lte("entry_date", end),
+      // supplier_ledger_entries has supplier_id, not farm_id — alias so
+      // computeFarmBalances(SupplierLedger { farm_id }) receives the right key.
+      supabase.from("supplier_ledger_entries").select("farm_id:supplier_id, entry_type, amount, entry_date, reversed_at, original_entry_id").lte("entry_date", end),
       supabase.from("shop_recoveries").select("amount, recovery_date").gte("recovery_date", start).lte("recovery_date", end).is("reversed_at", null),
       supabase.from("supplies").select("total_amount, supply_date").gte("supply_date", start).lte("supply_date", end).is("reversed_at", null),
       supabase.from("shop_recoveries").select("amount, recovery_date").gte("recovery_date", format(subDays(new Date(end), 29), "yyyy-MM-dd")).lte("recovery_date", end).is("reversed_at", null),
