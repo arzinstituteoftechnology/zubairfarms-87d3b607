@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -43,7 +43,7 @@ const navItems = [
   { to: "/settings", key: "settings", icon: SettingsIcon, adminOnly: true },
 ];
 
-const SidebarContent = ({ role, onSignOut, customersEnabled }: { role: string | null; onSignOut: () => void; customersEnabled: boolean }) => {
+const SidebarContent = ({ role, onSignOut, customersEnabled, onNavigate }: { role: string | null; onSignOut: () => void; customersEnabled: boolean; onNavigate?: () => void }) => {
   const { t } = useTranslation();
   const { can, isOwner } = usePermissions();
   return (
@@ -74,9 +74,10 @@ const SidebarContent = ({ role, onSignOut, customersEnabled }: { role: string | 
           key={n.to}
           to={n.to}
           end={n.end}
+          onClick={onNavigate}
           className={({ isActive }) =>
             cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors min-h-[44px]",
               isActive
                 ? "bg-sidebar-primary text-sidebar-primary-foreground"
                 : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -90,8 +91,9 @@ const SidebarContent = ({ role, onSignOut, customersEnabled }: { role: string | 
       {isOwner && (
         <NavLink
           to="/settings/users"
+          onClick={onNavigate}
           className={({ isActive }) => cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors min-h-[44px]",
             isActive ? "bg-sidebar-primary text-sidebar-primary-foreground"
               : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           )}
@@ -102,8 +104,9 @@ const SidebarContent = ({ role, onSignOut, customersEnabled }: { role: string | 
       {isOwner && (
         <NavLink
           to="/settings/activity"
+          onClick={onNavigate}
           className={({ isActive }) => cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors min-h-[44px]",
             isActive ? "bg-sidebar-primary text-sidebar-primary-foreground"
               : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           )}
@@ -114,8 +117,9 @@ const SidebarContent = ({ role, onSignOut, customersEnabled }: { role: string | 
       {isOwner && (
         <NavLink
           to="/settings/backup-restore"
+          onClick={onNavigate}
           className={({ isActive }) => cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors min-h-[44px]",
             isActive ? "bg-sidebar-primary text-sidebar-primary-foreground"
               : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           )}
@@ -126,8 +130,9 @@ const SidebarContent = ({ role, onSignOut, customersEnabled }: { role: string | 
       {isOwner && (
         <NavLink
           to="/settings/subscription"
+          onClick={onNavigate}
           className={({ isActive }) => cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors min-h-[44px]",
             isActive ? "bg-sidebar-primary text-sidebar-primary-foreground"
               : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           )}
@@ -138,8 +143,9 @@ const SidebarContent = ({ role, onSignOut, customersEnabled }: { role: string | 
       {isOwner && (
         <NavLink
           to="/settings/system-health"
+          onClick={onNavigate}
           className={({ isActive }) => cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors min-h-[44px]",
             isActive ? "bg-sidebar-primary text-sidebar-primary-foreground"
               : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           )}
@@ -150,8 +156,9 @@ const SidebarContent = ({ role, onSignOut, customersEnabled }: { role: string | 
       {isOwner && (
         <NavLink
           to="/settings/sms-notifications"
+          onClick={onNavigate}
           className={({ isActive }) => cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors min-h-[44px]",
             isActive ? "bg-sidebar-primary text-sidebar-primary-foreground"
               : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           )}
@@ -176,6 +183,10 @@ const AppLayout = () => {
   const { selectedDate, setSelectedDate, today, isToday } = useLedgerDate();
   const { customers_module_enabled } = useModuleFlags();
   const location = useLocation();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Close mobile drawer on route change
+  useEffect(() => { setDrawerOpen(false); }, [location.pathname]);
 
   useEffect(() => {
     if (!loading && !session) navigate("/login", { replace: true });
@@ -193,37 +204,36 @@ const AppLayout = () => {
   return (
     <SubscriptionGate>
     <PermissionsProvider>
-    <div className="min-h-screen flex bg-background">
-      <aside className="hidden md:block w-64 shrink-0 border-r border-sidebar-border">
+    <div className="min-h-screen flex bg-background overflow-x-hidden">
+      <aside className="hidden lg:block w-64 shrink-0 border-r border-sidebar-border">
         <SidebarContent role={role} onSignOut={handleSignOut} customersEnabled={customers_module_enabled} />
       </aside>
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="md:hidden h-14 border-b flex items-center px-4 gap-3 bg-card">
-          <Sheet>
+        <header className="lg:hidden sticky top-0 z-40 h-14 border-b flex items-center px-3 gap-2 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 pt-[env(safe-area-inset-top)]">
+          <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Open menu"><Menu className="h-5 w-5" /></Button>
+              <Button variant="ghost" size="icon" aria-label="Open menu" className="h-11 w-11"><Menu className="h-5 w-5" /></Button>
             </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-64">
-              <SidebarContent role={role} onSignOut={handleSignOut} customersEnabled={customers_module_enabled} />
+            <SheetContent side="left" className="p-0 w-[85vw] max-w-[320px]">
+              <SidebarContent role={role} onSignOut={handleSignOut} customersEnabled={customers_module_enabled} onNavigate={() => setDrawerOpen(false)} />
             </SheetContent>
           </Sheet>
-          <div className="flex items-center gap-2">
-            <Beef className="h-5 w-5 text-primary" />
-            <span className="font-semibold">{t("app.name")}</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <Beef className="h-5 w-5 text-primary shrink-0" />
+            <span className="font-semibold truncate">{t("app.name")}</span>
           </div>
-          <div className="ml-auto"><LanguageSwitcher /></div>
-          <NotificationBell />
+          <div className="ms-auto flex items-center gap-1"><LanguageSwitcher /><NotificationBell /></div>
         </header>
-        <div className="border-b bg-card px-4 py-3 md:px-6 flex flex-wrap items-end justify-between gap-3">
-          <div>
+        <div className="border-b bg-card px-3 py-2 sm:px-4 sm:py-3 lg:px-6 flex flex-wrap items-end gap-2 sm:gap-3">
+          <div className="flex-1 min-w-[180px]">
             <label className="text-xs uppercase tracking-wider text-muted-foreground block mb-1">{t("dashboard.select_date")}</label>
-            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value || today)} className="force-ltr w-[180px]" />
+            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value || today)} className="force-ltr w-full sm:w-[180px]" />
           </div>
-          <Button variant="outline" size="sm" disabled={isToday} onClick={() => setSelectedDate(today)}>{t("dashboard.today_btn")}</Button>
-          <div className="ml-auto hidden md:block"><NotificationBell /></div>
+          <Button variant="outline" size="sm" disabled={isToday} onClick={() => setSelectedDate(today)} className="h-10 shrink-0">{t("dashboard.today_btn")}</Button>
+          <div className="ms-auto hidden lg:block"><NotificationBell /></div>
         </div>
         <main className="flex-1 overflow-auto">
-          <div className="p-4 md:p-6 max-w-7xl mx-auto w-full">
+          <div className="p-3 sm:p-4 lg:p-6 max-w-7xl mx-auto w-full min-w-0">
             <RequirePermission key={location.pathname}>
               <Outlet />
             </RequirePermission>
