@@ -15,11 +15,20 @@ import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { ReverseTransactionDialog } from "@/components/ReverseTransactionDialog";
 import { printReport } from "@/lib/printReport";
 import {
+  computeSupplierBalances,
+  buildSupplierLedgerRows,
+  type LedgerRow,
+} from "@/lib/supplierLedger";
+import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-type Row = { id: string; name: string; phone: string | null; opening_balance: number; purchased: number; paid: number; balance: number };
+type Row = {
+  id: string; name: string; phone: string | null;
+  opening_balance: number; purchased: number; paid: number; balance: number;
+  reversedGross?: { openings: number; purchases: number; payments: number; adjustments: number };
+};
 type LedgerKind =
   | "opening" | "purchase" | "payment" | "manual_purchase" | "manual_payment"
   | "adjustment_increase" | "adjustment_decrease"
@@ -115,46 +124,28 @@ const Suppliers = () => {
   const load = async () => {
     setLoading(true);
     setRows([]);
-    // Aggregate the full lifetime balance from purchases, payments, and the manual ledger
+    // Use the shared chronological ledger calculator so summary cards match
+    // the ledger dialog, print, exports, and dashboard exactly. Reversed
+    // originals and reversal audit entries are excluded from active totals.
     const [{ data: farms }, { data: pu }, { data: pa }, { data: le }] = await Promise.all([
       supabase.from("farms").select("id, name, phone, opening_balance").is("deleted_at", null).order("name"),
-      supabase.from("purchases").select("farm_id, total_amount, paid_amount"),
-      supabase.from("farm_payments").select("farm_id, amount"),
-      supabase.from("supplier_ledger_entries").select("supplier_id, entry_type, amount"),
+      supabase.from("purchases").select("id, farm_id, total_amount, paid_amount, purchase_date, created_at, reversed_at"),
+      supabase.from("farm_payments").select("id, farm_id, amount, payment_date, created_at, reversed_at"),
+      supabase.from("supplier_ledger_entries").select("id, supplier_id, entry_type, entry_date, amount, created_at, reversed_at, original_entry_id"),
     ]);
-    const purMap: Record<string, number> = {}, payMap: Record<string, number> = {}, adjMap: Record<string, number> = {};
-    (pu ?? []).forEach((x: any) => {
-      purMap[x.farm_id] = (purMap[x.farm_id] ?? 0) + Number(x.total_amount ?? 0);
-      payMap[x.farm_id] = (payMap[x.farm_id] ?? 0) + Number(x.paid_amount ?? 0);
-    });
-    (pa ?? []).forEach((x: any) => payMap[x.farm_id] = (payMap[x.farm_id] ?? 0) + Number(x.amount));
-    (le ?? []).forEach((x: any) => {
-      const amt = Number(x.amount ?? 0);
-      const sid = x.supplier_id;
-      switch (x.entry_type) {
-        case "manual_purchase":
-        case "adjustment_increase":
-        case "reversed_payment":
-        case "reversed_manual_payment":
-          adjMap[sid] = (adjMap[sid] ?? 0) + amt; break;
-        case "manual_payment":
-        case "adjustment_decrease":
-        case "reversed_purchase":
-        case "reversed_manual_purchase":
-        case "reversed_adjustment_increase":
-        case "reversed_opening_balance":
-          adjMap[sid] = (adjMap[sid] ?? 0) - amt; break;
-        case "reversed_adjustment_decrease":
-          adjMap[sid] = (adjMap[sid] ?? 0) + amt; break;
-        // opening_balance is already stored on farms.opening_balance — don't double count
-      }
-    });
+    const balances = computeSupplierBalances(farms as any, pu as any, pa as any, le as any);
+    const byId: Record<string, typeof balances[number]> = {};
+    balances.forEach((b) => (byId[b.id] = b));
     setRows((farms ?? []).map((f: any) => {
-      const opening = Number(f.opening_balance ?? 0);
-      const purchased = purMap[f.id] ?? 0;
-      const paid = payMap[f.id] ?? 0;
-      const adj = adjMap[f.id] ?? 0;
-      return { id: f.id, name: f.name, phone: f.phone, opening_balance: opening, purchased, paid, balance: opening + purchased - paid + adj };
+      const b = byId[f.id];
+      return {
+        id: f.id, name: f.name, phone: f.phone,
+        opening_balance: b?.opening ?? 0,
+        purchased: b?.purchased ?? 0,
+        paid: b?.paid ?? 0,
+        balance: b?.balance ?? 0,
+        reversedGross: b?.reversedGross,
+      };
     }));
     setLoading(false);
   };
@@ -168,59 +159,68 @@ const Suppliers = () => {
 
   const refreshLedger = async (r: Row) => {
     const [{ data: p }, { data: pr }, { data: le }] = await Promise.all([
-      supabase.from("farm_payments").select("id, payment_date, amount, method, reversed_at").eq("farm_id", r.id),
-      supabase.from("purchases").select("id, purchase_date, total_amount, paid_amount, payment_method, meat_type, weight_kg, rate_per_kg, reversed_at").eq("farm_id", r.id),
-      supabase.from("supplier_ledger_entries").select("id, entry_date, entry_type, description, amount, reversed_at, original_entry_id").eq("supplier_id", r.id),
+      supabase.from("farm_payments").select("id, farm_id, payment_date, amount, method, created_at, reversed_at").eq("farm_id", r.id),
+      supabase.from("purchases").select("id, farm_id, purchase_date, total_amount, paid_amount, payment_method, meat_type, weight_kg, rate_per_kg, created_at, reversed_at").eq("farm_id", r.id),
+      supabase.from("supplier_ledger_entries").select("id, supplier_id, entry_date, entry_type, description, amount, created_at, reversed_at, original_entry_id").eq("supplier_id", r.id),
     ]);
-    const list: LedgerEntry[] = [];
-    (pr ?? []).forEach((x: any) => {
-      list.push({
-        id: `pu-${x.id}`, source: "purchase", kind: "purchase", date: x.purchase_date,
-        debit: Number(x.total_amount ?? 0), credit: Number(x.paid_amount ?? 0),
-        meta: `${x.meat_type} · ${Number(x.weight_kg).toFixed(2)}kg @ ${Number(x.rate_per_kg).toFixed(2)} · ${x.payment_method}`,
-        editable: !x.reversed_at,
-        rawId: x.id, raw: x, reversed: !!x.reversed_at,
-      });
+    // Detect whether the opening_balance ledger row has been reversed —
+    // if so, seed the running balance from 0 instead of farms.opening_balance.
+    const openingReversed = (le ?? []).some(
+      (x: any) => x.entry_type === "opening_balance" && x.reversed_at
+    );
+    const openingSeed = openingReversed ? 0 : Number(r.opening_balance ?? 0);
+    const chrono = buildSupplierLedgerRows(
+      openingSeed,
+      (pr ?? []) as any,
+      (p ?? []) as any,
+      (le ?? []) as any,
+    );
+    // Adapt shared LedgerRow to the local LedgerEntry shape expected by the UI.
+    const list: LedgerEntry[] = chrono.map((row) => {
+      const meta = row.meta ?? {};
+      let metaText = "";
+      let kind: LedgerKind;
+      if (row.source === "purchase") {
+        kind = "purchase";
+        metaText = `${meta.meat_type ?? ""} · ${Number(meta.weight_kg ?? 0).toFixed(2)}kg @ ${Number(meta.rate_per_kg ?? 0).toFixed(2)} · ${meta.payment_method ?? ""}`;
+      } else if (row.source === "payment") {
+        kind = "payment";
+        metaText = `Payment · ${meta.method ?? ""}`;
+      } else {
+        kind = (row.ledgerType === "opening_balance" ? "opening" : (row.ledgerType as LedgerKind));
+        metaText = meta.description || KIND_LABEL[kind];
+      }
+      const editable = !row.reversed && !row.isReversal
+        && row.source !== "ledger" ? !row.reversed : (row.source === "ledger" && !row.isReversal && !row.reversed && row.ledgerType !== "opening_balance");
+      return {
+        id: row.key,
+        source: row.source,
+        kind,
+        date: row.date,
+        debit: row.debit,
+        credit: row.credit,
+        meta: metaText,
+        editable,
+        ledgerId: row.ledgerId,
+        ledgerType: row.ledgerType,
+        rawId: row.rawId,
+        raw: meta,
+        reversed: row.reversed,
+        isReversal: row.isReversal,
+        // Pass the pre-computed chronological running balance through so
+        // the UI never recalculates on the newest-first array.
+        ...( { running: row.running } as any ),
+      };
     });
-    (p ?? []).forEach((x: any) => {
-      list.push({
-        id: `pa-${x.id}`, source: "payment", kind: "payment", date: x.payment_date,
-        debit: 0, credit: Number(x.amount), meta: `Payment · ${x.method}`,
-        editable: !x.reversed_at,
-        rawId: x.id, raw: x, reversed: !!x.reversed_at,
-      });
-    });
-    (le ?? []).forEach((x: any) => {
-      const amt = Number(x.amount ?? 0);
-      const debitTypes = new Set([
-        "opening_balance", "manual_purchase", "adjustment_increase",
-        "reversed_payment", "reversed_manual_payment", "reversed_adjustment_decrease",
-      ]);
-      const isDebit = debitTypes.has(x.entry_type);
-      const kind: LedgerKind = x.entry_type === "opening_balance" ? "opening" : (x.entry_type as LedgerKind);
-      const isReversal = String(x.entry_type).startsWith("reversed_");
-      list.push({
-        id: `le-${x.id}`, source: "ledger", kind, date: x.entry_date,
-        debit: isDebit ? amt : 0, credit: isDebit ? 0 : amt,
-        meta: x.description || KIND_LABEL[kind],
-        editable: !isReversal && !x.reversed_at && x.entry_type !== "opening_balance",
-        ledgerId: x.id, ledgerType: x.entry_type,
-        reversed: !!x.reversed_at, isReversal,
-      });
-    });
-    // Sort oldest first so we can compute a running balance, then reverse for display
-    list.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     setEntries(list);
   };
 
-  // Running balance (oldest -> newest), shown newest first
+  // Running balance was already computed chronologically by
+  // buildSupplierLedgerRows. Here we only filter and flip to newest-first.
   const filteredEntries = useMemo(() => {
-    let running = 0;
-    const withBalance = entries.map((e) => {
-      running += e.debit - e.credit;
-      return { ...e, running };
-    });
-    const filtered = ledgerFilterDate ? withBalance.filter(e => e.date === ledgerFilterDate) : withBalance;
+    const filtered = ledgerFilterDate
+      ? entries.filter(e => e.date === ledgerFilterDate)
+      : entries;
     return [...filtered].reverse();
   }, [entries, ledgerFilterDate]);
 
