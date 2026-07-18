@@ -257,7 +257,14 @@ const Dashboard = () => {
       const paidOnPurchases = (puCum ?? []).reduce((a, x: any) => a + Number(x.paid_amount ?? 0), 0);
       const extraFarmPaid = (fpCum ?? []).reduce((a, x: any) => a + Number(x.amount ?? 0), 0);
       let ledgerAdj = 0;
+      // Subtract any opening_balance entries that were later reversed —
+      // farms.opening_balance still carries the surviving number but the
+      // reversal ledger row cancels it.
+      let reversedOpeningsTotal = 0;
       (leCum ?? []).forEach((x: any) => {
+        if (x.entry_type === "opening_balance" && x.reversed_at) {
+          reversedOpeningsTotal += Number(x.amount ?? 0);
+        }
         if (x.reversed_at || x.original_entry_id) return; // skip originals-of-reversals and reversal entries
         const amt = Number(x.amount ?? 0);
         switch (x.entry_type) {
@@ -270,7 +277,10 @@ const Dashboard = () => {
           // opening_balance is already on farms.opening_balance; reversed_* are skipped above.
         }
       });
-      const payableToFarms = Math.max(0, openingFarms + totalPurchaseAmt - paidOnPurchases - extraFarmPaid + ledgerAdj);
+      const payableToFarms = Math.max(
+        0,
+        (openingFarms - reversedOpeningsTotal) + totalPurchaseAmt - paidOnPurchases - extraFarmPaid + ledgerAdj,
+      );
       // Receivables = cumulative POS "due" MINUS cumulative customer payments
       // (customer_payments do NOT write back to pos_sales.due).
       const dueFromSales = (posCum ?? []).reduce((a, x: any) => a + Number(x.due ?? 0), 0);

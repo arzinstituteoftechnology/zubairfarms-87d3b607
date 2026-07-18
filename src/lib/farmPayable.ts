@@ -46,6 +46,7 @@ export function computeFarmBalances(
   const paidMap: Record<string, number> = {};
   const adjMap: Record<string, number> = {};
   const lastPur: Record<string, string> = {};
+  const openingReversed: Record<string, boolean> = {};
 
   (purchases ?? []).forEach((x) => {
     if (x.reversed_at) return;
@@ -64,6 +65,11 @@ export function computeFarmBalances(
   });
   (ledger ?? []).forEach((x) => {
     if (cutoffDate && x.entry_date && x.entry_date > cutoffDate) return;
+    // Track opening_balance reversal so we can zero the seed even though
+    // the surviving amount still lives on farms.opening_balance.
+    if (x.entry_type === "opening_balance" && x.reversed_at) {
+      openingReversed[x.farm_id] = true;
+    }
     if (x.reversed_at || x.original_entry_id) return;
     const amt = Number(x.amount ?? 0);
     switch (x.entry_type) {
@@ -77,7 +83,7 @@ export function computeFarmBalances(
   });
 
   return (farms ?? []).map((f) => {
-    const opening = Number(f.opening_balance ?? 0);
+    const opening = openingReversed[f.id] ? 0 : Number(f.opening_balance ?? 0);
     const purchased = purMap[f.id] ?? 0;
     const paid = paidMap[f.id] ?? 0;
     const adj = adjMap[f.id] ?? 0;
