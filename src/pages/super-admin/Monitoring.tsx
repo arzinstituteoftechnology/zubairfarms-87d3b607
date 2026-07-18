@@ -250,7 +250,7 @@ export default function MonitoringPage() {
             <Metric label="Firing alerts" value={live.firing_alerts} tone={Number(live.firing_alerts ?? 0) > 0 ? "red" : "green"} />
           </div>
           <div className="text-xs text-zinc-500">
-            CPU / Memory / API latency come from Lovable Cloud advanced settings; this dashboard shows application-level metrics collected in-database.
+            CPU / Memory / API latency come from the hosting provider's advanced settings; this dashboard shows application-level metrics collected in-database.
           </div>
         </>
       )}
