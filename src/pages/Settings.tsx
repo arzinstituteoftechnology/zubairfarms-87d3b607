@@ -474,7 +474,7 @@ const SystemSection = () => (
     <CardHeader><CardTitle>System Preferences</CardTitle></CardHeader>
     <CardContent className="text-sm text-muted-foreground space-y-2">
       <div>App version: <span className="font-mono">MeatFlow 2026.07</span></div>
-      <div>Data source: Lovable Cloud</div>
+      <div>Data source: Hostinger</div>
     </CardContent>
   </Card>
 );

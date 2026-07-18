@@ -81,8 +81,8 @@ const Trust = () => {
               signed-in user belongs to.
             </p>
             <p>
-              Data is hosted on managed Lovable Cloud infrastructure (Supabase /
-              PostgreSQL) with encryption in transit (HTTPS/TLS) and encryption
+              Data is hosted on managed cloud infrastructure (PostgreSQL) with
+              encryption in transit (HTTPS/TLS) and encryption
               at rest provided by the platform. The operator does not store
               additional copies of customer data outside the platform other
               than the backups described below.
@@ -136,7 +136,7 @@ const Trust = () => {
             <p>The application currently relies on the following providers:</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>
-                <span className="font-medium text-foreground">Lovable Cloud</span> (hosting,
+                <span className="font-medium text-foreground">Managed cloud platform</span> (hosting,
                 database, authentication, storage, edge functions).
               </li>
               <li>
@@ -225,8 +225,8 @@ const Trust = () => {
         <p className="text-xs text-muted-foreground">
           This page describes controls and practices that are currently in
           place. It is editable content maintained by the operator of this
-          MeatFlow ERP deployment and is not a Lovable-issued certification or
-          independent audit. Specific compliance certifications (such as SOC 2,
+          MeatFlow ERP deployment and is not an independent certification or
+          audit. Specific compliance certifications (such as SOC 2,
           ISO 27001, GDPR, HIPAA or PCI) are not claimed on this page.
         </p>
       </main>

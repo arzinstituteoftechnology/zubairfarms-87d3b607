@@ -3,7 +3,7 @@
 - **Build Number:** 2026.07.17.1
 - **Release Date:** 2026-07-17
 - **Schema Version:** 71 (migrations)
-- **Database Version:** PostgreSQL 15 (Lovable Cloud)
+- **Database Version:** PostgreSQL 15
 - **Edge Functions:** 11
 - **Test Suite:** 108 / 108 passing (14 files)
 
