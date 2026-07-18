@@ -49,8 +49,13 @@ const SETTINGS_TABLES = [
   "user_permission_overrides",
 ];
 
-// Logs are wiped in every reset mode.
-const LOG_TABLES = ["activity_logs"];
+// Activity logs are retained by policy — they are immutable security/audit
+// records protected by a BEFORE DELETE trigger (`trg_activity_logs_no_delete`),
+// so even service-role deletes are blocked. We deliberately leave this array
+// empty and the verification pass below skips RETAINED_TABLES so retained
+// logs don't count as "reset incomplete".
+const LOG_TABLES: string[] = [];
+const RETAINED_TABLES = new Set<string>(["activity_logs"]);
 
 // Optional/cache tables used by some deployments. Missing tables are skipped.
 const OPTIONAL_TRANSACTION_TABLES = [
@@ -76,7 +81,13 @@ const SHOP_CHILD_TABLES = new Set([
   "supplies", "shop_recoveries", "shop_ledger_entries",
 ]);
 const FARM_CHILD_TABLES = new Set([
-  "purchases", "farm_payments", "expenses", "deliveries", "supplier_ledger_entries",
+  "purchases", "farm_payments", "expenses", "deliveries",
+]);
+// supplier_ledger_entries stores the counterparty via `supplier_id` (which
+// references farms.id). It has NO `farm_id` column — querying farm_id caused
+// a "column does not exist" error. Sweep it via supplier_id instead.
+const SUPPLIER_CHILD_TABLES = new Set([
+  "supplier_ledger_entries",
 ]);
 const CUSTOMER_CHILD_TABLES = new Set([
   "pos_sales", "customer_payments",
@@ -373,6 +384,9 @@ async function resetTenant(
     }
     if (farmIds.length && FARM_CHILD_TABLES.has(table)) {
       await deleteWhereIn(table, "farm_id", farmIds);
+    }
+    if (farmIds.length && SUPPLIER_CHILD_TABLES.has(table)) {
+      await deleteWhereIn(table, "supplier_id", farmIds);
     }
     const after = deleted_counts[table] ?? 0;
     const tableErr = Object.entries(errors).find(([k]) => k.startsWith(`${table}.`))?.[1] as any;
