@@ -49,6 +49,7 @@ type LedgerEntry = {
   raw?: any;
   reversed?: boolean;
   isReversal?: boolean;
+  running?: number;
 };
 
 const KIND_LABEL: Record<LedgerKind, string> = {
@@ -150,6 +151,21 @@ const Suppliers = () => {
     setLoading(false);
   };
   useEffect(() => { load(); }, [selectedDate]);
+
+  // Keep the open ledger dialog's summary in sync with the freshly recalculated
+  // row totals after any add/edit/delete/reverse operation.
+  useEffect(() => {
+    if (!ledger) return;
+    const fresh = rows.find((r) => r.id === ledger.id);
+    if (fresh && (
+      fresh.opening_balance !== ledger.opening_balance ||
+      fresh.purchased !== ledger.purchased ||
+      fresh.paid !== ledger.paid ||
+      fresh.balance !== ledger.balance
+    )) {
+      setLedger(fresh);
+    }
+  }, [rows, ledger]);
 
   const openLedger = async (r: Row) => {
     setLedger(r);
