@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import logoAsset from "@/assets/logo.png.asset.json";
+import cluckAsset from "@/assets/cluck.mp3.asset.json";
 
 const TOTAL_MS = 2500;
 const EXIT_MS = 600;
@@ -24,12 +25,30 @@ export const SplashScreen = () => {
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
+    // Play chicken cluck once. Fail silently if autoplay is blocked.
+    const audio = new Audio(cluckAsset.url);
+    audio.volume = 0.4;
+    audio.preload = "auto";
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => {
+        /* autoplay blocked — silent */
+      });
+    }
+
     const t1 = window.setTimeout(() => setExiting(true), holdMs);
     const t2 = window.setTimeout(() => setMounted(false), TOTAL_MS);
 
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.src = "";
+      } catch {
+        /* noop */
+      }
       document.body.style.overflow = prevOverflow;
     };
   }, []);
