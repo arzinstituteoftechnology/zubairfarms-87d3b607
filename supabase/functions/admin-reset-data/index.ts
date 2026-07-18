@@ -402,6 +402,9 @@ async function resetTenant(
   // failure so the caller can surface the offending tables to the user.
   const remaining_counts: Record<string, number> = {};
   const verifyTable = async (table: string) => {
+    // Immutable security logs are retained by policy — never count as
+    // "reset incomplete".
+    if (RETAINED_TABLES.has(table)) return;
     let total = 0;
     try {
       const { count, error } = await admin
