@@ -69,6 +69,8 @@ const App = () => (
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/trust" element={<Trust />} />
             <Route path="/subscription-expired" element={<SubscriptionExpired />} />
+            <Route path="/admin" element={<Navigate to="/super-admin/login" replace />} />
+            <Route path="/admin/login" element={<Navigate to="/super-admin/login" replace />} />
             <Route
               path="/super-admin/login"
               element={
