@@ -2,3 +2,5 @@
 - POS sales deduct stock through `stock_adjustments` rows with reason `pos_sale` (posted by a DB trigger) and are voided via `void_pos_sale`, never deleted. Loss/mortality queries must exclude reason `pos_sale`. Why: one stock formula everywhere.
 - Shop collections (Daily Recovery + Shop Ledger manual payments) come from `src/lib/recoveries.ts`; POS bill/profit/totals from `src/lib/posSales.ts`. Why: one shared source, no double counting.
 - Never use `window.confirm` for destructive actions; use AlertDialog. Why: it is silently blocked in embedded previews.
+- Closing lock rule (DB trigger `guard_edit_after_finalized_closing`): a finalized, unreversed closing blocks insert/update/delete of stock-changing records only (purchases, supplies, stock_adjustments, pos_sales) dated on/before it, checking old and new dates; money-only records stay editable. Errors start with `CLOSING_LOCKED:` and are reformatted globally by `src/lib/closingLockToast.ts`. Why: one predictable lock everywhere.
+- A finalized closing row is shown from its stored values, never recomputed from live data. Why: closings must stay frozen and match Closing History.

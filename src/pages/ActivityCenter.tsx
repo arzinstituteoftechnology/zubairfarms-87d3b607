@@ -35,7 +35,7 @@ export default function ActivityCenter() {
   const { isOwner } = usePermissions();
   const [rows, setRows] = useState<ActivityLogRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [total, setTotal] = useState(0);
+  const [total, setTotal] = useState<number | null>(null);
   const [page, setPage] = useState(0);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
@@ -76,8 +76,14 @@ export default function ActivityCenter() {
       .select("id, created_at, action, entity, entity_id, tenant_id, actor_user_id, metadata")
       .order("created_at", { ascending: false })
       .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1));
+    setTotal(null);
     applyFilters(supabase.from("activity_logs").select("id", { count: "exact", head: true }))
-      .then(({ count }: any) => { if (typeof count === "number") setTotal(count); }, () => {});
+      .then(async ({ count, error }: any) => {
+        if (!error && typeof count === "number") { setTotal(count); return; }
+        // Exact count can time out on very large logs — fall back to an estimate.
+        const r: any = await applyFilters(supabase.from("activity_logs").select("id", { count: "estimated", head: true }));
+        if (typeof r?.count === "number") setTotal(r.count);
+      }, () => {});
 
     const { data, error } = await query;
     if (error) { setLoading(false); toast.error("Could not load activity: " + error.message); return; }
@@ -135,7 +141,8 @@ export default function ActivityCenter() {
     );
   }
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const knownTotal = total ?? (page * PAGE_SIZE + rows.length + (rows.length === PAGE_SIZE ? 1 : 0));
+  const totalPages = Math.max(1, Math.ceil(knownTotal / PAGE_SIZE));
 
   return (
     <div className="space-y-4">
@@ -259,7 +266,7 @@ export default function ActivityCenter() {
       </Card>
 
       <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">{total.toLocaleString()} entries · Page {page + 1} of {totalPages}</span>
+        <span className="text-muted-foreground">{total == null ? (rows.length ? `Showing ${(page * PAGE_SIZE + 1).toLocaleString()}–${(page * PAGE_SIZE + rows.length).toLocaleString()} (counting…)` : "0 entries") : `${total.toLocaleString()} entries`} · Page {page + 1} of {totalPages}</span>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>Prev</Button>
           <Button size="sm" variant="outline" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>

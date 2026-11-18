@@ -1,6 +1,6 @@
 import { fetchCollections } from "@/lib/recoveries";
 import { fetchPosSales, posProfitLines, posTotals } from "@/lib/posSales";
-import { useCallback, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
@@ -62,14 +62,18 @@ const DEFAULT_REASONS: { value: string; label: string }[] = [
 const emptyBreakdown = (): Record<string, number> => Object.fromEntries(DEFAULT_REASONS.map(r => [r.value, 0]));
 const emptyKpi: KPI = { purchaseKg: 0, purchaseAmt: 0, supplyKg: 0, supplyAmt: 0, stockKg: 0, profit: 0, grossProfit: 0, generalExpense: 0, deliveryExpense: 0, finalizedShortageCost: 0, closingStatus: "none", expectedClosingKg: 0, physicalClosingKg: 0, shortageKg: 0, surplusKg: 0, shortageCostAll: 0, surplusEstValue: 0, hasActivityWithoutClosing: false, closingCount: 0, payableToFarms: 0, receivableFromCustomers: 0, receivableFromShops: 0, recoveryToday: 0, recoveryWeek: 0, recoveryMonth: 0, mortalityToday: 0, mortalityWeek: 0, mortalityMonth: 0, mortalityCost: 0, inventoryLossToday: 0, breakdownToday: emptyBreakdown(), breakdownWeek: emptyBreakdown(), breakdownMonth: emptyBreakdown() };
 
-const KpiCard = ({ icon: Icon, label, value, sub, tone = "default", onClick }: any) => (
+// While the first load is in flight, cards show a placeholder instead of 0.00.
+const KpiLoadingCtx = createContext(false);
+const KpiCard = ({ icon: Icon, label, value, sub, tone = "default", onClick }: any) => {
+  const pending = useContext(KpiLoadingCtx);
+  return (
   <Card onClick={onClick} className={onClick ? "cursor-pointer hover:border-primary/50 transition-colors" : undefined}>
     <CardContent className="p-5">
       <div className="flex items-start justify-between">
         <div>
           <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
-          <div className={`mt-1 text-2xl font-bold ${tone === "danger" ? "text-destructive" : tone === "success" ? "text-success" : tone === "warning" ? "text-orange-600" : tone === "info" ? "text-primary" : ""}`}>{value}</div>
-          {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
+          {pending ? <div className="mt-2 h-7 w-28 rounded bg-muted animate-pulse" aria-label="Loading" /> : <div className={`mt-1 text-2xl font-bold ${tone === "danger" ? "text-destructive" : tone === "success" ? "text-success" : tone === "warning" ? "text-orange-600" : tone === "info" ? "text-primary" : ""}`}>{value}</div>}
+          {sub && !pending && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
         </div>
         <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${tone === "danger" ? "bg-destructive/10 text-destructive" : tone === "success" ? "bg-success/10 text-success" : tone === "warning" ? "bg-orange-500/10 text-orange-600" : tone === "info" ? "bg-primary/10 text-primary" : "bg-primary/10 text-primary"}`}>
           <Icon className="h-5 w-5" />
@@ -77,7 +81,8 @@ const KpiCard = ({ icon: Icon, label, value, sub, tone = "default", onClick }: a
       </div>
     </CardContent>
   </Card>
-);
+  );
+};
 
 const Dashboard = () => {
   const { t } = useTranslation();
@@ -87,6 +92,7 @@ const Dashboard = () => {
   const [reconcile, setReconcile] = useState<{ ok: boolean; delta: number } | null>(null);
   const [chart, setChart] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedOnce, setLoadedOnce] = useState(false);
   const { selectedDate, setSelectedDate, today: currentDate, isToday } = useLedgerDate();
   const { customers_module_enabled: customersEnabled } = useModuleFlags();
   const { adjustmentReasons } = useSettingsLists();
@@ -363,6 +369,7 @@ const Dashboard = () => {
       setChart(days);
 
       setLoading(false);
+      setLoadedOnce(true);
   }, [selectedDate]);
 
   useEffect(() => { setKpi(emptyKpi); setChart([]); load(); }, [load]);
@@ -388,6 +395,7 @@ const Dashboard = () => {
   }, [load]);
 
   return (
+    <KpiLoadingCtx.Provider value={!loadedOnce}>
     <div className="space-y-6">
       <SeoHead
         title="Dashboard — Zubair MeatFlow"
@@ -625,6 +633,7 @@ const Dashboard = () => {
         </Card>
       </div>
     </div>
+    </KpiLoadingCtx.Provider>
   );
 };
 export default Dashboard;

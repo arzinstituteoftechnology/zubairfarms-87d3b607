@@ -51,3 +51,12 @@ describe("POS in profit and totals", () => {
     expect(t.due).toBe(0);
   });
 });
+
+describe("negative total", () => {
+  it("shows no change and no due when the total is negative", () => {
+    const b = computeBill([{ weight: 1, rate: 100, faraq: 0 }], 600, 0);
+    expect(b.negativeTotal).toBe(true);
+    expect(b.change).toBe(0);
+    expect(b.due).toBe(0);
+  });
+});

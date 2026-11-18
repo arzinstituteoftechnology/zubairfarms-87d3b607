@@ -117,7 +117,8 @@ const ClosingHistory = () => {
   }, [from, to, meatType, varianceFilter, reloadKey]);
 
   const totals = useMemo(() => {
-    return rows.reduce((a, r) => ({
+    // Reversed closings are audit-only: they never count in totals.
+    return rows.filter((r: any) => !r.reversed_at).reduce((a, r) => ({
       opening: a.opening + Number(r.opening_stock),
       system: a.system + Number(r.system_stock),
       physical: a.physical + Number(r.physical_stock),
@@ -254,7 +255,7 @@ const ClosingHistory = () => {
                 ))}
                 {rows.length > 0 && (
                   <TableRow className="font-semibold bg-muted/50">
-                    <TableCell colSpan={2}>Totals</TableCell>
+                    <TableCell colSpan={2}>Totals <span className="block text-[10px] font-normal text-muted-foreground">active closings only — reversed rows excluded</span></TableCell>
                     <TableCell className="text-end">{fmtKg(totals.opening)}</TableCell>
                     <TableCell className="text-end">{fmtKg(totals.system)}</TableCell>
                     <TableCell className="text-end">{fmtKg(totals.physical)}</TableCell>
@@ -273,7 +274,7 @@ const ClosingHistory = () => {
       </Card>
       <ReverseTransactionDialog
         open={!!target}
-        target={target ? { label: `${target.meat_type} closing on ${target.closing_date}`, amount: 0, date: target.closing_date } : null}
+        target={target ? { label: `${target.meat_type} closing on ${target.closing_date}`, amount: Number(target.shortage_cost ?? 0) || Number(target.surplus_value ?? 0), date: target.closing_date } : null}
         onOpenChange={(o) => { if (!o) setTarget(null); }}
         onConfirm={async (reason, notes) => {
           if (!target) return;

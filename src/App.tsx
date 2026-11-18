@@ -1,3 +1,4 @@
+import "@/lib/closingLockToast";
 import { ConfirmHost } from "@/components/ConfirmHost";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";

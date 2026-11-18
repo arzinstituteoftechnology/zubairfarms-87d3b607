@@ -63,9 +63,11 @@ export const computeBill = (lines: { weight: number; rate: number; faraq: number
   const total = money2(subtotal - discount);
   const paidAmt = paid == null ? Math.max(0, total) : money2(paid);
   const balance = money2(total - paidAmt); // >0 due, <0 change to return
+  // A negative total is not a valid bill: no due and no change can be computed.
+  const negativeTotal = total < 0;
   return {
-    items, subtotal, total, paid: paidAmt,
-    due: Math.max(0, balance), change: Math.max(0, -balance),
+    items, subtotal, total, paid: paidAmt, negativeTotal,
+    due: negativeTotal ? 0 : Math.max(0, balance), change: negativeTotal ? 0 : Math.max(0, -balance),
     discountTooHigh: discount > subtotal,
     anyFaraqTooHigh: items.some((i) => i.faraqTooHigh),
   };

@@ -22,6 +22,20 @@
       "when": 1795035220604,
       "tag": "0002_usage_excludes_archived",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795039593401,
+      "tag": "0003_closing_lock_rule_and_reversal_dates",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795039747650,
+      "tag": "0004_closing_lock_blocks_new_stock_records",
+      "breakpoints": true
     }
   ]
 }

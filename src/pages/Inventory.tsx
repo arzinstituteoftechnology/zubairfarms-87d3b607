@@ -311,7 +311,7 @@ const Inventory = () => {
           <Icon className="h-4 w-4 text-white" />
         </div>
       </CardHeader>
-      <CardContent><div className="text-2xl font-bold">{value}</div></CardContent>
+      <CardContent>{loading ? <div className="h-7 w-24 rounded bg-muted animate-pulse" aria-label="Loading" /> : <div className="text-2xl font-bold">{value}</div>}</CardContent>
     </Card>
   );
 

@@ -193,12 +193,12 @@ const DailyRecovery = () => {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3 print-area">
-        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Total</div><div className="text-xl font-bold">{fmtMoney(totals.total)}</div></CardContent></Card>
-        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Cash</div><div className="text-lg font-semibold">{fmtMoney(totals.cash)}</div></CardContent></Card>
-        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Bank</div><div className="text-lg font-semibold">{fmtMoney(totals.bank)}</div></CardContent></Card>
-        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">JazzCash</div><div className="text-lg font-semibold">{fmtMoney(totals.jazzcash)}</div></CardContent></Card>
-        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Easypaisa</div><div className="text-lg font-semibold">{fmtMoney(totals.easypaisa)}</div></CardContent></Card>
-        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Shop Ledger payments</div><div className="text-lg font-semibold">{fmtMoney(totals.ledger)}</div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Total</div><div className="text-xl font-bold">{loading ? "…" : fmtMoney(totals.total)}</div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Cash</div><div className="text-lg font-semibold">{loading ? "…" : fmtMoney(totals.cash)}</div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Bank</div><div className="text-lg font-semibold">{loading ? "…" : fmtMoney(totals.bank)}</div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">JazzCash</div><div className="text-lg font-semibold">{loading ? "…" : fmtMoney(totals.jazzcash)}</div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Easypaisa</div><div className="text-lg font-semibold">{loading ? "…" : fmtMoney(totals.easypaisa)}</div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Shop Ledger payments</div><div className="text-lg font-semibold">{loading ? "…" : fmtMoney(totals.ledger)}</div></CardContent></Card>
       </div>
 
       <Card className="p-4">

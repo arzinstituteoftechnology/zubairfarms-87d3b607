@@ -72,6 +72,7 @@ type Row = {
   closingId?: string;
   status?: "draft" | "finalized";
   reversed?: boolean;
+  closingAmount?: number;
   saving?: boolean;
 };
 
@@ -126,7 +127,7 @@ const StockClosing = () => {
   const [loading, setLoading] = useState(true);
   const [audit, setAudit] = useState<Adjustment[]>([]);
   const [reverseTarget, setReverseTarget] = useState<Adjustment | null>(null);
-  const [reverseClosing, setReverseClosing] = useState<{ id: string; meat: string } | null>(null);
+  const [reverseClosing, setReverseClosing] = useState<{ id: string; meat: string; amount?: number } | null>(null);
   const [confirmIdx, setConfirmIdx] = useState<number | null>(null);
   const [pendingStatus, setPendingStatus] = useState<"draft" | "finalized">("draft");
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
@@ -228,6 +229,35 @@ const StockClosing = () => {
       const adjustments = round2(aMap.get(mt) ?? 0);
       const system = round2(opening + purchases - supplies + adjustments);
       const ex = existingMap.get(mt);
+      const carried = {
+        farm_id: ex?.farm_id ?? null,
+        shop_id: ex?.shop_id ?? null,
+        bird_count: ex?.bird_count != null ? String(ex.bird_count) : "",
+        closingAmount: num(ex?.shortage_cost) || num(ex?.surplus_value),
+      };
+      // A finalized (not reversed) closing is frozen: show exactly what was
+      // stored at finalization, never a live recomputation.
+      if (ex && ex.status === "finalized" && !ex.reversed_at) {
+        const variance = num(ex.variance_weight ?? ex.difference);
+        const closingMortality = (ex.reason ?? "") === "mortality" && variance < 0 ? Math.abs(variance) : 0;
+        return {
+          meat_type: mt,
+          opening: round2(num(ex.opening_stock)), openingSource: "closing" as const,
+          purchases: round2(num(ex.purchases_kg)), supplies: round2(num(ex.supplies_kg)),
+          adjustments: round2(num(ex.adjustments_kg)),
+          system: round2(num(ex.expected_closing_stock ?? ex.system_stock)),
+          mortality: round2(num(ex.mortality_weight) + closingMortality),
+          positiveAdjustments: round2(num(ex.positive_adjustments_kg)),
+          negativeAdjustments: round2(num(ex.negative_adjustments_kg)),
+          physical: String(num(ex.physical_stock)),
+          reason: (ex.reason as Reason) ?? "",
+          notes: ex.notes ?? "",
+          ...carried,
+          closingId: ex.id,
+          status: "finalized" as const,
+          reversed: false,
+        };
+      }
       return {
         meat_type: mt,
         opening, openingSource, purchases, supplies, adjustments, system,
@@ -237,6 +267,7 @@ const StockClosing = () => {
         physical: ex ? String(num(ex.physical_stock)) : "",
         reason: (ex?.reason as Reason) ?? "",
         notes: ex?.notes ?? "",
+        ...carried,
         closingId: ex?.id,
         status: (ex?.status as "draft" | "finalized") ?? undefined,
         reversed: !!ex?.reversed_at,
@@ -461,6 +492,7 @@ const StockClosing = () => {
                           className="h-8 w-28 text-end force-ltr"
                           value={r.physical}
                           onChange={(e) => updateRow(i, { physical: e.target.value })}
+                          disabled={r.status === "finalized"}
                           placeholder="0.00"
                         />
                       </TableCell>
@@ -534,7 +566,7 @@ const StockClosing = () => {
                           )}
                           {r.status === "finalized" && (
                             canReverse && r.closingId ? (
-                              <Button size="sm" variant="outline" onClick={() => setReverseClosing({ id: r.closingId!, meat: r.meat_type })}>
+                              <Button size="sm" variant="outline" onClick={() => setReverseClosing({ id: r.closingId!, meat: r.meat_type, amount: r.closingAmount })}>
                                 <Undo2 className="h-3.5 w-3.5 mr-1" /> Reverse to edit
                               </Button>
                             ) : (
@@ -607,7 +639,7 @@ const StockClosing = () => {
 
       <ReverseTransactionDialog
         open={!!reverseClosing}
-        target={reverseClosing ? { label: `${reverseClosing.meat} closing on ${selectedDate}`, amount: 0, date: selectedDate } : null}
+        target={reverseClosing ? { label: `${reverseClosing.meat} closing on ${selectedDate}`, amount: reverseClosing.amount ?? 0, date: selectedDate } : null}
         onOpenChange={(o) => { if (!o) setReverseClosing(null); }}
         onConfirm={async (reason, notes) => {
           if (!reverseClosing) return;
