@@ -80,7 +80,7 @@ const Inventory = () => {
       { data: closingsToday },
     ] = await Promise.all([
       supabase.from("stock_closings").select("meat_type, physical_stock, closing_date")
-        .lt("closing_date", selectedDate).order("closing_date", { ascending: false }),
+        .lt("closing_date", selectedDate).eq("status", "finalized" as any).is("reversed_at", null).order("closing_date", { ascending: false }),
       supabase.from("purchases").select("meat_type, weight_kg").eq("purchase_date", selectedDate).is("reversed_at", null),
       supabase.from("supplies").select("meat_type, weight_kg").eq("supply_date", selectedDate).is("reversed_at", null),
       supabase.from("stock_adjustments").select("meat_type, quantity_kg, reason, reason_id")
@@ -92,7 +92,7 @@ const Inventory = () => {
       // For summary cards (today/week/month totals of negative adjustments)
       supabase.from("stock_adjustments").select("quantity_kg, adjustment_date")
         .gte("adjustment_date", monthStart).lte("adjustment_date", today)
-        .is("reversed_at", null).is("original_adjustment_id", null).lt("quantity_kg", 0),
+        .is("reversed_at", null).is("original_adjustment_id", null).lt("quantity_kg", 0).or("reason.is.null,reason.neq.pos_sale"),
       supabase.from("stock_closings").select("meat_type, physical_stock, status, reversed_at")
         .eq("closing_date", selectedDate).is("reversed_at", null),
     ]);

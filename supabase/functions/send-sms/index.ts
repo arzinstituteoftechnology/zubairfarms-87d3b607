@@ -34,22 +34,44 @@ interface SmsProvider {
 function TwilioProvider(): SmsProvider {
   const accountSid = Deno.env.get("SMS_ACCOUNT_ID") ?? "";
   const authToken = Deno.env.get("SMS_AUTH_TOKEN") ?? "";
-  const from = Deno.env.get("SMS_SENDER_ID") ?? "";
+  const configured = (Deno.env.get("SMS_FROM_NUMBER") ?? Deno.env.get("SMS_SENDER_ID") ?? "").trim();
+  const messagingServiceSid = (Deno.env.get("TWILIO_MESSAGING_SERVICE_SID") ?? "").trim();
+  const auth = "Basic " + btoa(`${accountSid}:${authToken}`);
+  const isE164 = (v: string) => /^\+[1-9]\d{6,14}$/.test(v);
+  // Look up a phone number owned by the Twilio account, used when the
+  // configured sender is an alphanumeric name Twilio rejects as a caller ID.
+  async function ownedNumber(): Promise<string | null> {
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/IncomingPhoneNumbers.json?PageSize=1`, { headers: { Authorization: auth } });
+    const j = await r.json().catch(() => ({}));
+    return j?.incoming_phone_numbers?.[0]?.phone_number ?? null;
+  }
+  async function post(params: Record<string, string>) {
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+      method: "POST",
+      headers: { Authorization: auth, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(params),
+    });
+    return { res, json: await res.json().catch(() => ({})) as any };
+  }
   return {
     name: "twilio",
     async send(to, body, senderId) {
       if (!accountSid || !authToken) return { ok: false, error_code: "config", error_message: "Twilio credentials missing" };
-      const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
-      const form = new URLSearchParams({ To: to, From: senderId || from, Body: body });
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: "Basic " + btoa(`${accountSid}:${authToken}`),
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: form,
-      });
-      const json = await res.json().catch(() => ({}));
+      const wanted = (senderId || configured).trim();
+      let params: Record<string, string>;
+      if (messagingServiceSid) params = { To: to, MessagingServiceSid: messagingServiceSid, Body: body };
+      else if (isE164(wanted)) params = { To: to, From: wanted, Body: body };
+      else {
+        const num = await ownedNumber();
+        params = num ? { To: to, From: num, Body: body } : { To: to, From: wanted, Body: body };
+      }
+      let { res, json } = await post(params);
+      // 21212 = invalid From. Retry once with an owned number.
+      if (!res.ok && Number(json.code) === 21212 && !messagingServiceSid) {
+        const num = await ownedNumber();
+        if (num && num !== params.From) ({ res, json } = await post({ To: to, From: num, Body: body }));
+        else if (!num) return { ok: false, error_code: "21212", error_message: "Twilio rejected the sender name and this Twilio account has no phone number. Buy a Twilio number or set SMS_FROM_NUMBER (e.g. +14155550123).", raw: json };
+      }
       if (!res.ok) return { ok: false, error_code: String(json.code ?? res.status), error_message: json.message ?? "twilio error", raw: json };
       return { ok: true, provider_message_id: json.sid, provider_status: json.status, raw: json };
     },

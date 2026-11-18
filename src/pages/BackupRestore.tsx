@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Download, Trash2, ShieldAlert, RotateCcw, Play, ShieldCheck, Loader2 } from "lucide-react";
 import { RestoreWizard } from "@/components/backup/RestoreWizard";
@@ -82,11 +83,18 @@ export default function BackupRestore() {
     window.open(data.url, "_blank");
   };
 
-  const deleteBackup = async (id: string) => {
-    if (!confirm("Delete this backup permanently? This cannot be undone.")) return;
-    const { error } = await (supabase as any).rpc("delete_backup", { _id: id, _reason: "Owner deletion via Backup Center" });
+  // Browser confirm() is silently blocked inside embedded previews, so the
+  // confirmation uses an in-app dialog instead.
+  const [delTarget, setDelTarget] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const deleteBackup = (id: string) => setDelTarget(id);
+  const confirmDelete = async () => {
+    if (!delTarget) return;
+    setDeleting(true);
+    const { error } = await (supabase as any).rpc("delete_backup", { _id: delTarget, _reason: "Owner deletion via Backup Center" });
+    setDeleting(false);
     if (error) toast.error(error.message);
-    else { toast.success("Backup deleted"); load(); }
+    else { toast.success("Backup deleted"); setDelTarget(null); load(); }
   };
 
   const saveSettings = async (schedule: BackupSchedule, retain: number) => {
@@ -249,6 +257,20 @@ export default function BackupRestore() {
         backups={rows.filter((r) => r.status === "success") as any}
         onDone={load}
       />
+      <AlertDialog open={!!delTarget} onOpenChange={(o) => { if (!o) setDelTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this backup permanently?</AlertDialogTitle>
+            <AlertDialogDescription>This cannot be undone. The deletion is recorded in the activity log.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); confirmDelete(); }} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleting ? "Deleting…" : "Delete backup"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

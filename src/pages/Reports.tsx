@@ -1,3 +1,6 @@
+import { fetchPosSales, posProfitLines, posTotals } from "@/lib/posSales";
+import { mergeCollections } from "@/lib/recoveries";
+import { logActivity } from "@/lib/activityLog";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -194,13 +197,23 @@ const loaders: Record<string, ReportDef["load"]> = {
     if (f.shop_id !== "all") q = q.eq("shop_id", f.shop_id);
     if (f.user_id !== "all") q = q.eq("created_by", f.user_id);
     q = applyReversedFilter(q, f.includeReversed);
-    const { data } = await q;
-    const rows = (data ?? []).map((r: any) => ({
+    let lq = (supabase as any).from("shop_ledger_entries")
+      .select("id, shop_id, entry_date, entry_type, amount, description, created_by, created_at, reversed_at, original_entry_id")
+      .eq("entry_type", "manual_payment").gte("entry_date", f.from).lte("entry_date", f.to);
+    if (f.shop_id !== "all") lq = lq.eq("shop_id", f.shop_id);
+    if (f.user_id !== "all") lq = lq.eq("created_by", f.user_id);
+    if (!f.includeReversed) lq = lq.is("reversed_at", null);
+    const [{ data }, { data: lp }] = await Promise.all([q, lq]);
+    const ledgerRows = mergeCollections([], lp ?? []).map((r) => ({
+      recovery_date: r.date, amount: r.amount, payment_method: "Shop Ledger payment", collected_by: "—",
+      notes: r.notes, shop_id: r.shop_id, created_by: r.created_by, reversed_at: r.reversed_at,
+    }));
+    const rows = [...(data ?? []), ...ledgerRows].map((r: any) => ({
       ...r, shop: o.shopMap.get(r.shop_id) ?? "—",
       user: o.userMap.get(r.created_by) ?? "—",
       status: r.reversed_at ? "Reversed" : "Active",
-    }));
-    const total = rows.reduce((a, r) => a + num(r.amount), 0);
+    })).sort((a: any, b: any) => String(b.recovery_date).localeCompare(String(a.recovery_date)));
+    const total = rows.filter((r: any) => !r.reversed_at).reduce((a, r) => a + num(r.amount), 0);
     return {
       rows,
       columns: [
@@ -561,7 +574,7 @@ const loaders: Record<string, ReportDef["load"]> = {
   inventory_loss: async (f, o) => {
     let q = supabase.from("stock_adjustments")
       .select("adjustment_date, meat_type, quantity_kg, reason, notes, farm_id, shop_id, created_by, reversed_at")
-      .lt("quantity_kg", 0)
+      .lt("quantity_kg", 0).or("reason.is.null,reason.neq.pos_sale")
       .is("original_adjustment_id", null)
       .gte("adjustment_date", f.from).lte("adjustment_date", f.to)
       .order("adjustment_date", { ascending: false });
@@ -623,7 +636,7 @@ const loaders: Record<string, ReportDef["load"]> = {
       supabase.from("expenses").select("amount, expense_date")
         .gte("expense_date", f.from).lte("expense_date", f.to),
       supabase.from("stock_adjustments").select("quantity_kg, adjustment_date")
-        .lt("quantity_kg", 0).is("reversed_at", null).is("original_adjustment_id", null)
+        .lt("quantity_kg", 0).or("reason.is.null,reason.neq.pos_sale").is("reversed_at", null).is("original_adjustment_id", null)
         .gte("adjustment_date", f.from).lte("adjustment_date", f.to),
     ]);
     const sumP = (p ?? []).reduce((acc: any, x: any) => ({
@@ -812,7 +825,7 @@ const loaders: Record<string, ReportDef["load"]> = {
   stock_adj_analysis: async (f, o) => {
     let q = supabase.from("stock_adjustments")
       .select("adjustment_date, meat_type, quantity_kg, reason, notes, created_by, reversed_at")
-      .is("original_adjustment_id", null)
+      .is("original_adjustment_id", null).or("reason.is.null,reason.neq.pos_sale")
       .gte("adjustment_date", f.from).lte("adjustment_date", f.to)
       .order("adjustment_date", { ascending: false });
     if (f.meat_type !== "all") q = q.eq("meat_type", f.meat_type);
@@ -854,6 +867,47 @@ const loaders: Record<string, ReportDef["load"]> = {
     };
   },
 
+  sales: async (f, o) => {
+    const all = await fetchPosSales(f.from, f.to);
+    const list = f.includeReversed ? all : all.filter((s) => !s.voided_at);
+    const rows = list.map((s) => ({
+      sale_date: s.sale_date, invoice_no: "#" + s.invoice_no,
+      items: (s.pos_sale_items ?? []).map((i) => `${i.meat_type} ${Number(i.weight_kg)}kg @ ${Number(i.final_rate)}`).join(", "),
+      qty: (s.pos_sale_items ?? []).reduce((a, i) => a + num(i.weight_kg), 0),
+      total: num(s.total), paid: num(s.paid), due: num(s.due),
+      method: s.payment_method ?? "—", user: o.userMap.get(s.created_by ?? "") ?? "—",
+      status: s.voided_at ? `Void — ${s.void_reason ?? ""}` : "Active",
+    }));
+    const t = posTotals(all);
+    return {
+      rows,
+      columns: [
+        { label: "Date", key: "sale_date" },
+        { label: "Invoice", key: "invoice_no" },
+        { label: "Items", key: "items" },
+        { label: "Qty (kg)", key: "qty", format: "kg", align: "right" },
+        { label: "Total", key: "total", format: "money", align: "right" },
+        { label: "Paid", key: "paid", format: "money", align: "right" },
+        { label: "Due", key: "due", format: "money", align: "right" },
+        { label: "Method", key: "method" },
+        { label: "User", key: "user" },
+        { label: "Status", key: "status" },
+      ],
+      totals: [
+        { label: "Invoices", value: String(t.count) },
+        { label: "Sales", value: fmtMoney(t.total) },
+        { label: "Paid", value: fmtMoney(t.paid) },
+        { label: "Due", value: fmtMoney(t.due) },
+      ],
+      kpis: [
+        { label: "Invoices", value: String(t.count), icon: ShoppingCart, tone: "bg-blue-500" },
+        { label: "Sales", value: fmtMoney(t.total), icon: DollarSign, tone: "bg-emerald-500" },
+        { label: "Paid", value: fmtMoney(t.paid), icon: HandCoins, tone: "bg-emerald-500" },
+        { label: "Due", value: fmtMoney(t.due), icon: Wallet, tone: "bg-orange-500" },
+      ],
+    };
+  },
+
   profit_recon: async (f) => {
     const [{ data: sup }, { data: exp }, { data: del }, { data: sc }] = await Promise.all([
       supabase.from("supplies").select("weight_kg, rate_per_kg, cost_per_kg, supply_date, reversed_at")
@@ -867,14 +921,18 @@ const loaders: Record<string, ReportDef["load"]> = {
         .eq("status", "finalized" as any).eq("variance_type", "shortage" as any).is("reversed_at", null),
     ]);
     const shortageCost = (sc ?? []).reduce((a, r: any) => a + num(r.shortage_cost), 0);
+    const posRows = await fetchPosSales(f.from, f.to);
+    const posLines = posProfitLines(posRows);
+    const posGross = posLines.reduce((a, l) => a + num(l.weight_kg) * (num(l.rate_per_kg) - num(l.cost_per_kg)), 0);
     const bd = computeNetProfit({
-      supplies: (sup ?? []) as any,
+      supplies: [...(sup ?? []), ...posLines] as any,
       expenses: exp ?? [],
       deliveries: del ?? [],
       finalizedShortageCost: shortageCost,
     });
     const rows = [
-      { line: "Gross Profit",              formula: "Σ (rate − cost) × weight",  amount: bd.grossProfit },
+      { line: "Gross Profit",              formula: "Σ (rate − cost) × weight (supplies + POS)",  amount: bd.grossProfit },
+      { line: "  of which POS sales",       formula: "Σ (final rate − cost) × kg − discount", amount: round2(posGross) },
       { line: "− General Expenses",        formula: "Σ expenses.amount",           amount: -bd.generalExpense },
       { line: "− Truck Delivery Expenses", formula: "Σ (fuel + labour + other)",   amount: -bd.deliveryExpense },
       { line: "− Finalized Shortage Cost", formula: "Σ finalized shortage.cost",   amount: -bd.finalizedShortageCost },
@@ -1016,6 +1074,7 @@ const loaders: Record<string, ReportDef["load"]> = {
 const REPORTS: ReportDef[] = [
   { id: "purchases",       label: "Purchase Report",         icon: ShoppingCart,    supports: { meat: true, farm: true, user: true },  load: loaders.purchases },
   { id: "supplies",        label: "Supply Report",           icon: Truck,           supports: { meat: true, shop: true, user: true },  load: loaders.supplies },
+  { id: "sales",           label: "Sales Report (POS)",      icon: ShoppingCart,    supports: { user: true },                          load: loaders.sales },
   { id: "recoveries",      label: "Daily Recovery Report",   icon: HandCoins,       supports: { shop: true, user: true },              load: loaders.recoveries },
   { id: "shop_ledger",     label: "Shop Ledger Report",      icon: Wallet,          supports: { shop: true },                          load: loaders.shop_ledger },
   { id: "supplier_ledger", label: "Supplier Ledger Report",  icon: Wallet,          supports: { farm: true },                          load: loaders.supplier_ledger },
@@ -1089,6 +1148,13 @@ const Reports = () => {
 
   useEffect(() => { load(); }, [load]);
 
+  // Record report views for the activity log / usage counters (once per report+range).
+  useEffect(() => {
+    if (!tenant?.id) return;
+    const t = setTimeout(() => { logActivity("report_viewed", "reports", reportId, { report: reportId, from: filters.from, to: filters.to }, tenant.id); }, 800);
+    return () => clearTimeout(t);
+  }, [reportId, filters.from, filters.to, tenant?.id]);
+
   // Realtime: refresh on any change to relevant tables
   useEffect(() => {
     const ch = supabase.channel("reports-live" + "-" + Math.random().toString(36).slice(2))
@@ -1100,6 +1166,7 @@ const Reports = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "expenses" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "stock_closings" }, load)
       .on("postgres_changes", { event: "*", schema: "public", table: "stock_adjustments" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pos_sales" }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [load]);

@@ -44,7 +44,7 @@ const Customers = () => {
     setBalances({});
     const [{ data: cs, error }, { data: salesAll }, { data: paysAll }] = await Promise.all([
       supabase.from("customers").select("*").order("name"),
-      supabase.from("pos_sales").select("customer_id, due").eq("sale_date", selectedDate),
+      (supabase as any).from("pos_sales").select("customer_id, due").eq("sale_date", selectedDate).is("voided_at", null),
       supabase.from("customer_payments").select("customer_id, amount").eq("payment_date", selectedDate),
     ]);
     if (error) toast.error(error.message);
@@ -73,7 +73,7 @@ const Customers = () => {
   const openLedger = async (c: C) => {
     setLedger(c);
     const [{ data: s }, { data: p }] = await Promise.all([
-      supabase.from("pos_sales").select("id, sale_date, total, paid, due").eq("customer_id", c.id).eq("sale_date", selectedDate).order("sale_date", { ascending: false }),
+      (supabase as any).from("pos_sales").select("id, sale_date, total, paid, due").is("voided_at", null).eq("customer_id", c.id).eq("sale_date", selectedDate).order("sale_date", { ascending: false }),
       supabase.from("customer_payments").select("id, payment_date, amount, method, notes").eq("customer_id", c.id).eq("payment_date", selectedDate).order("payment_date", { ascending: false }),
     ]);
     setSales((s as any) ?? []); setPays((p as any) ?? []);

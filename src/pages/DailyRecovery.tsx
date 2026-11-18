@@ -1,3 +1,5 @@
+import { mergeCollections, sumActive, type CollectionRow } from "@/lib/recoveries";
+import { Badge } from "@/components/ui/badge";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -68,15 +70,21 @@ const DailyRecovery = () => {
   const [rangeTo, setRangeTo] = useState("");
   const [reverseTarget, setReverseTarget] = useState<Recovery | null>(null);
   const [confirmDel, setConfirmDel] = useState<Recovery | null>(null);
+  const [ledgerPays, setLedgerPays] = useState<CollectionRow[]>([]);
 
   const load = async () => {
     setLoading(true);
-    const [{ data: sh }, { data: rc }] = await Promise.all([
+    const [{ data: sh }, { data: rc }, { data: lp }] = await Promise.all([
       supabase.from("shops").select("id, name").is("deleted_at", null).order("name"),
       supabase.from("shop_recoveries").select("*").order("recovery_date", { ascending: false }).order("created_at", { ascending: false }),
+      (supabase as any).from("shop_ledger_entries")
+        .select("id, shop_id, entry_date, entry_type, amount, description, created_by, created_at, reversed_at, original_entry_id")
+        .eq("entry_type", "manual_payment"),
     ]);
     setShops((sh ?? []) as Shop[]);
     setRows((rc ?? []) as Recovery[]);
+    // Shop Ledger payments are part of the same collections source (see lib/recoveries).
+    setLedgerPays(mergeCollections([], lp ?? []));
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -152,15 +160,24 @@ const DailyRecovery = () => {
     });
   }, [rows, filterDate, rangeFrom, rangeTo]);
 
+  const filteredLedger = useMemo(() => ledgerPays.filter((r) => {
+    if (filterDate && r.date !== filterDate) return false;
+    if (rangeFrom && r.date < rangeFrom) return false;
+    if (rangeTo && r.date > rangeTo) return false;
+    return true;
+  }), [ledgerPays, filterDate, rangeFrom, rangeTo]);
+
   const totals = useMemo(() => {
-    const t = { total: 0, cash: 0, bank: 0, jazzcash: 0, easypaisa: 0 } as Record<string, number>;
+    const t = { total: 0, cash: 0, bank: 0, jazzcash: 0, easypaisa: 0, ledger: 0 } as Record<string, number>;
     filtered.forEach((r) => {
       if (r.reversed_at) return;
       t.total += Number(r.amount);
-      t[r.payment_method] += Number(r.amount);
+      t[r.payment_method] = (t[r.payment_method] ?? 0) + Number(r.amount);
     });
+    t.ledger = sumActive(filteredLedger);
+    t.total = Math.round((t.total + t.ledger) * 100) / 100;
     return t;
-  }, [filtered]);
+  }, [filtered, filteredLedger]);
 
   return (
     <div className="space-y-4">
@@ -175,12 +192,13 @@ const DailyRecovery = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 print-area">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 print-area">
         <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Total</div><div className="text-xl font-bold">{fmtMoney(totals.total)}</div></CardContent></Card>
         <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Cash</div><div className="text-lg font-semibold">{fmtMoney(totals.cash)}</div></CardContent></Card>
         <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Bank</div><div className="text-lg font-semibold">{fmtMoney(totals.bank)}</div></CardContent></Card>
         <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">JazzCash</div><div className="text-lg font-semibold">{fmtMoney(totals.jazzcash)}</div></CardContent></Card>
         <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Easypaisa</div><div className="text-lg font-semibold">{fmtMoney(totals.easypaisa)}</div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-xs uppercase text-muted-foreground">Shop Ledger payments</div><div className="text-lg font-semibold">{fmtMoney(totals.ledger)}</div></CardContent></Card>
       </div>
 
       <Card className="p-4">
@@ -215,7 +233,7 @@ const DailyRecovery = () => {
             <TableBody>
               {loading ? (
                 <TableRow><TableCell colSpan={7} className="text-center p-6 text-muted-foreground">Loading…</TableCell></TableRow>
-              ) : filtered.length === 0 ? (
+              ) : filtered.length === 0 && filteredLedger.length === 0 ? (
                 <TableRow><TableCell colSpan={7} className="text-center p-6 text-muted-foreground">No recoveries</TableCell></TableRow>
               ) : filtered.map((r) => (
                 <TableRow key={r.id}>
@@ -240,6 +258,19 @@ const DailyRecovery = () => {
                         <Button size="icon" variant="ghost" onClick={() => setConfirmDel(r)} title="Delete"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                       )}
                     </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {!loading && filteredLedger.map((r) => (
+                <TableRow key={"l-" + r.id} className={r.reversed_at ? "opacity-60" : ""}>
+                  <TableCell className="force-ltr">{r.date}</TableCell>
+                  <TableCell className="font-medium">{shopName(r.shop_id)}</TableCell>
+                  <TableCell className="text-end force-ltr">{fmtMoney(r.amount)}</TableCell>
+                  <TableCell><Badge variant="secondary">Shop Ledger payment</Badge></TableCell>
+                  <TableCell>—</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{r.notes || "—"}</TableCell>
+                  <TableCell className="text-end no-print text-xs text-muted-foreground">
+                    {r.reversed_at ? <span className="text-[10px] uppercase font-semibold text-amber-600 px-1">Reversed</span> : "Edit in Shop Ledger"}
                   </TableCell>
                 </TableRow>
               ))}

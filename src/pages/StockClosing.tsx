@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Save, Printer, History, Undo2 } from "lucide-react";
 import { SeoHead } from "@/components/SeoHead";
 import { ReverseTransactionDialog } from "@/components/ReverseTransactionDialog";
+import { usePermissions } from "@/hooks/usePermissions";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -119,11 +120,13 @@ const StockClosing = () => {
     return [...base, ...extras];
   };
   const ACTIVE_MEATS = activeOnly(meatTypes).map(m => m.name);
-  const canReverse = role === "admin" || isSuperAdmin;
+  const { isOwner: isTenantOwner, can: canPerm } = usePermissions();
+  const canReverse = role === "admin" || isSuperAdmin || isTenantOwner || canPerm("stock_closing" as any, "reverse");
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [audit, setAudit] = useState<Adjustment[]>([]);
   const [reverseTarget, setReverseTarget] = useState<Adjustment | null>(null);
+  const [reverseClosing, setReverseClosing] = useState<{ id: string; meat: string } | null>(null);
   const [confirmIdx, setConfirmIdx] = useState<number | null>(null);
   const [pendingStatus, setPendingStatus] = useState<"draft" | "finalized">("draft");
   const [farms, setFarms] = useState<{ id: string; name: string }[]>([]);
@@ -259,7 +262,7 @@ const StockClosing = () => {
 
   const requestSave = (i: number, targetStatus: "draft" | "finalized" = "draft") => {
     const r = rows[i];
-    if (r.status === "finalized" || r.reversed) { toast.error("Closing is finalized/reversed — cannot edit"); return; }
+    if (r.status === "finalized") { toast.error("Closing is finalized — reverse it first to edit"); return; }
     if (r.physical === "" || isNaN(Number(r.physical))) {
       toast.error("Enter physical stock");
       return;
@@ -322,6 +325,9 @@ const StockClosing = () => {
         : null,
       notes: r.notes || null,
       created_by: user?.id ?? null,
+      farm_id: r.farm_id || null,
+      shop_id: r.shop_id || null,
+      bird_count: r.bird_count && !isNaN(Number(r.bird_count)) ? Math.max(0, Math.trunc(Number(r.bird_count))) : null,
     };
 
     const { data: saved, error } = await supabase
@@ -336,24 +342,8 @@ const StockClosing = () => {
       return;
     }
 
-    // Write audit adjustment when non-zero difference
-    if (Math.abs(difference) > 0.001 && r.reason) {
-      const { error: aErr } = await supabase.from("stock_adjustments").insert({
-        tenant_id: tenant?.id,
-        adjustment_date: selectedDate,
-        meat_type: r.meat_type,
-        quantity_kg: difference,
-        reason: r.reason as any,
-        reason_id: REASONS.find(x => x.value === r.reason)?.id ?? null,
-        notes: r.notes || null,
-        closing_id: saved?.id ?? null,
-        created_by: user?.id ?? null,
-        farm_id: r.farm_id || null,
-        shop_id: r.shop_id || null,
-        bird_count: r.bird_count && !isNaN(Number(r.bird_count)) ? Math.max(0, Math.trunc(Number(r.bird_count))) : null,
-      });
-      if (aErr) toast.error("Adjustment log failed: " + aErr.message);
-    }
+    // Drafts are preview-only: no stock/mortality adjustment is posted here.
+    // finalize_stock_closing posts exactly ONE adjustment for the closing.
 
     // If the user clicked Finalize, call the server-side finalize RPC now
     // (with the saved closing id). This validates and computes shortage_cost.
@@ -493,7 +483,7 @@ const StockClosing = () => {
                           <Select
                           value={diff == null ? undefined : (isZero ? "__none__" : (r.reason || undefined))}
                           onValueChange={(v) => updateRow(i, { reason: v as Reason })}
-                          disabled={diff == null || isZero || r.status === "finalized" || r.reversed}
+                          disabled={diff == null || isZero || r.status === "finalized"}
                         >
                           <SelectTrigger className="h-8 w-[180px]">
                             <SelectValue placeholder={
@@ -526,24 +516,30 @@ const StockClosing = () => {
                           value={r.notes}
                           onChange={(e) => updateRow(i, { notes: e.target.value })}
                           placeholder="Optional"
-                          disabled={r.status === "finalized" || r.reversed}
+                          disabled={r.status === "finalized"}
                         />
                       </TableCell>
                       <TableCell className="text-end">
                         <div className="flex items-center gap-2 justify-end">
-                          {r.status !== "finalized" && !r.reversed && (
+                          {r.status !== "finalized" && (
                             <Button size="sm" variant="outline" onClick={() => requestSave(i, "draft")} disabled={!!r.saving}>
                               <Save className="h-4 w-4 mr-1" />
                               {r.closingId ? "Update" : "Save Draft"}
                             </Button>
                           )}
-                          {r.status !== "finalized" && !r.reversed && r.closingId && (
+                          {r.status !== "finalized" && r.closingId && (
                             <Button size="sm" onClick={() => requestSave(i, "finalized")} disabled={!!r.saving}>
                               <CheckCircle2 className="h-4 w-4 mr-1" /> Finalize
                             </Button>
                           )}
                           {r.status === "finalized" && (
-                            <span className="text-xs text-muted-foreground inline-flex items-center gap-1"><Lock className="h-3 w-3" /> Reverse to edit</span>
+                            canReverse && r.closingId ? (
+                              <Button size="sm" variant="outline" onClick={() => setReverseClosing({ id: r.closingId!, meat: r.meat_type })}>
+                                <Undo2 className="h-3.5 w-3.5 mr-1" /> Reverse to edit
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground inline-flex items-center gap-1"><Lock className="h-3 w-3" /> Finalized</span>
+                            )
                           )}
                         </div>
                       </TableCell>
@@ -609,6 +605,19 @@ const StockClosing = () => {
         </CardContent>
       </Card>
 
+      <ReverseTransactionDialog
+        open={!!reverseClosing}
+        target={reverseClosing ? { label: `${reverseClosing.meat} closing on ${selectedDate}`, amount: 0, date: selectedDate } : null}
+        onOpenChange={(o) => { if (!o) setReverseClosing(null); }}
+        onConfirm={async (reason, notes) => {
+          if (!reverseClosing) return;
+          const { error } = await (supabase as any).rpc("reverse_stock_closing", { p_id: reverseClosing.id, p_reason: reason, p_notes: notes || null });
+          if (error) { toast.error(error.message); return; }
+          toast.success("Closing reversed — it is a draft again and can be edited.");
+          setReverseClosing(null);
+          load();
+        }}
+      />
       <ReverseTransactionDialog
         open={!!reverseTarget}
         target={reverseTarget ? { label: `${reverseTarget.meat_type} adjustment`, amount: reverseTarget.quantity_kg, date: reverseTarget.adjustment_date } : null}

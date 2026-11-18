@@ -185,10 +185,6 @@ const Supplies = () => {
         ]}
       />
       <div className="flex items-end gap-2 -mt-2">
-        <div>
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">{t("common.date")}</Label>
-          <Input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value || ledgerToday)} className="force-ltr w-[180px]" />
-        </div>
         <Button variant="outline" disabled={filterDate === ledgerToday} onClick={() => setFilterDate(ledgerToday)}>{t("dashboard.today_btn")}</Button>
         <Button variant="outline" onClick={() => printReport<Row>({
           businessName: tenant?.company_name,

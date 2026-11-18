@@ -111,16 +111,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         clearProfile();
         setLoading(false);
       }
-      // Best-effort auth event logging (append-only)
+      // Best-effort auth event logging (append-only). The request builder is
+      // lazy, so it must be awaited/then'd or it never reaches the server.
+      // Deferred with setTimeout to avoid calling the client inside the
+      // auth callback. Logins are logged once per browser session.
+      const logAuth = (ev: string) => setTimeout(() => {
+        (supabase as any).rpc("log_auth_event", { _event: ev, _success: true, _metadata: { user_agent: navigator.userAgent } })
+          .then(() => {}, () => {});
+      }, 0);
       try {
-        if (event === "SIGNED_IN") {
-          (supabase as any).rpc("log_auth_event", { _event: "login", _success: true, _metadata: { user_agent: navigator.userAgent } });
+        if (event === "SIGNED_IN" && s?.user) {
+          const key = "mf_login_logged";
+          if (sessionStorage.getItem(key) !== s.user.id) {
+            sessionStorage.setItem(key, s.user.id);
+            logAuth("login");
+          }
         } else if (event === "SIGNED_OUT") {
-          (supabase as any).rpc("log_auth_event", { _event: "logout", _success: true, _metadata: { user_agent: navigator.userAgent } });
+          sessionStorage.removeItem("mf_login_logged");
+          logAuth("logout");
         } else if (event === "PASSWORD_RECOVERY") {
-          (supabase as any).rpc("log_auth_event", { _event: "password_recovery", _success: true, _metadata: { user_agent: navigator.userAgent } });
+          logAuth("password_recovery");
         } else if (event === "USER_UPDATED") {
-          (supabase as any).rpc("log_auth_event", { _event: "user_updated", _success: true, _metadata: { user_agent: navigator.userAgent } });
+          logAuth("user_updated");
         }
       } catch { /* ignore logging errors */ }
     });

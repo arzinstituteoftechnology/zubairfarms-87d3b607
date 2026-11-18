@@ -40,7 +40,7 @@ const navItems = [
   { to: "/closing-history", key: "closing_history", icon: History },
   { to: "/mortality-register", key: "mortality_register", icon: Skull },
   { to: "/reports", key: "reports", icon: FileBarChart },
-  { to: "/settings", key: "settings", icon: SettingsIcon, adminOnly: true },
+  { to: "/settings", key: "settings", icon: SettingsIcon, adminOnly: true, end: true },
 ];
 
 const SidebarContent = ({ role, onSignOut, customersEnabled, onNavigate }: { role: string | null; onSignOut: () => void; customersEnabled: boolean; onNavigate?: () => void }) => {

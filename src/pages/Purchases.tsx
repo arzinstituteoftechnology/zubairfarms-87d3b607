@@ -162,10 +162,6 @@ const Purchases = () => {
           <div className="text-sm">{t("common.date")}: <span className="force-ltr">{filterDate}</span></div>
         </div>
         <div className="no-print flex flex-wrap items-end gap-2 mb-3">
-          <div>
-            <Label className="text-xs">{t("common.date")}</Label>
-            <Input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value || ledgerToday)} className="w-44" />
-          </div>
           <Button variant="outline" size="sm" onClick={() => setFilterDate(ledgerToday)}>{t("dashboard.today_btn")}</Button>
           <Button variant="outline" size="sm" onClick={() => printReport<Row>({
             businessName: tenant?.company_name,

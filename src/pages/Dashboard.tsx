@@ -1,3 +1,5 @@
+import { fetchCollections } from "@/lib/recoveries";
+import { fetchPosSales, posProfitLines, posTotals } from "@/lib/posSales";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -43,6 +45,7 @@ interface KPI {
   recoveryToday: number; recoveryWeek: number; recoveryMonth: number;
   mortalityToday: number; mortalityWeek: number; mortalityMonth: number; mortalityCost: number;
   inventoryLossToday: number;
+  posCount?: number; posTotal?: number; posPaid?: number; posDue?: number; posKg?: number;
   breakdownToday: Record<string, number>;
   breakdownWeek: Record<string, number>;
   breakdownMonth: Record<string, number>;
@@ -119,7 +122,7 @@ const Dashboard = () => {
       // then add purchases and subtract supplies AFTER that closing up to selectedDate.
       // If no closing has ever been recorded, fall back to cumulative purchases − supplies.
       const [{ data: closings }, { data: pCumAll }, { data: sCumAll }, { data: adjCum }] = await Promise.all([
-        supabase.from("stock_closings").select("meat_type, physical_stock, closing_date").lte("closing_date", today).order("closing_date", { ascending: false }),
+        supabase.from("stock_closings").select("meat_type, physical_stock, closing_date").lte("closing_date", today).eq("status", "finalized" as any).is("reversed_at", null).order("closing_date", { ascending: false }),
         supabase.from("purchases").select("meat_type, weight_kg, purchase_date").lte("purchase_date", today).is("reversed_at", null),
         supabase.from("supplies").select("meat_type, weight_kg, supply_date").lte("supply_date", today).is("reversed_at", null),
         supabase.from("stock_adjustments").select("meat_type, quantity_kg, adjustment_date").lte("adjustment_date", today).is("reversed_at", null).is("original_adjustment_id", null),
@@ -158,7 +161,7 @@ const Dashboard = () => {
         supabase.from("purchases").select("total_amount, paid_amount, purchase_date").lte("purchase_date", today).is("reversed_at", null),
         supabase.from("farm_payments").select("amount, payment_date").lte("payment_date", today).is("reversed_at", null),
         supabase.from("supplier_ledger_entries").select("entry_type, amount, entry_date, reversed_at, original_entry_id").lte("entry_date", today),
-        supabase.from("pos_sales").select("due, sale_date").lte("sale_date", today),
+        (supabase as any).from("pos_sales").select("due, sale_date").lte("sale_date", today).is("voided_at", null),
         supabase.from("customer_payments").select("amount, payment_date").lte("payment_date", today),
       ]);
       // Receivable from Shops — mirrors ShopLedger balance math, as-of `today`.
@@ -175,12 +178,10 @@ const Dashboard = () => {
       setReconcile({ ok: Math.abs(sumPositive - receivableFromShops) < 0.01, delta: sumPositive - receivableFromShops });
       const weekStart = format(startOfWeek(new Date(selectedDate), { weekStartsOn: 1 }), "yyyy-MM-dd");
       const monthStart = format(startOfMonth(new Date(selectedDate)), "yyyy-MM-dd");
-      const { data: recAll } = await supabase
-        .from("shop_recoveries")
-        .select("amount, recovery_date")
-        .gte("recovery_date", monthStart)
-        .lte("recovery_date", today)
-        .is("reversed_at", null);
+      // One shared source: Daily Recovery entries + Shop Ledger payments.
+      const recAll = (await fetchCollections({ from: monthStart, to: today }))
+        .filter((r) => !r.reversed_at)
+        .map((r) => ({ amount: r.amount, recovery_date: r.date }));
 
       const sum = (arr: any[] | null, k: string) => (arr ?? []).reduce((a, x) => a + Number(x[k] ?? 0), 0);
       const purchaseKg = sum(pAll, "weight_kg");
@@ -239,8 +240,11 @@ const Dashboard = () => {
       // Remaining stock is inventory, not loss — we do NOT subtract full purchase value.
       // Delivery costs live on the delivery record; the expenses table does NOT
       // duplicate them (no delivery_id linkage), so both sources are counted once.
+      // POS counter sales are realised the same way as supplies.
+      const posToday = await fetchPosSales(today, today);
+      const pos = posTotals(posToday);
       const np = computeNetProfit({
-        supplies: sAll ?? [],
+        supplies: [...(sAll ?? []), ...posProfitLines(posToday)] as any,
         expenses: dayExpenses ?? [],
         deliveries: dayDeliveries ?? [],
         finalizedShortageCost,
@@ -329,7 +333,7 @@ const Dashboard = () => {
         .select("reason, quantity_kg, adjustment_date")
         .is("original_adjustment_id", null)
         .is("reversed_at", null)
-        .lt("quantity_kg", 0)
+        .lt("quantity_kg", 0).or("reason.is.null,reason.neq.pos_sale")
         .gte("adjustment_date", monthStart)
         .lte("adjustment_date", today);
       const breakdownToday = emptyBreakdown();
@@ -345,7 +349,7 @@ const Dashboard = () => {
       });
       const inventoryLossToday = Object.values(breakdownToday).reduce((a, v) => a + v, 0);
 
-      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, grossProfit, generalExpense, deliveryExpense, finalizedShortageCost, closingStatus, expectedClosingKg, physicalClosingKg, shortageKg, surplusKg, shortageCostAll, surplusEstValue, hasActivityWithoutClosing, closingCount: closingRows.length, payableToFarms, receivableFromCustomers, receivableFromShops, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost, inventoryLossToday, breakdownToday, breakdownWeek, breakdownMonth });
+      setKpi({ purchaseKg, purchaseAmt, supplyKg, supplyAmt, stockKg, profit, grossProfit, generalExpense, deliveryExpense, finalizedShortageCost, closingStatus, expectedClosingKg, physicalClosingKg, shortageKg, surplusKg, shortageCostAll, surplusEstValue, hasActivityWithoutClosing, closingCount: closingRows.length, payableToFarms, receivableFromCustomers, receivableFromShops, recoveryToday, recoveryWeek, recoveryMonth, mortalityToday, mortalityWeek, mortalityMonth, mortalityCost, inventoryLossToday, breakdownToday, breakdownWeek, breakdownMonth, posCount: pos.count, posTotal: pos.total, posPaid: pos.paid, posDue: pos.due, posKg: pos.kg });
 
       // 7-day chart ending at selected date
       const days: any[] = [];
@@ -407,6 +411,7 @@ const Dashboard = () => {
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <KpiCard icon={ShoppingCart} label={isToday ? t("dashboard.todays_purchase") : t("dashboard.purchase_on")} value={fmtKg(kpi.purchaseKg)} sub={t("dashboard.amt", { value: fmtMoney(kpi.purchaseAmt) })} />
         <KpiCard icon={Truck} label={isToday ? t("dashboard.todays_supply") : t("dashboard.supply_on")} value={fmtKg(kpi.supplyKg)} sub={t("dashboard.amt", { value: fmtMoney(kpi.supplyAmt) })} />
+        <KpiCard icon={ShoppingCart} label={isToday ? "Today's Sales (POS)" : "POS Sales on date"} value={fmtMoney(kpi.posTotal ?? 0)} sub={`${kpi.posCount ?? 0} invoice(s) · ${fmtKg(kpi.posKg ?? 0)} · Due ${fmtMoney(kpi.posDue ?? 0)}`} />
         <KpiCard icon={Boxes} label={isToday ? t("dashboard.current_stock") : t("dashboard.stock_on")} value={fmtKg(kpi.stockKg)} tone={kpi.stockKg < 0 ? "danger" : "default"} sub={selectedDate} />
         <KpiCard
           icon={TrendingUp}

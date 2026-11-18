@@ -126,10 +126,6 @@ const Deliveries = () => {
         ]}
       />
       <div className="flex items-end gap-2 -mt-2">
-        <div>
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">{t("common.date")}</Label>
-          <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value || ledgerToday)} className="force-ltr w-[180px]" />
-        </div>
         <Button variant="outline" disabled={selectedDate === ledgerToday} onClick={() => setSelectedDate(ledgerToday)}>{t("dashboard.today_btn")}</Button>
         <Button variant="outline" onClick={() => printReport<D>({
           businessName: tenant?.company_name,

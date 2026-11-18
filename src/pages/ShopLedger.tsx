@@ -47,14 +47,14 @@ const KIND_LABEL: Record<LedgerKind, string> = {
   opening: "Opening Balance",
   supply: "Supply",
   manual_supply: "Previous Supply",
-  manual_payment: "Previous Payment",
+  manual_payment: "Payment Received",
   adjustment_increase: "Adjustment (+)",
   adjustment_decrease: "Adjustment (-)",
   recovery: "Recovery",
   reversed_recovery: "Reversed Recovery",
   reversed_supply: "Reversed Supply",
   reversed_manual_supply: "Reversed Previous Supply",
-  reversed_manual_payment: "Reversed Previous Payment",
+  reversed_manual_payment: "Reversed Payment Received",
   reversed_adjustment_increase: "Reversed Adjustment (+)",
   reversed_adjustment_decrease: "Reversed Adjustment (-)",
   reversed_opening_balance: "Reversed Opening Balance",
@@ -215,7 +215,7 @@ const ShopLedger = () => {
       const amt = Number(x.amount ?? 0);
       const debitTypes = new Set([
         "opening_balance", "manual_supply", "adjustment_increase",
-        "reversed_recovery", "reversed_manual_payment",
+        "reversed_recovery", "reversed_manual_payment", "reversed_adjustment_decrease",
       ]);
       const isDebit = debitTypes.has(x.entry_type);
       // adjustment_decrease & reversed_adjustment_decrease are signed credits already in balance calc
@@ -239,14 +239,13 @@ const ShopLedger = () => {
     // Seed running balance from the shop's opening balance when there is no
     // explicit opening_balance ledger entry. Reversed originals and reversal
     // audit rows must NOT move the running balance.
-    const hasOpeningEntry = entries.some(
-      (e) => e.kind === "opening" && !e.reversed && !e.isReversal
-    );
+    // Signed model (same as Supplier Ledger): every row moves the balance in
+    // date order — an original adds its effect and its reversal row applies
+    // the exact opposite, so a reversed pair nets to zero.
+    const hasOpeningEntry = entries.some((e) => e.kind === "opening" && !e.isReversal);
     let running = hasOpeningEntry ? 0 : Number(ledger?.opening_balance ?? 0);
     const withBalance = entries.map((e) => {
-      if (!e.reversed && !e.isReversal) {
-        running += e.debit - e.credit;
-      }
+      running = Math.round((running + e.debit - e.credit) * 100) / 100;
       return { ...e, running };
     });
     let filtered = withBalance;
@@ -548,7 +547,7 @@ const ShopLedger = () => {
               </div>
               <div className="flex flex-wrap gap-2 no-print">
                 <Button size="sm" variant="outline" onClick={() => openManual("manual_supply")}><Plus className="h-4 w-4" /> Previous Supply</Button>
-                <Button size="sm" variant="outline" onClick={() => openManual("manual_payment")}><Plus className="h-4 w-4" /> Previous Payment</Button>
+                <Button size="sm" variant="outline" onClick={() => openManual("manual_payment")}><Plus className="h-4 w-4" /> Payment Received</Button>
                 <Button size="sm" variant="outline" onClick={() => openManual("adjustment_increase")}><Plus className="h-4 w-4" /> Adjustment (+)</Button>
                 <Button size="sm" variant="outline" onClick={() => openManual("adjustment_decrease")}><Plus className="h-4 w-4" /> Adjustment (-)</Button>
               </div>
@@ -633,7 +632,7 @@ const ShopLedger = () => {
               <select className="border rounded-md h-10 px-2 w-full bg-background" value={manualForm.entry_type}
                 onChange={(e) => setManualForm({ ...manualForm, entry_type: e.target.value as ManualForm["entry_type"] })}>
                 <option value="manual_supply">Previous Supply (Debit)</option>
-                <option value="manual_payment">Previous Payment (Credit)</option>
+                <option value="manual_payment">Payment Received (Credit)</option>
                 <option value="adjustment_increase">Adjustment Increase (+)</option>
                 <option value="adjustment_decrease">Adjustment Decrease (-)</option>
               </select>

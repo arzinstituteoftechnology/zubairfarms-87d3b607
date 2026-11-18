@@ -1218,6 +1218,7 @@ export type Database = {
       }
       pos_sale_items: {
         Row: {
+          cost_per_kg: number
           created_at: string
           faraq: number
           final_rate: number
@@ -1230,6 +1231,7 @@ export type Database = {
           weight_kg: number
         }
         Insert: {
+          cost_per_kg?: number
           created_at?: string
           faraq?: number
           final_rate: number
@@ -1242,6 +1244,7 @@ export type Database = {
           weight_kg: number
         }
         Update: {
+          cost_per_kg?: number
           created_at?: string
           faraq?: number
           final_rate?: number
@@ -1288,6 +1291,9 @@ export type Database = {
           tenant_id: string
           total: number
           updated_at: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
         }
         Insert: {
           created_at?: string
@@ -1306,6 +1312,9 @@ export type Database = {
           tenant_id?: string
           total?: number
           updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
         }
         Update: {
           created_at?: string
@@ -1324,6 +1333,9 @@ export type Database = {
           tenant_id?: string
           total?: number
           updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
         }
         Relationships: [
           {
@@ -2130,6 +2142,7 @@ export type Database = {
           meat_type: string
           notes: string | null
           original_adjustment_id: string | null
+          pos_sale_id: string | null
           quantity_kg: number
           reason: string | null
           reason_id: string | null
@@ -2152,6 +2165,7 @@ export type Database = {
           meat_type: string
           notes?: string | null
           original_adjustment_id?: string | null
+          pos_sale_id?: string | null
           quantity_kg: number
           reason?: string | null
           reason_id?: string | null
@@ -2174,6 +2188,7 @@ export type Database = {
           meat_type?: string
           notes?: string | null
           original_adjustment_id?: string | null
+          pos_sale_id?: string | null
           quantity_kg?: number
           reason?: string | null
           reason_id?: string | null
@@ -2208,6 +2223,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "stock_adjustments_pos_sale_id_fkey"
+            columns: ["pos_sale_id"]
+            isOneToOne: false
+            referencedRelation: "pos_sales"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "stock_adjustments_reason_id_fkey"
             columns: ["reason_id"]
             isOneToOne: false
@@ -2233,11 +2255,13 @@ export type Database = {
       stock_closings: {
         Row: {
           adjustments_kg: number
+          bird_count: number | null
           closing_date: string
           created_at: string
           created_by: string | null
           difference: number
           expected_closing_stock: number | null
+          farm_id: string | null
           finalized_at: string | null
           finalized_by: string | null
           id: string
@@ -2255,6 +2279,7 @@ export type Database = {
           reversal_reason: string | null
           reversed_at: string | null
           reversed_by: string | null
+          shop_id: string | null
           shortage_cost: number
           status: Database["public"]["Enums"]["stock_closing_status"]
           supplies_kg: number
@@ -2268,11 +2293,13 @@ export type Database = {
         }
         Insert: {
           adjustments_kg?: number
+          bird_count?: number | null
           closing_date: string
           created_at?: string
           created_by?: string | null
           difference?: number
           expected_closing_stock?: number | null
+          farm_id?: string | null
           finalized_at?: string | null
           finalized_by?: string | null
           id?: string
@@ -2290,6 +2317,7 @@ export type Database = {
           reversal_reason?: string | null
           reversed_at?: string | null
           reversed_by?: string | null
+          shop_id?: string | null
           shortage_cost?: number
           status?: Database["public"]["Enums"]["stock_closing_status"]
           supplies_kg?: number
@@ -2303,11 +2331,13 @@ export type Database = {
         }
         Update: {
           adjustments_kg?: number
+          bird_count?: number | null
           closing_date?: string
           created_at?: string
           created_by?: string | null
           difference?: number
           expected_closing_stock?: number | null
+          farm_id?: string | null
           finalized_at?: string | null
           finalized_by?: string | null
           id?: string
@@ -2325,6 +2355,7 @@ export type Database = {
           reversal_reason?: string | null
           reversed_at?: string | null
           reversed_by?: string | null
+          shop_id?: string | null
           shortage_cost?: number
           status?: Database["public"]["Enums"]["stock_closing_status"]
           supplies_kg?: number
@@ -3281,11 +3312,13 @@ export type Database = {
         Args: { p_id: string }
         Returns: {
           adjustments_kg: number
+          bird_count: number | null
           closing_date: string
           created_at: string
           created_by: string | null
           difference: number
           expected_closing_stock: number | null
+          farm_id: string | null
           finalized_at: string | null
           finalized_by: string | null
           id: string
@@ -3303,6 +3336,7 @@ export type Database = {
           reversal_reason: string | null
           reversed_at: string | null
           reversed_by: string | null
+          shop_id: string | null
           shortage_cost: number
           status: Database["public"]["Enums"]["stock_closing_status"]
           supplies_kg: number
@@ -3484,6 +3518,10 @@ export type Database = {
       }
       tenant_health_snapshot: { Args: { _tenant_id: string }; Returns: Json }
       tenant_usage: { Args: { _tenant_id: string }; Returns: Json }
+      void_pos_sale: {
+        Args: { p_id: string; p_reason: string }
+        Returns: string
+      }
     }
     Enums: {
       app_role: "admin" | "staff" | "super_admin" | "manager"
@@ -3529,6 +3567,10 @@ export type Database = {
         | "system"
         | "subscription_expiring"
         | "subscription_expired"
+        | "expense_reversed"
+        | "customer_payment_reversed"
+        | "pos_sale_created"
+        | "pos_sale_voided"
       shop_ledger_type:
         | "opening_balance"
         | "manual_supply"
@@ -3730,6 +3772,10 @@ export const Constants = {
         "system",
         "subscription_expiring",
         "subscription_expired",
+        "expense_reversed",
+        "customer_payment_reversed",
+        "pos_sale_created",
+        "pos_sale_voided",
       ],
       shop_ledger_type: [
         "opening_balance",

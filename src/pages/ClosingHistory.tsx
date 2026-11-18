@@ -7,7 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MEAT_TYPES, fmtKg, fmtMoney } from "@/lib/constants";
 import { format, subDays } from "date-fns";
-import { Printer } from "lucide-react";
+import { Printer, Undo2 } from "lucide-react";
+import { toast } from "sonner";
+import { ReverseTransactionDialog } from "@/components/ReverseTransactionDialog";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useAuth } from "@/hooks/useAuth";
 import { SeoHead } from "@/components/SeoHead";
 
 const REASON_LABELS: Record<string, string> = {
@@ -61,6 +65,11 @@ const ClosingHistory = () => {
   const [varianceFilter, setVarianceFilter] = useState<string>("all"); // all|balanced|shortage|surplus|reversed
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [target, setTarget] = useState<Row | null>(null);
+  const { isOwner, can } = usePermissions();
+  const { isSuperAdmin } = useAuth();
+  const canReverse = isOwner || isSuperAdmin || can("stock_closing" as any, "reverse");
 
   useEffect(() => {
     (async () => {
@@ -105,7 +114,7 @@ const ClosingHistory = () => {
       }));
       setRows(list); setLoading(false);
     })();
-  }, [from, to, meatType, varianceFilter]);
+  }, [from, to, meatType, varianceFilter, reloadKey]);
 
   const totals = useMemo(() => {
     return rows.reduce((a, r) => ({
@@ -188,6 +197,7 @@ const ClosingHistory = () => {
                   <TableHead>Reversed By</TableHead>
                   <TableHead>Reversed At</TableHead>
                   <TableHead>Created At</TableHead>
+                  <TableHead className="no-print"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -233,6 +243,13 @@ const ClosingHistory = () => {
                     <TableCell className="text-sm">{r.reverser_name ?? "—"}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{r.reversed_at ? new Date(r.reversed_at).toLocaleString() : "—"}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString()}</TableCell>
+                    <TableCell className="no-print">
+                      {canReverse && r.status === "finalized" && !r.reversed_at && (
+                        <Button size="sm" variant="outline" onClick={() => setTarget(r)}>
+                          <Undo2 className="h-3.5 w-3.5 mr-1" /> Reverse
+                        </Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
                 {rows.length > 0 && (
@@ -246,7 +263,7 @@ const ClosingHistory = () => {
                     </TableCell>
                     <TableCell className="text-end text-destructive">{fmtMoney(totals.shortageCost)}</TableCell>
                     <TableCell className="text-end text-success">{fmtMoney(totals.surplusValue)}</TableCell>
-                    <TableCell colSpan={8} />
+                    <TableCell colSpan={9} />
                   </TableRow>
                 )}
               </TableBody>
@@ -254,6 +271,19 @@ const ClosingHistory = () => {
           </div>
         </CardContent>
       </Card>
+      <ReverseTransactionDialog
+        open={!!target}
+        target={target ? { label: `${target.meat_type} closing on ${target.closing_date}`, amount: 0, date: target.closing_date } : null}
+        onOpenChange={(o) => { if (!o) setTarget(null); }}
+        onConfirm={async (reason, notes) => {
+          if (!target) return;
+          const { error } = await (supabase as any).rpc("reverse_stock_closing", { p_id: target.id, p_reason: reason, p_notes: notes || null });
+          if (error) { toast.error(error.message); return; }
+          toast.success("Closing reversed — it is a draft again and that day's records can be edited.");
+          setTarget(null);
+          setReloadKey((k) => k + 1);
+        }}
+      />
     </div>
   );
 };

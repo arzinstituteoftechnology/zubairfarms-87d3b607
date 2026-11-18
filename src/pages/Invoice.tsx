@@ -79,6 +79,7 @@ const Invoice = () => {
             <div className="flex justify-between font-bold text-base border-t pt-1"><span>{t("invoice.total")}</span><span className="force-ltr">{fmtMoney(sale.total)}</span></div>
             <div className="flex justify-between"><span>{t("invoice.paid")} ({sale.payment_method})</span><span className="force-ltr">{fmtMoney(sale.paid)}</span></div>
             <div className="flex justify-between font-semibold"><span>{t("invoice.due")}</span><span className="force-ltr">{fmtMoney(sale.due)}</span></div>
+            {sale.voided_at && <div className="mt-2 rounded border border-destructive text-destructive text-center font-bold py-1">VOID{sale.void_reason ? ` — ${sale.void_reason}` : ""}</div>}
           </div>
           {sale.notes && <div className="mt-3 text-sm border-t pt-2"><b>{t("invoice.notes")}:</b> {sale.notes}</div>}
           <div className="text-center text-xs opacity-70 mt-6">{t("invoice.thanks")}</div>
