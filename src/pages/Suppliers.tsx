@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { validateNonNegative } from "@/lib/formValidation";
 import { noteIfFinalizedDay } from "@/lib/closingLockToast";
 import { LoadingValue } from "@/components/LoadingValue";
 import { supabase } from "@/integrations/supabase/client";
@@ -279,7 +280,7 @@ const Suppliers = () => {
         description: manualForm.description || null, amount: amt,
       }).eq("id", manualForm.id);
       if (error) return toast.error(error.message);
-      toast.success("Entry updated");
+      toast.success("Entry updated"); noteIfFinalizedDay(manualForm.entry_date);
     } else {
       const { error } = await supabase.from("supplier_ledger_entries").insert({
         supplier_id: ledger.id, tenant_id: tenant.id,
@@ -287,7 +288,7 @@ const Suppliers = () => {
         description: manualForm.description || null, amount: amt, created_by: user?.id,
       });
       if (error) return toast.error(error.message);
-      toast.success("Entry added");
+      toast.success("Entry added"); noteIfFinalizedDay(manualForm.entry_date);
     }
     setManualOpen(false);
     await refreshLedger(ledger);
@@ -360,6 +361,8 @@ const Suppliers = () => {
 
   const savePurchase = async () => {
     if (!ledger || !purchaseForm) return;
+    { const bad = validateNonNegative({ Weight: purchaseForm.weight_kg, "Rate per kg": purchaseForm.rate_per_kg, "Total amount": purchaseForm.total_amount, "Paid amount": purchaseForm.paid_amount }); if (bad) return toast.error(bad); }
+    
     const { error } = await supabase.from("purchases").update({
       purchase_date: purchaseForm.purchase_date,
       meat_type: purchaseForm.meat_type,
@@ -378,13 +381,15 @@ const Suppliers = () => {
 
   const savePayment = async () => {
     if (!ledger || !paymentForm) return;
+    { const bad = validateNonNegative({ Amount: paymentForm.amount }); if (bad) return toast.error(bad); }
+    if (!(Number(paymentForm.amount) > 0)) return toast.error("Amount must be greater than 0");
     const { error } = await supabase.from("farm_payments").update({
       payment_date: paymentForm.payment_date,
       amount: Number(paymentForm.amount) || 0,
       method: paymentForm.method,
     }).eq("id", paymentForm.id);
     if (error) return toast.error(error.message);
-    toast.success("Payment updated");
+    toast.success("Payment updated"); noteIfFinalizedDay(paymentForm.payment_date);
     setPaymentOpen(false);
     await refreshLedger(ledger);
     load();

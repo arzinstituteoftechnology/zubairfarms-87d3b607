@@ -1,4 +1,5 @@
 import { confirmDialog } from "@/components/ConfirmHost";
+import { validateNonNegative } from "@/lib/formValidation";
 import { noteIfFinalizedDay } from "@/lib/closingLockToast";
 import { LoadingValue } from "@/components/LoadingValue";
 import { useEffect, useMemo, useState } from "react";
@@ -324,7 +325,7 @@ const ShopLedger = () => {
         description: manualForm.description || null, amount: amt,
       }).eq("id", manualForm.id);
       if (error) return toast.error(error.message);
-      toast.success("Entry updated");
+      toast.success("Entry updated"); noteIfFinalizedDay(manualForm.entry_date);
     } else {
       const { error } = await supabase.from("shop_ledger_entries").insert({
         shop_id: ledger.id, tenant_id: tenant.id,
@@ -332,7 +333,7 @@ const ShopLedger = () => {
         description: manualForm.description || null, amount: amt, created_by: user?.id,
       });
       if (error) return toast.error(error.message);
-      toast.success("Entry added");
+      toast.success("Entry added"); noteIfFinalizedDay(manualForm.entry_date);
     }
     setManualOpen(false);
     await refreshLedger(ledger); load();
@@ -400,7 +401,7 @@ const ShopLedger = () => {
       notes: recoveryForm.notes || null,
     }).eq("id", recoveryForm.id);
     if (error) return toast.error(error.message);
-    toast.success("Recovery updated");
+    toast.success("Recovery updated"); noteIfFinalizedDay(recoveryForm.recovery_date);
     setRecoveryOpen(false);
     await refreshLedger(ledger); load();
   };
@@ -408,7 +409,8 @@ const ShopLedger = () => {
   const saveOpening = async () => {
     if (!ledger) return;
     const amt = Number(openingAmt);
-    if (amt < 0 || Number.isNaN(amt)) return toast.error("Enter a valid amount");
+    if (Number.isNaN(amt)) return toast.error("Enter a valid amount");
+    if (amt < 0) return toast.error("Opening balance cannot be negative");
     const { error: e1 } = await supabase.from("shops").update({ opening_balance: amt }).eq("id", ledger.id);
     if (e1) return toast.error(e1.message);
     if (openingLedgerId) {
@@ -474,6 +476,8 @@ const ShopLedger = () => {
 
   const saveSupply = async () => {
     if (!ledger || !supplyForm) return;
+    { const bad = validateNonNegative({ Weight: supplyForm.weight_kg, "Rate per kg": supplyForm.rate_per_kg }); if (bad) return toast.error(bad); }
+    
     const { error } = await supabase.from("supplies").update({
       supply_date: supplyForm.supply_date,
       meat_type: supplyForm.meat_type,

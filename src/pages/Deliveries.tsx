@@ -92,7 +92,7 @@ const Deliveries = () => {
     toast.success(t("common.saved"));
     noteIfFinalizedDay(returnedDate);
   };
-  const doDelete = async () => { if (!del) return; const { error } = await supabase.from("deliveries").delete().eq("id", del.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(selectedDate); } setDel(null); };
+  const doDelete = async () => { if (!del) return; const { error } = await supabase.from("deliveries").delete().eq("id", del.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); noteIfFinalizedDay(del.loading_date); load(selectedDate); } setDel(null); };
 
   const openEdit = async (rowId: string) => {
     const { data, error } = await supabase.from("deliveries").select("*, trucks(number, driver_name), farms(name)").eq("id", rowId).maybeSingle();

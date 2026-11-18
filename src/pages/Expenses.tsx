@@ -85,7 +85,7 @@ const Expenses = () => {
     toast.success(t("common.saved"));
     noteIfFinalizedDay(returnedDate);
   };
-  const doDelete = async () => { if (!delTarget) return; const { error } = await supabase.from("expenses").delete().eq("id", delTarget.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(selectedDate); } setDelTarget(null); };
+  const doDelete = async () => { if (!delTarget) return; const { error } = await supabase.from("expenses").delete().eq("id", delTarget.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); noteIfFinalizedDay(delTarget.expense_date); load(selectedDate); } setDelTarget(null); };
 
   const openEdit = async (rowId: string) => {
     const { data, error } = await supabase.from("expenses").select("*, farms(name)").eq("id", rowId).maybeSingle();

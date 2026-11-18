@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { validateNonNegative } from "@/lib/formValidation";
+import { noteIfFinalizedDay } from "@/lib/closingLockToast";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "react-i18next";
@@ -58,6 +60,7 @@ const Customers = () => {
   const save = async () => {
     if (!form.name?.trim()) return toast.error(t("customers.name_required"));
     if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
+    { const bad = validateNonNegative({ "Credit limit": form.credit_limit }); if (bad) return toast.error(bad); }
     const payload = { name: form.name, phone: form.phone || null, address: form.address || null, credit_limit: Number(form.credit_limit) || 0, notes: form.notes || null };
     const op = editing ? supabase.from("customers").update(payload).eq("id", editing.id) : supabase.from("customers").insert({ ...payload, tenant_id: tenant.id, created_by: user?.id });
     const { error } = await op;
@@ -81,9 +84,10 @@ const Customers = () => {
   const addPayment = async () => {
     if (!ledger || !payAmt) return;
     if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
+    if (!(Number(payAmt) > 0)) return toast.error("Amount must be greater than 0");
     const { error } = await supabase.from("customer_payments").insert({ customer_id: ledger.id, amount: Number(payAmt), payment_date: payDate, method: payMethod, tenant_id: tenant.id, created_by: user?.id });
     if (error) return toast.error(error.message);
-    toast.success(t("customers.payment_recorded")); setPayAmt(""); openLedger(ledger); load();
+    toast.success(t("customers.payment_recorded")); noteIfFinalizedDay(payDate); setPayAmt(""); openLedger(ledger); load();
   };
 
   return (

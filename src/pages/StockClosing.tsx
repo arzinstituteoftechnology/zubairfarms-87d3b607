@@ -284,7 +284,7 @@ const StockClosing = () => {
 
     const { data: auditRows } = await supabase
       .from("stock_adjustments")
-      .select("id, adjustment_date, meat_type, quantity_kg, reason, notes, created_at, reversed_at, reversal_reason, original_adjustment_id")
+      .select("id, adjustment_date, meat_type, quantity_kg, reason, notes, created_at, reversed_at, reversal_reason, original_adjustment_id, closing_id")
       .eq("adjustment_date", selectedDate)
       .order("created_at", { ascending: false });
     if (viewedDateRef.current === selectedDate) setAudit(((auditRows ?? []) as Adjustment[]).filter((a) => a.adjustment_date === selectedDate));
@@ -636,7 +636,7 @@ const StockClosing = () => {
                       )}
                     </TableCell>
                     <TableCell className="text-end">
-                      {canReverse && !a.reversed_at && !a.original_adjustment_id && (
+                      {canReverse && !a.reversed_at && !a.original_adjustment_id && !(a as any).closing_id && (
                         <Button size="sm" variant="outline" onClick={() => setReverseTarget(a)}>
                           <Undo2 className="h-3.5 w-3.5 mr-1" /> Reverse
                         </Button>

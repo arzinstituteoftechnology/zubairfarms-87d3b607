@@ -140,7 +140,7 @@ const DailyRecovery = () => {
     if (!canDelete) { toast.error("Only Super Admin can delete. Use Reverse instead."); return; }
     const { error } = await supabase.from("shop_recoveries").delete().eq("id", r.id);
     if (error) { toast.error(error.message); return; }
-    toast.success("Recovery deleted");
+    toast.success("Recovery deleted"); noteIfFinalizedDay(r.recovery_date);
     setConfirmDel(null);
     load();
   };
@@ -148,7 +148,7 @@ const DailyRecovery = () => {
   const performReverse = async (r: Recovery, reason: string, notes: string) => {
     const { error } = await supabase.rpc("reverse_shop_recovery", { p_id: r.id, p_reason: reason, p_notes: notes });
     if (error) { toast.error(error.message); return; }
-    toast.success("Recovery reversed");
+    toast.success("Recovery reversed"); noteIfFinalizedDay(r.recovery_date);
     setReverseTarget(null);
     load();
   };

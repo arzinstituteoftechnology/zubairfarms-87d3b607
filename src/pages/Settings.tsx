@@ -206,6 +206,7 @@ function GenericListEditor({
   };
 
   const patch = async (id: string, patchVals: any) => {
+    if (Object.values(patchVals ?? {}).some((v) => typeof v === "number" && v < 0)) { toast.error("Value cannot be negative"); return; }
     if (!canEdit) return;
     const { error } = await (supabase as any).from(table).update(patchVals).eq("id", id);
     if (error) return toast.error(error.message);
@@ -333,7 +334,7 @@ const AdjustmentReasonsSection = ({ canEdit, lists }: any) => (
 const PrinterSection = ({ canEdit }: { canEdit: boolean }) => {
   const [ps, setPs] = useState<PrintSettings>(() => loadPrintSettings());
   const [profile, setProfile] = useState<"a4" | "80mm" | "58mm">(() => (localStorage.getItem("printer_profile") as any) ?? "a4");
-  const update = (k: keyof PrintSettings, v: number) => setPs((p) => ({ ...p, [k]: v }));
+  const update = (k: keyof PrintSettings, v: number) => { if (v < 0) { toast.error("Value cannot be negative"); return; } setPs((p) => ({ ...p, [k]: v })); };
   const save = () => { savePrintSettings(ps); localStorage.setItem("printer_profile", profile); toast.success("Printer settings saved"); };
   const reset = () => { setPs({ ...DEFAULT_PRINT_SETTINGS }); savePrintSettings({ ...DEFAULT_PRINT_SETTINGS }); toast.success("Reset"); };
   const applyProfile = (p: "a4" | "80mm" | "58mm") => {
@@ -421,7 +422,7 @@ const ReportsPrefsSection = ({ canEdit }: { canEdit: boolean }) => {
           </select>
         </div>
         <div className="flex items-center gap-2"><Switch checked={prefs.includeReversed} disabled={!canEdit} onCheckedChange={(v) => setPrefs((p:any)=>({...p, includeReversed: v}))} /><span className="text-sm">Include reversed transactions by default</span></div>
-        <div><Label>Rows per page</Label><Input type="number" disabled={!canEdit} className="max-w-[120px]" value={prefs.rowsPerPage} onChange={(e) => setPrefs((p:any)=>({...p, rowsPerPage: Number(e.target.value)}))} /></div>
+        <div><Label>Rows per page</Label><Input type="number" disabled={!canEdit} className="max-w-[120px]" value={prefs.rowsPerPage} onChange={(e) => { const n = Number(e.target.value); if (n < 0) { toast.error("Rows per page cannot be negative"); return; } setPrefs((p:any)=>({...p, rowsPerPage: n})); }} /></div>
         <Button onClick={save} disabled={!canEdit}>Save</Button>
       </CardContent>
     </Card>

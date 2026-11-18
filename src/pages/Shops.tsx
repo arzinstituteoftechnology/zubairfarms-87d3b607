@@ -37,6 +37,7 @@ const Shops = () => {
     if (!form.name?.trim()) return toast.error(t("farms.name_required"));
     if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
     const openingBalance = Number(form.opening_balance ?? 0) || 0;
+    if (openingBalance < 0) return toast.error("Opening balance cannot be negative");
     const payload: any = { name: form.name, contact_person: form.contact_person, phone: form.phone, address: form.address, notes: form.notes, opening_balance: openingBalance };
     if (editing) {
       const prevOpening = Number(editing.opening_balance ?? 0) || 0;
