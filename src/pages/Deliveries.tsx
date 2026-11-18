@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { noteIfFinalizedDay } from "@/lib/closingLockToast";
+import { validateNonNegative } from "@/lib/formValidation";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -55,6 +57,7 @@ const Deliveries = () => {
 
   const save = async () => {
     if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
+    { const bad = validateNonNegative({ "Chickens": form.chickens_count, "Total weight": form.total_weight_kg, "Fuel expense": form.fuel_expense, "Labour expense": form.labour_expense, "Other expense": form.other_expense }); if (bad) return toast.error(bad); }
     const payload = {
       truck_id: form.truck_id || null, farm_id: form.farm_id || null, destination: form.destination || null,
       loading_date: form.loading_date || selectedDate, loading_time: form.loading_time || null,
@@ -87,6 +90,7 @@ const Deliveries = () => {
     ]);
     await load(returnedDate);
     toast.success(t("common.saved"));
+    noteIfFinalizedDay(returnedDate);
   };
   const doDelete = async () => { if (!del) return; const { error } = await supabase.from("deliveries").delete().eq("id", del.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(selectedDate); } setDel(null); };
 

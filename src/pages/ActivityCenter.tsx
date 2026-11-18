@@ -77,13 +77,16 @@ export default function ActivityCenter() {
       .order("created_at", { ascending: false })
       .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1));
     setTotal(null);
-    applyFilters(supabase.from("activity_logs").select("id", { count: "exact", head: true }))
-      .then(async ({ count, error }: any) => {
-        if (!error && typeof count === "number") { setTotal(count); return; }
-        // Exact count can time out on very large logs — fall back to an estimate.
-        const r: any = await applyFilters(supabase.from("activity_logs").select("id", { count: "estimated", head: true }));
-        if (typeof r?.count === "number") setTotal(r.count);
-      }, () => {});
+    (supabase as any).rpc("count_activity_logs", {
+      _module: module !== "all" ? module : null,
+      _from: from ? new Date(from).toISOString() : null,
+      _to: to ? new Date(to + "T23:59:59").toISOString() : null,
+      _actor: actor || null,
+      _q: q || null,
+    }).then(({ data, error }: any) => {
+      if (!error && data != null) setTotal(Number(data));
+      else setTotal(-1);
+    }, () => setTotal(-1));
 
     const { data, error } = await query;
     if (error) { setLoading(false); toast.error("Could not load activity: " + error.message); return; }
@@ -141,7 +144,7 @@ export default function ActivityCenter() {
     );
   }
 
-  const knownTotal = total ?? (page * PAGE_SIZE + rows.length + (rows.length === PAGE_SIZE ? 1 : 0));
+  const knownTotal = (total != null && total >= 0) ? total : (page * PAGE_SIZE + rows.length + (rows.length === PAGE_SIZE ? 1 : 0));
   const totalPages = Math.max(1, Math.ceil(knownTotal / PAGE_SIZE));
 
   return (
@@ -266,7 +269,7 @@ export default function ActivityCenter() {
       </Card>
 
       <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">{total == null ? (rows.length ? `Showing ${(page * PAGE_SIZE + 1).toLocaleString()}–${(page * PAGE_SIZE + rows.length).toLocaleString()} (counting…)` : "0 entries") : `${total.toLocaleString()} entries`} · Page {page + 1} of {totalPages}</span>
+        <span className="text-muted-foreground">{loading && rows.length === 0 ? "Loading entries…" : total == null ? `Showing ${(page * PAGE_SIZE + 1).toLocaleString()}–${(page * PAGE_SIZE + rows.length).toLocaleString()} · counting…` : total < 0 ? `Showing ${(page * PAGE_SIZE + 1).toLocaleString()}–${(page * PAGE_SIZE + rows.length).toLocaleString()}` : total === 0 ? "0 entries" : `Showing ${(page * PAGE_SIZE + 1).toLocaleString()}–${(page * PAGE_SIZE + rows.length).toLocaleString()} of ${total.toLocaleString()} entries`} · Page {page + 1} of {totalPages}</span>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>Prev</Button>
           <Button size="sm" variant="outline" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>

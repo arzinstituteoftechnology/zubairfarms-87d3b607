@@ -1,4 +1,5 @@
 import { confirmDialog } from "@/components/ConfirmHost";
+import { noteIfFinalizedDay } from "@/lib/closingLockToast";
 import { LoadingValue } from "@/components/LoadingValue";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -285,12 +286,14 @@ const ShopLedger = () => {
   const addPayment = async () => {
     if (!ledger || !payAmt) return;
     if (!tenant?.id) return toast.error("Account is not linked to an active client.");
+    if (!(Number(payAmt) > 0)) return toast.error("Amount must be greater than 0");
     const { error } = await supabase.from("shop_ledger_entries").insert({
       shop_id: ledger.id, tenant_id: tenant.id, entry_type: "manual_payment",
       amount: Number(payAmt), entry_date: payDate, description: payDesc || "Payment received", created_by: user?.id,
     });
     if (error) return toast.error(error.message);
     toast.success("Payment recorded");
+    noteIfFinalizedDay(payDate);
     setPayAmt(""); setPayDesc("");
     await refreshLedger(ledger); load();
   };

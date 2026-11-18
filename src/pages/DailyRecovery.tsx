@@ -1,4 +1,5 @@
 import { mergeCollections, sumActive, type CollectionRow } from "@/lib/recoveries";
+import { noteIfFinalizedDay } from "@/lib/closingLockToast";
 import { Badge } from "@/components/ui/badge";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -132,6 +133,7 @@ const DailyRecovery = () => {
     }
     setOpen(false);
     load();
+    noteIfFinalizedDay(payload.recovery_date);
   };
 
   const remove = async (r: Recovery) => {

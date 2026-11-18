@@ -25,8 +25,10 @@ export function RecentInvoices({ date }: { date: string }) {
   const [target, setTarget] = useState<PosSaleRow | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
-  const load = useCallback(async () => setRows(await fetchPosSales(date, date)), [date]);
+  const load = useCallback(async () => { setRows(await fetchPosSales(date, date)); setLoaded(true); }, [date]);
+  useEffect(() => { setLoaded(false); }, [date]);
   useEffect(() => { load(); }, [load]);
 
   const doVoid = async () => {
@@ -45,7 +47,7 @@ export function RecentInvoices({ date }: { date: string }) {
     <Card className="p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="font-semibold">Invoices on {date}</div>
-        <div className="text-sm text-muted-foreground">{t.count} active · Sales {fmtMoney(t.total)} · Due {fmtMoney(t.due)}</div>
+        <div className="text-sm text-muted-foreground">{loaded ? <>{t.count} active · Sales {fmtMoney(t.total)} · Due {fmtMoney(t.due)}</> : <span className="inline-block h-4 w-48 rounded bg-muted animate-pulse align-middle" aria-label="Loading" />}</div>
       </div>
       <div className="rounded-md border overflow-x-auto">
         <Table>
@@ -57,7 +59,9 @@ export function RecentInvoices({ date }: { date: string }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.length === 0 ? (
+            {!loaded ? (
+              <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-6">Loading invoices…</TableCell></TableRow>
+            ) : rows.length === 0 ? (
               <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-6">No invoices on this day</TableCell></TableRow>
             ) : rows.map((s) => (
               <TableRow key={s.id} className={s.voided_at ? "opacity-60" : ""}>

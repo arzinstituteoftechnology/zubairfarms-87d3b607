@@ -445,6 +445,10 @@ const loaders: Record<string, ReportDef["load"]> = {
         surplus_estimated_value: r.variance_type === "surplus"
           ? round2(num(r.variance_weight) * war) : 0,
         reason_label: r.reason ? (REASONS_LABEL[r.reason] ?? r.reason) : "—",
+        // Mortality = entries during the day + mortality found at closing (the shortage itself), counted once.
+        mortality_total: round2(num(r.mortality_weight) + (r.reason === "mortality" && num(r.variance_weight) < 0 ? Math.abs(num(r.variance_weight)) : 0)),
+        finalized_at_fmt: r.finalized_at ? new Date(r.finalized_at).toLocaleString() : "—",
+        reversed_at_fmt: r.reversed_at ? new Date(r.reversed_at).toLocaleString() : "—",
         created_by_name: r.created_by ? o.userMap.get(r.created_by) ?? "—" : "—",
         finalized_by_name: r.finalized_by ? o.userMap.get(r.finalized_by) ?? "—" : "—",
         reversed_by_name: r.reversed_by ? o.userMap.get(r.reversed_by) ?? "—" : "—",
@@ -465,7 +469,7 @@ const loaders: Record<string, ReportDef["load"]> = {
         { label: "Supplied", key: "supplies_kg", format: "kg", align: "right" },
         { label: "Pos Adj", key: "positive_adjustments_kg", format: "kg", align: "right" },
         { label: "Neg Adj", key: "negative_adjustments_kg", format: "kg", align: "right" },
-        { label: "Mortality", key: "mortality_weight", format: "kg", align: "right" },
+        { label: "Mortality", key: "mortality_total", format: "kg", align: "right" },
         { label: "Expected", key: "expected_closing_stock", format: "kg", align: "right" },
         { label: "Physical", key: "physical_stock", format: "kg", align: "right" },
         { label: "Variance", key: "variance_weight", format: "kg", align: "right" },
@@ -476,9 +480,9 @@ const loaders: Record<string, ReportDef["load"]> = {
         { label: "Status", key: "status" },
         { label: "Created By", key: "created_by_name" },
         { label: "Finalized By", key: "finalized_by_name" },
-        { label: "Finalized At", key: "finalized_at" },
+        { label: "Finalized At", key: "finalized_at_fmt" },
         { label: "Reversed By", key: "reversed_by_name" },
-        { label: "Reversed At", key: "reversed_at" },
+        { label: "Reversed At", key: "reversed_at_fmt" },
       ],
       totals: [
         { label: "Entries", value: String(rows.length) },

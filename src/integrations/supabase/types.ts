@@ -3258,6 +3258,16 @@ export type Database = {
         Args: { p_date: string; p_meat: string; p_tenant: string }
         Returns: number
       }
+      count_activity_logs: {
+        Args: {
+          _actor?: string
+          _from?: string
+          _module?: string
+          _q?: string
+          _to?: string
+        }
+        Returns: number
+      }
       current_tenant_id: { Args: never; Returns: string }
       delete_backup: {
         Args: { _id: string; _reason?: string }

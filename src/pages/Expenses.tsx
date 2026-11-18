@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { noteIfFinalizedDay } from "@/lib/closingLockToast";
+import { validateNonNegative } from "@/lib/formValidation";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -53,6 +55,8 @@ const Expenses = () => {
   const save = async () => {
     if (!form.amount) return toast.error(t("expenses.amount_required"));
     if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
+    { const bad = validateNonNegative({ Amount: form.amount }); if (bad) return toast.error(bad); }
+    if (!(Number(form.amount) > 0)) return toast.error("Amount must be greater than 0");
     const payload = { category: form.category, amount: Number(form.amount), expense_date: form.expense_date || selectedDate, farm_id: form.farm_id || null, notes: form.notes || null };
     const oldDate = editing?.expense_date;
     const newDate = payload.expense_date;
@@ -79,6 +83,7 @@ const Expenses = () => {
     ]);
     await load(returnedDate);
     toast.success(t("common.saved"));
+    noteIfFinalizedDay(returnedDate);
   };
   const doDelete = async () => { if (!delTarget) return; const { error } = await supabase.from("expenses").delete().eq("id", delTarget.id); if (error) toast.error(error.message); else { toast.success(t("common.deleted")); load(selectedDate); } setDelTarget(null); };
 

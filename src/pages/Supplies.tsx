@@ -11,7 +11,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Pencil, Trash2, Printer } from "lucide-react";
+import { Pencil, Trash2, Printer, Undo2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ReverseTransactionDialog } from "@/components/ReverseTransactionDialog";
+import { validateNonNegative } from "@/lib/formValidation";
 import { toast } from "sonner";
 import { fmtKg, fmtMoney } from "@/lib/constants";
 import { useSettingsLists, activeOnly } from "@/hooks/useSettingsLists";
@@ -20,7 +23,7 @@ import { useLedgerDate } from "@/hooks/useLedgerDate";
 import { printReport } from "@/lib/printReport";
 
 type Row = {
-  id: string; shop_id: string; meat_type: string; weight_kg: number; rate_per_kg: number;
+  id: string; reversed_at?: string | null; shop_id: string; meat_type: string; weight_kg: number; rate_per_kg: number;
   cost_per_kg: number; total_amount: number; supply_date: string; notes: string | null;
   shops?: { name: string } | null;
 };
@@ -42,6 +45,15 @@ const Supplies = () => {
   const [form, setForm] = useState<SupplyForm>(emptyForm());
   const [editing, setEditing] = useState<Row | null>(null);
   const [delTarget, setDelTarget] = useState<Row | null>(null);
+  const [revTarget, setRevTarget] = useState<Row | null>(null);
+  const doReverse = async (reason: string, notes: string) => {
+    if (!revTarget) return;
+    const { error } = await supabase.rpc("reverse_supply" as any, { p_id: revTarget.id, p_reason: reason, p_notes: notes || null });
+    if (error) { toast.error(error.message); return; }
+    toast.success("Reversed — the original stays in the list marked REVERSED.");
+    setRevTarget(null);
+    queryClient.invalidateQueries({ queryKey: ["supplies"] });
+  };
   const { selectedDate: filterDate, setSelectedDate: setFilterDate, today: ledgerToday } = useLedgerDate();
 
   const suppliesQuery = useQuery({
@@ -98,6 +110,9 @@ const Supplies = () => {
   const save = async () => {
     if (!form.shop_id || !form.weight_kg || !form.rate_per_kg) return toast.error(t("supplies.required"));
     if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
+    { const bad = validateNonNegative({ "Weight": form.weight_kg, "Rate per kg": form.rate_per_kg, "Cost per kg": form.cost_per_kg }); if (bad) return toast.error(bad); }
+    if (Number(form.weight_kg) <= 0) return toast.error("Weight must be greater than 0");
+    if (Number(form.rate_per_kg) <= 0) return toast.error("Rate must be greater than 0");
     const payload = {
       shop_id: editing ? editing.shop_id : form.shop_id,
       meat_type: form.meat_type,
@@ -170,7 +185,7 @@ const Supplies = () => {
         onAdd={() => { setEditing(null); setForm({ ...emptyForm(), supply_date: filterDate }); setOpen(true); }}
         addLabel={t("supplies.add")}
         columns={[
-          { key: "date", label: t("common.date"), render: (r) => <span className="force-ltr">{r.supply_date}</span> },
+          { key: "date", label: t("common.date"), render: (r) => <span className="force-ltr">{r.supply_date}{r.reversed_at && <Badge variant="destructive" className="ms-2 text-[10px]">REVERSED</Badge>}</span> },
           { key: "shop", label: t("nav.shops"), render: (r) => <span className="font-medium">{r.shops?.name ?? "—"}</span> },
           { key: "meat", label: t("purchases.meat_col"), render: (r) => r.meat_type },
           { key: "weight", label: t("purchases.weight_col"), className: "text-end", render: (r) => fmtKg(r.weight_kg) },
@@ -178,8 +193,11 @@ const Supplies = () => {
           { key: "total", label: t("common.total"), className: "text-end font-medium", render: (r) => fmtMoney(r.total_amount) },
           { key: "actions", label: "", className: "text-right w-24", render: (r) => (
             <div className="flex justify-end gap-1">
+              {r.reversed_at ? <span className="text-xs text-muted-foreground">Reversed</span> : <>
+              {role === "admin" && <Button size="icon" variant="ghost" title="Reverse" aria-label="Reverse" onClick={() => setRevTarget(r)}><Undo2 className="h-4 w-4" /></Button>}
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => openEdit(r.id)}><Pencil className="h-4 w-4" /></Button>}
               {role === "admin" && <Button size="icon" variant="ghost" onClick={() => setDelTarget(r)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
+              </>}
             </div>
           )},
         ]}
@@ -199,8 +217,8 @@ const Supplies = () => {
           ],
           rows,
           totals: [
-            { label: "Total Weight", value: fmtKg(rows.reduce((s, r) => s + Number(r.weight_kg || 0), 0)) },
-            { label: "Total Amount", value: fmtMoney(rows.reduce((s, r) => s + Number(r.total_amount || 0), 0)) },
+            { label: "Total Weight", value: fmtKg(rows.filter((r) => !r.reversed_at).reduce((s, r) => s + Number(r.weight_kg || 0), 0)) },
+            { label: "Total Amount", value: fmtMoney(rows.filter((r) => !r.reversed_at).reduce((s, r) => s + Number(r.total_amount || 0), 0)) },
           ],
           footer: `Printed by ${user?.email ?? ""}`,
         })}><Printer className="h-4 w-4" /> {t("common.print") || "Print"}</Button>
@@ -251,6 +269,12 @@ const Supplies = () => {
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button><Button onClick={save}>{t("common.save")}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+      <ReverseTransactionDialog
+        open={!!revTarget}
+        target={revTarget ? { label: `${revTarget.shops?.name ?? ""} · ${revTarget.meat_type} · ${fmtKg(revTarget.weight_kg)}`, amount: Number(revTarget.total_amount), date: revTarget.supply_date } : null}
+        onOpenChange={(o) => !o && setRevTarget(null)}
+        onConfirm={doReverse}
+      />
       <AlertDialog open={!!delTarget} onOpenChange={(o) => !o && setDelTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>{t("supplies.delete_q")}</AlertDialogTitle></AlertDialogHeader>

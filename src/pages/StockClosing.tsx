@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,7 +59,8 @@ type Row = {
   purchases: number;
   supplies: number;
   adjustments: number;
-  mortality: number;             // absolute kg (from mortality adjustments)
+  mortality: number;             // absolute kg (mortality adjustments recorded during the day, already inside Expected)
+  closingMortality?: number;     // absolute kg of mortality found at closing (it IS the shortage/variance)
   positiveAdjustments: number;   // sum of quantity_kg > 0 (excluding mortality)
   negativeAdjustments: number;   // sum of quantity_kg < 0 (absolute, excluding mortality)
   system: number;
@@ -126,6 +127,8 @@ const StockClosing = () => {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [audit, setAudit] = useState<Adjustment[]>([]);
+  const viewedDateRef = useRef(selectedDate);
+  viewedDateRef.current = selectedDate;
   const [reverseTarget, setReverseTarget] = useState<Adjustment | null>(null);
   const [reverseClosing, setReverseClosing] = useState<{ id: string; meat: string; amount?: number } | null>(null);
   const [confirmIdx, setConfirmIdx] = useState<number | null>(null);
@@ -146,6 +149,7 @@ const StockClosing = () => {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setAudit([]); // never show a previous date's audit rows
 
     // Latest physical closing per meat_type BEFORE selectedDate → opening stock
     const { data: prior } = await supabase
@@ -248,7 +252,8 @@ const StockClosing = () => {
           purchases: round2(num(ex.purchases_kg)), supplies: round2(num(ex.supplies_kg)),
           adjustments: round2(num(ex.adjustments_kg)),
           system: round2(num(ex.expected_closing_stock ?? ex.system_stock)),
-          mortality: round2(num(ex.mortality_weight) + closingMortality),
+          mortality: round2(num(ex.mortality_weight)),
+          closingMortality: round2(closingMortality),
           positiveAdjustments: round2(num(ex.positive_adjustments_kg)),
           negativeAdjustments: round2(num(ex.negative_adjustments_kg)),
           physical: String(num(ex.physical_stock)),
@@ -282,7 +287,7 @@ const StockClosing = () => {
       .select("id, adjustment_date, meat_type, quantity_kg, reason, notes, created_at, reversed_at, reversal_reason, original_adjustment_id")
       .eq("adjustment_date", selectedDate)
       .order("created_at", { ascending: false });
-    setAudit((auditRows ?? []) as Adjustment[]);
+    if (viewedDateRef.current === selectedDate) setAudit(((auditRows ?? []) as Adjustment[]).filter((a) => a.adjustment_date === selectedDate));
 
     setLoading(false);
   }, [selectedDate]);
@@ -423,14 +428,20 @@ const StockClosing = () => {
             <div className="mb-3 rounded-md border p-3 text-xs bg-background">
               <div className="font-semibold text-foreground mb-2">Live Reconciliation Formula</div>
               <div className="text-muted-foreground font-mono">
-                Expected Closing = Opening + Purchases − Supplies + Positive Adj − Negative Adj − Mortality<br />
-                Variance = Physical Closing − Expected Closing
+                Expected Closing = Opening + Purchases − Supplies + Positive Adj − Negative Adj − Mortality during day<br />
+                Variance = Physical Closing − Expected Closing<br />
+                Mortality at closing is the shortage itself (Variance with reason Mortality) — it is counted once and not subtracted from Expected again.
               </div>
               <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-muted-foreground">
                 <div>Opening total: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.opening, 0))}</span></div>
                 <div>Purchases: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.purchases, 0))}</span></div>
                 <div>Supplies: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.supplies, 0))}</span></div>
-                <div>Mortality: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.mortality, 0))}</span></div>
+                <div>Mortality during day: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.mortality, 0))}</span></div>
+                <div>Mortality at closing (in variance): <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => {
+                  if (r.closingMortality != null) return a + r.closingMortality;
+                  const ph = r.physical === "" ? NaN : Number(r.physical);
+                  return a + (r.reason === "mortality" && Number.isFinite(ph) && ph < r.system ? r.system - ph : 0);
+                }, 0))}</span></div>
                 <div>Pos Adj: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.positiveAdjustments, 0))}</span></div>
                 <div>Neg Adj: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.negativeAdjustments, 0))}</span></div>
                 <div>Expected: <span className="font-mono text-foreground">{fmtKg(rows.reduce((a, r) => a + r.system, 0))}</span></div>

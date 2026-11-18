@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { noteIfFinalizedDay } from "@/lib/closingLockToast";
 import { LoadingValue } from "@/components/LoadingValue";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -246,9 +247,10 @@ const Suppliers = () => {
   const addPayment = async () => {
     if (!ledger || !payAmt) return;
     if (!tenant?.id) return toast.error("Account is not linked to an active client. Please sign in again after the super admin creates your client account.");
+    if (!(Number(payAmt) > 0)) return toast.error("Amount must be greater than 0");
     const { error } = await supabase.from("farm_payments").insert({ farm_id: ledger.id, amount: Number(payAmt), payment_date: payDate, method: payMethod, tenant_id: tenant.id, created_by: user?.id });
     if (error) return toast.error(error.message);
-    toast.success(t("suppliers.payment_recorded")); setPayAmt(""); await refreshLedger(ledger); load();
+    toast.success(t("suppliers.payment_recorded")); noteIfFinalizedDay(payDate); setPayAmt(""); await refreshLedger(ledger); load();
   };
 
   const openManual = (type: ManualForm["entry_type"]) => {

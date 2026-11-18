@@ -71,6 +71,15 @@ const ClosingHistory = () => {
   const { isSuperAdmin } = useAuth();
   const canReverse = isOwner || isSuperAdmin || can("stock_closing" as any, "reverse");
 
+  // Default range must include the latest closing, even one dated after today.
+  useEffect(() => {
+    supabase.from("stock_closings").select("closing_date").order("closing_date", { ascending: false }).limit(1)
+      .then(({ data }) => {
+        const latest = data?.[0]?.closing_date as string | undefined;
+        if (latest && latest > today) setTo((cur) => (cur === today ? latest : cur));
+      });
+  }, [today]);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
