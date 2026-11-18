@@ -36,6 +36,20 @@
       "when": 1795039747650,
       "tag": "0004_closing_lock_blocks_new_stock_records",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795040552922,
+      "tag": "0005_reversal_dates_match_original",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795040594425,
+      "tag": "0006_reversal_dates_match_original_v2",
+      "breakpoints": true
     }
   ]
 }

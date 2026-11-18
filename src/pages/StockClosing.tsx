@@ -152,6 +152,8 @@ const StockClosing = () => {
       .from("stock_closings")
       .select("meat_type, physical_stock, closing_date")
       .lt("closing_date", selectedDate)
+      .eq("status", "finalized" as any)
+      .is("reversed_at", null)
       .order("closing_date", { ascending: false });
 
     const openingMap = new Map<string, number>();

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { LoadingValue } from "@/components/LoadingValue";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -214,19 +215,19 @@ const MortalityRegister = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Total Dead Weight</CardTitle></CardHeader>
-          <CardContent><div className="text-2xl font-bold text-destructive">{fmtKg(totals.dead)}</div></CardContent>
+          <CardContent><div className="text-2xl font-bold text-destructive"><LoadingValue loading={loading}>{fmtKg(totals.dead)}</LoadingValue></div></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Mortality Entries</CardTitle></CardHeader>
-          <CardContent><div className="text-2xl font-bold">{totals.count}</div></CardContent>
+          <CardContent><div className="text-2xl font-bold"><LoadingValue loading={loading}>{totals.count}</LoadingValue></div></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Bird Count</CardTitle></CardHeader>
-          <CardContent><div className="text-2xl font-bold">{totals.birds}</div></CardContent>
+          <CardContent><div className="text-2xl font-bold"><LoadingValue loading={loading}>{totals.birds}</LoadingValue></div></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Mortality Cost</CardTitle></CardHeader>
-          <CardContent><div className="text-2xl font-bold text-destructive">{fmtMoney(totals.cost)}</div></CardContent>
+          <CardContent><div className="text-2xl font-bold text-destructive"><LoadingValue loading={loading}>{fmtMoney(totals.cost)}</LoadingValue></div></CardContent>
         </Card>
       </div>
 
@@ -342,19 +343,19 @@ const MortalityRegister = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="rounded-md border p-3">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Total Dead Weight</div>
-              <div className="text-lg font-bold text-destructive">{fmtKg(monthlyTotals.deadKg)}</div>
+              <div className="text-lg font-bold text-destructive"><LoadingValue loading={loading}>{fmtKg(monthlyTotals.deadKg)}</LoadingValue></div>
             </div>
             <div className="rounded-md border p-3">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Total Cost</div>
-              <div className="text-lg font-bold text-destructive">{fmtMoney(monthlyTotals.cost)}</div>
+              <div className="text-lg font-bold text-destructive"><LoadingValue loading={loading}>{fmtMoney(monthlyTotals.cost)}</LoadingValue></div>
             </div>
             <div className="rounded-md border p-3">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Avg Daily Mortality</div>
-              <div className="text-lg font-bold">{fmtKg(monthlyTotals.avgDaily)}</div>
+              <div className="text-lg font-bold"><LoadingValue loading={loading}>{fmtKg(monthlyTotals.avgDaily)}</LoadingValue></div>
             </div>
             <div className="rounded-md border p-3">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Mortality %</div>
-              <div className="text-lg font-bold">{monthlyTotals.pct.toFixed(2)}%</div>
+              <div className="text-lg font-bold"><LoadingValue loading={loading}>{monthlyTotals.pct.toFixed(2)}%</LoadingValue></div>
             </div>
           </div>
           <div className="rounded-md border overflow-x-auto">

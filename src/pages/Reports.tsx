@@ -1,4 +1,5 @@
 import { fetchPosSales, posProfitLines, posTotals } from "@/lib/posSales";
+import { LoadingValue } from "@/components/LoadingValue";
 import { mergeCollections } from "@/lib/recoveries";
 import { logActivity } from "@/lib/activityLog";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -354,7 +355,8 @@ const loaders: Record<string, ReportDef["load"]> = {
     const asOf = f.to;
     const [{ data: prior }, { data: p }, { data: s }, { data: adj }] = await Promise.all([
       supabase.from("stock_closings").select("meat_type, physical_stock, closing_date")
-        .lte("closing_date", asOf).order("closing_date", { ascending: false }),
+        .lte("closing_date", asOf).eq("status", "finalized" as any).is("reversed_at", null)
+        .order("closing_date", { ascending: false }),
       supabase.from("purchases").select("meat_type, weight_kg, purchase_date").lte("purchase_date", asOf).is("reversed_at", null),
       supabase.from("supplies").select("meat_type, weight_kg, supply_date").lte("supply_date", asOf).is("reversed_at", null),
       supabase.from("stock_adjustments").select("meat_type, quantity_kg, adjustment_date")
@@ -448,7 +450,7 @@ const loaders: Record<string, ReportDef["load"]> = {
         reversed_by_name: r.reversed_by ? o.userMap.get(r.reversed_by) ?? "—" : "—",
       };
     }));
-    const totalVar = rows.reduce((a, r) => a + num(r.variance_weight), 0);
+    const totalVar = rows.filter(r => !r.reversed_at).reduce((a, r) => a + num(r.variance_weight), 0);
     const totalShort = rows.filter(r => r.variance_type === "shortage" && r.status === "finalized" && !r.reversed_at)
       .reduce((a, r) => a + num(r.shortage_cost), 0);
     const totalSurp = rows.filter(r => r.variance_type === "surplus" && r.status === "finalized" && !r.reversed_at)
@@ -496,13 +498,15 @@ const loaders: Record<string, ReportDef["load"]> = {
   closing_history: async (f) => {
     // Same source, ordered ascending for history view
     let q = supabase.from("stock_closings")
-      .select("closing_date, meat_type, opening_stock, purchases_kg, supplies_kg, system_stock, physical_stock, difference, reason, notes, created_at")
+      .select("closing_date, meat_type, opening_stock, purchases_kg, supplies_kg, system_stock, physical_stock, difference, reason, notes, created_at, status, reversed_at")
       .gte("closing_date", f.from).lte("closing_date", f.to)
       .order("closing_date", { ascending: true });
     if (f.meat_type !== "all") q = q.eq("meat_type", f.meat_type);
+    q = applyReversedFilter(q, f.includeReversed);
     const { data } = await q;
     const rows = (data ?? []).map((r: any) => ({
       ...r, reason_label: r.reason ? (REASONS_LABEL[r.reason] ?? r.reason) : "—",
+      status_label: r.reversed_at ? "Reversed" : r.status,
     }));
     return {
       rows,
@@ -515,8 +519,12 @@ const loaders: Record<string, ReportDef["load"]> = {
         { label: "Difference", key: "difference", format: "kg", align: "right" },
         { label: "Reason", key: "reason_label" },
         { label: "Notes", key: "notes" },
+        { label: "Status", key: "status_label" },
       ],
-      totals: [{ label: "Records", value: String(rows.length) }],
+      totals: [
+        { label: "Active Records", value: String(rows.filter((r: any) => !r.reversed_at).length) },
+        { label: "Net Difference", value: fmtKg(rows.filter((r: any) => !r.reversed_at).reduce((a: number, r: any) => a + num(r.difference), 0)) },
+      ],
       kpis: [
         { label: "History Records", value: String(rows.length), icon: History, tone: "bg-blue-500" },
       ],
@@ -790,12 +798,13 @@ const loaders: Record<string, ReportDef["load"]> = {
       const pct = expected !== 0 ? round2((variance / expected) * 100) : 0;
       return { ...r, variance_pct: pct };
     });
-    const totExp = rows.reduce((a, r) => a + num(r.expected_closing_stock), 0);
-    const totPhys = rows.reduce((a, r) => a + num(r.physical_stock), 0);
-    const totVar = rows.reduce((a, r) => a + num(r.variance_weight), 0);
-    const balCount = rows.filter(r => r.variance_type === "balanced").length;
-    const shortCount = rows.filter(r => r.variance_type === "shortage").length;
-    const surpCount = rows.filter(r => r.variance_type === "surplus").length;
+    const activeRows = rows.filter((r: any) => !r.reversed_at);
+    const totExp = activeRows.reduce((a, r) => a + num(r.expected_closing_stock), 0);
+    const totPhys = activeRows.reduce((a, r) => a + num(r.physical_stock), 0);
+    const totVar = activeRows.reduce((a, r) => a + num(r.variance_weight), 0);
+    const balCount = activeRows.filter(r => r.variance_type === "balanced").length;
+    const shortCount = activeRows.filter(r => r.variance_type === "shortage").length;
+    const surpCount = activeRows.filter(r => r.variance_type === "surplus").length;
     return {
       rows,
       columns: [
@@ -1407,7 +1416,7 @@ const Reports = () => {
                   </div>
                 )}
               </CardHeader>
-              <CardContent><div className="text-xl font-bold">{k.value}</div></CardContent>
+              <CardContent><div className="text-xl font-bold"><LoadingValue loading={loading}>{k.value}</LoadingValue></div></CardContent>
             </Card>
           ))}
         </div>
@@ -1448,7 +1457,7 @@ const Reports = () => {
             {result.totals.map((t, i) => (
               <div key={i} className="text-sm">
                 <span className="text-muted-foreground">{t.label}: </span>
-                <span className="font-semibold">{t.value}</span>
+                <span className="font-semibold"><LoadingValue loading={loading} className="h-4 w-16">{t.value}</LoadingValue></span>
               </div>
             ))}
           </div>

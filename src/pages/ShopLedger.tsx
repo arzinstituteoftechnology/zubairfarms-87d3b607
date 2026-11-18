@@ -1,4 +1,5 @@
 import { confirmDialog } from "@/components/ConfirmHost";
+import { LoadingValue } from "@/components/LoadingValue";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -89,6 +90,7 @@ const ShopLedger = () => {
   const [loading, setLoading] = useState(true);
   const [ledger, setLedger] = useState<Row | null>(null);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
   const [payAmt, setPayAmt] = useState("");
   const [payDate, setPayDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [payDesc, setPayDesc] = useState("");
@@ -193,7 +195,8 @@ const ShopLedger = () => {
     setLedger(r);
     setLedgerFilterDate("");
     setRangeFrom(""); setRangeTo("");
-    await refreshLedger(r);
+    setLedgerLoading(true);
+    try { await refreshLedger(r); } finally { setLedgerLoading(false); }
   };
 
   const refreshLedger = async (r: Row) => {
@@ -541,10 +544,10 @@ const ShopLedger = () => {
                 )}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Opening</div><div className="font-semibold">{fmtMoney(summary.opening || ledger.opening_balance)}</div></div>
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Supplied</div><div className="font-semibold">{fmtMoney(summary.supplied)}</div></div>
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Paid</div><div className="font-semibold">{fmtMoney(summary.paid)}</div></div>
-                <div className="rounded-md border p-3"><div className="text-muted-foreground">Current Balance</div><div className="font-semibold text-destructive">{fmtMoney(summary.balance)}</div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">Opening</div><div className="font-semibold"><LoadingValue loading={ledgerLoading}>{fmtMoney(summary.opening || ledger.opening_balance)}</LoadingValue></div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">Supplied</div><div className="font-semibold"><LoadingValue loading={ledgerLoading}>{fmtMoney(summary.supplied)}</LoadingValue></div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">Paid</div><div className="font-semibold"><LoadingValue loading={ledgerLoading}>{fmtMoney(summary.paid)}</LoadingValue></div></div>
+                <div className="rounded-md border p-3"><div className="text-muted-foreground">Current Balance</div><div className="font-semibold text-destructive"><LoadingValue loading={ledgerLoading}>{fmtMoney(summary.balance)}</LoadingValue></div></div>
               </div>
               <div className="flex flex-wrap gap-2 no-print">
                 <Button size="sm" variant="outline" onClick={() => openManual("manual_supply")}><Plus className="h-4 w-4" /> Previous Supply</Button>
