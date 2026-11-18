@@ -1,0 +1,4 @@
+- Daily closing drafts never post stock adjustments; only `finalize_stock_closing` posts the single closing adjustment (unique index enforces one active per closing). Why: draft + finalize used to double-count mortality.
+- POS sales deduct stock through `stock_adjustments` rows with reason `pos_sale` (posted by a DB trigger) and are voided via `void_pos_sale`, never deleted. Loss/mortality queries must exclude reason `pos_sale`. Why: one stock formula everywhere.
+- Shop collections (Daily Recovery + Shop Ledger manual payments) come from `src/lib/recoveries.ts`; POS bill/profit/totals from `src/lib/posSales.ts`. Why: one shared source, no double counting.
+- Never use `window.confirm` for destructive actions; use AlertDialog. Why: it is silently blocked in embedded previews.

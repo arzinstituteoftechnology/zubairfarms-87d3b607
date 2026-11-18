@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -56,24 +57,30 @@ export default function ActivityCenter() {
   const load = useCallback(async () => {
     if (!isOwner) return;
     setLoading(true);
-    let query = supabase
+    const applyFilters = (qb: any) => {
+      if (module !== "all") {
+        // Module filter: match either entity=module or action prefix
+        if (module === "authentication") qb = qb.like("action", "auth_%");
+        else qb = qb.or(`entity.eq.${module},action.like.${module}\\_%`);
+      }
+      if (from) qb = qb.gte("created_at", new Date(from).toISOString());
+      if (to) qb = qb.lte("created_at", new Date(to + "T23:59:59").toISOString());
+      if (actor) qb = qb.eq("actor_user_id", actor);
+      if (q) qb = qb.or(`action.ilike.%${q}%,entity.ilike.%${q}%,entity_id.ilike.%${q}%`);
+      return qb;
+    };
+    // Rows load without an exact count (the count is slow on large logs);
+    // the total is fetched separately and fills in when ready.
+    const query = applyFilters(supabase
       .from("activity_logs")
-      .select("id, created_at, action, entity, entity_id, tenant_id, actor_user_id, metadata", { count: "exact" })
+      .select("id, created_at, action, entity, entity_id, tenant_id, actor_user_id, metadata")
       .order("created_at", { ascending: false })
-      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1));
+    applyFilters(supabase.from("activity_logs").select("id", { count: "exact", head: true }))
+      .then(({ count }: any) => { if (typeof count === "number") setTotal(count); }, () => {});
 
-    if (module !== "all") {
-      // Module filter: match either entity=module or action prefix
-      if (module === "authentication") query = query.like("action", "auth_%");
-      else query = query.or(`entity.eq.${module},action.like.${module}\\_%`);
-    }
-    if (from) query = query.gte("created_at", new Date(from).toISOString());
-    if (to) query = query.lte("created_at", new Date(to + "T23:59:59").toISOString());
-    if (actor) query = query.eq("actor_user_id", actor);
-    if (q) query = query.or(`action.ilike.%${q}%,entity.ilike.%${q}%,entity_id.ilike.%${q}%`);
-
-    const { data, count, error } = await query;
-    if (error) { setLoading(false); return; }
+    const { data, error } = await query;
+    if (error) { setLoading(false); toast.error("Could not load activity: " + error.message); return; }
     let list = (data ?? []) as ActivityLogRow[];
     if (result !== "all") {
       list = list.filter((r) => {
@@ -91,7 +98,6 @@ export default function ActivityCenter() {
       setNameMap(next);
     }
     setRows(list.map((r) => ({ ...r, actor_name: r.actor_user_id ? (nameMap[r.actor_user_id] ?? "") : "system" })));
-    setTotal(count ?? 0);
     setLoading(false);
   }, [isOwner, page, module, from, to, actor, q, result, nameMap]);
 
