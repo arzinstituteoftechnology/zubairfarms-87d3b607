@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -332,7 +333,7 @@ const ShopLedger = () => {
   };
   const deleteManual = async (e: LedgerEntry) => {
     if (!ledger || !e.ledgerId) return;
-    if (!confirm("Delete this entry?")) return;
+    if (!(await confirmDialog("Delete this entry?"))) return;
     const { error } = await supabase.from("shop_ledger_entries").delete().eq("id", e.ledgerId);
     if (error) return toast.error(error.message);
     toast.success("Entry deleted");

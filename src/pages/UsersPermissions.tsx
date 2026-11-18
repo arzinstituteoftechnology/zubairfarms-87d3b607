@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -193,7 +194,7 @@ export default function UsersPermissions() {
     loadInvites();
   };
   const revokeInvite = async (id: string) => {
-    if (!confirm("Revoke this invitation? The link will stop working.")) return;
+    if (!(await confirmDialog("Revoke this invitation? The link will stop working."))) return;
     const { data, error } = await supabase.functions.invoke("owner-invite-user", { body: { action: "revoke", invitation_id: id } });
     if (error || (data as any)?.error) return toast({ title: "Revoke failed", description: (data as any)?.error ?? error?.message, variant: "destructive" });
     toast({ title: "Invitation revoked" });
@@ -215,7 +216,7 @@ export default function UsersPermissions() {
   };
 
   const removeUser = async (row: Row) => {
-    if (!confirm(`Remove ${row.full_name} from this tenant? Their login stays in the system but they lose all access.`)) return;
+    if (!(await confirmDialog(`Remove ${row.full_name} from this tenant? Their login stays in the system but they lose all access.`))) return;
     const { error } = await (supabase as any).from("tenant_users").delete().eq("id", row.id);
     if (error) return toast({ title: "Failed", description: error.message, variant: "destructive" });
     toast({ title: "User removed" });

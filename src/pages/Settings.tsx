@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -214,7 +215,7 @@ function GenericListEditor({
   const del = async (row: any) => {
     if (!canEdit) return;
     if (row[systemFlag]) return toast.error("System entry — you can disable it but not delete.");
-    if (!confirm(`Delete "${row.name}"?`)) return;
+    if (!(await confirmDialog(`Delete "${row.name}"?`))) return;
     const { error } = await (supabase as any).from(table).delete().eq("id", row.id);
     if (error) return toast.error(error.message);
     toast.success("Deleted");

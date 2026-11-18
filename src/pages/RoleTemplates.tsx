@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -124,7 +125,7 @@ export default function RoleTemplates() {
   };
 
   const remove = async (t: Template) => {
-    if (!confirm(`Delete template "${t.name}"? This is blocked if any user references it.`)) return;
+    if (!(await confirmDialog(`Delete template "${t.name}"? This is blocked if any user references it.`))) return;
     const { error } = await (supabase as any).from("role_templates").delete().eq("id", t.id);
     if (error) return toast({ title: "Delete blocked", description: error.message, variant: "destructive" });
     toast({ title: "Template deleted" }); load();
@@ -140,7 +141,7 @@ export default function RoleTemplates() {
 
   const restoreVersion = async (v: Version) => {
     if (!history || history.is_builtin) return;
-    if (!confirm(`Restore version ${v.version_no}? Current permissions will be replaced.`)) return;
+    if (!(await confirmDialog(`Restore version ${v.version_no}? Current permissions will be replaced.`))) return;
     await (supabase as any).from("role_template_permissions").delete().eq("template_id", history.id);
     const rows = MODULES.flatMap((m) => ACTIONS.map((a) => ({
       template_id: history.id, module: m, action: a, allowed: !!v.snapshot?.[m]?.[a],

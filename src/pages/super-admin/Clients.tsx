@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { useEffect, useRef, useState } from "react";
 import { supabaseSuperAdmin as supabase } from "@/integrations/supabase/superAdminClient";
 import { useQueryClient } from "@tanstack/react-query";
@@ -85,7 +86,7 @@ const Clients = () => {
     toast.success("Updated"); load();
   };
   const remove = async (t: Tenant) => {
-    if (!confirm(`Archive ${t.company_name}?\n\nThe client will be hidden and suspended, but ALL data, users, subscriptions and payments are preserved. You can restore at any time.`)) return;
+    if (!(await confirmDialog(`Archive ${t.company_name}?\n\nThe client will be hidden and suspended, but ALL data, users, subscriptions and payments are preserved. You can restore at any time.`))) return;
     const { error } = await supabase.functions.invoke("admin-tenant-action", { body: { action: "delete_tenant", tenant_id: t.id } });
     if (error) return toast.error(error.message);
     toast.success("Client archived"); load();
@@ -257,7 +258,7 @@ const Clients = () => {
   };
 
   const syncAuth = async () => {
-    if (!confirm("Scan all tenants and repair missing/mismatched auth.users accounts? Newly created auth accounts will get a temp password you must reset.")) return;
+    if (!(await confirmDialog("Scan all tenants and repair missing/mismatched auth.users accounts? Newly created auth accounts will get a temp password you must reset."))) return;
     const { data, error } = await supabase.functions.invoke("admin-tenant-action", { body: { action: "sync_auth_users" } });
     if (error) return toast.error(error.message);
     const repaired = (data as any)?.repaired ?? [];

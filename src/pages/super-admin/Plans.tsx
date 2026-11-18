@@ -1,3 +1,4 @@
+import { confirmDialog } from "@/components/ConfirmHost";
 import { useEffect, useState } from "react";
 import { supabaseSuperAdmin as supabase } from "@/integrations/supabase/superAdminClient";
 import { Card } from "@/components/ui/card";
@@ -43,7 +44,7 @@ const Plans = () => {
     toast.success("Saved"); setOpen(false); load();
   };
   const remove = async (p: Plan) => {
-    if (!confirm(`Delete plan ${p.name}?`)) return;
+    if (!(await confirmDialog(`Delete plan ${p.name}?`))) return;
     const { error } = await supabase.from("subscription_plans").delete().eq("id", p.id);
     if (error) return toast.error(error.message); load();
   };

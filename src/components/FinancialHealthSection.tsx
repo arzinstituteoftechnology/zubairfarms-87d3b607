@@ -1,3 +1,4 @@
+import { fetchCollections } from "@/lib/recoveries";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { format, subDays, startOfWeek, startOfMonth } from "date-fns";
@@ -199,9 +200,9 @@ export function FinancialHealthSection({ asOf }: { asOf: string }) {
       // supplier_ledger_entries has supplier_id, not farm_id — alias so
       // computeFarmBalances(SupplierLedger { farm_id }) receives the right key.
       supabase.from("supplier_ledger_entries").select("farm_id:supplier_id, entry_type, amount, entry_date, reversed_at, original_entry_id").lte("entry_date", end),
-      supabase.from("shop_recoveries").select("amount, recovery_date").gte("recovery_date", start).lte("recovery_date", end).is("reversed_at", null),
+      fetchCollections({ from: start, to: end }).then((rows) => ({ data: rows.filter((r) => !r.reversed_at).map((r) => ({ amount: r.amount, recovery_date: r.date })) })),
       supabase.from("supplies").select("total_amount, supply_date").gte("supply_date", start).lte("supply_date", end).is("reversed_at", null),
-      supabase.from("shop_recoveries").select("amount, recovery_date").gte("recovery_date", format(subDays(new Date(end), 29), "yyyy-MM-dd")).lte("recovery_date", end).is("reversed_at", null),
+      fetchCollections({ from: format(subDays(new Date(end), 29), "yyyy-MM-dd"), to: end }).then((rows) => ({ data: rows.filter((r) => !r.reversed_at).map((r) => ({ amount: r.amount, recovery_date: r.date })) })),
       supabase.from("supplies").select("total_amount, supply_date").gte("supply_date", format(subDays(new Date(end), 29), "yyyy-MM-dd")).lte("supply_date", end).is("reversed_at", null),
     ]);
 
